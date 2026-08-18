@@ -1,10 +1,12 @@
-import AuthGate from '@/components/AuthGate';
+'use client';
+
+import DashboardShell from '@/components/DashboardShell';
 import OMRAnswerSheetTool from '@/components/OMRAnswerSheetTool';
 
 export default function OMRPage() {
   return (
-    <AuthGate>
+    <DashboardShell>
       <OMRAnswerSheetTool />
-    </AuthGate>
+    </DashboardShell>
   );
 }

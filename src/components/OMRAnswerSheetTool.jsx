@@ -564,63 +564,50 @@ export default function OMRAnswerSheetTool() {
     { key: 3, label: '3. สแกนตรวจ', done: !!scanResult && !scanResult.error },
   ];
 
+  const card = 'bg-white border border-gray-200 rounded-xl p-5 mb-5';
+  const row = 'flex flex-wrap gap-3';
+  const field = 'flex flex-col gap-1';
+  const label = 'text-xs font-semibold text-gray-500';
+  const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50';
+  const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50';
+  const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-100';
+  const btnTiny = 'bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-[11px] font-semibold hover:bg-gray-200';
+  const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
+  const pillOk = pill + ' bg-green-50 text-green-700';
+  const pillBad = pill + ' bg-red-50 text-red-600';
+  const pillWarn = pill + ' bg-amber-50 text-amber-700';
+  const imgwrap = 'border border-gray-200 rounded-lg overflow-hidden max-w-full [&_img]:block [&_img]:w-full';
+  const stat = 'text-center p-3 rounded-lg bg-gray-50 min-w-[90px]';
+  const statN = 'text-2xl font-extrabold';
+  const statL = 'text-[11px] text-gray-500';
+
   return (
-    <div style={{fontFamily:'"Prompt","Noto Sans Thai",sans-serif', maxWidth: 1100, margin:'0 auto', padding:'24px 16px', color:'#1a1d23'}}>
-      <style>{`
-        .card { background:#fff; border:1px solid #e3e6ea; border-radius:12px; padding:20px; margin-bottom:20px; }
-        .row { display:flex; gap:12px; flex-wrap:wrap; }
-        .field { display:flex; flex-direction:column; gap:4px; }
-        .field label { font-size:12px; color:#5b6370; font-weight:600; }
-        .field input, .field select { padding:8px 10px; border:1px solid #d5d9df; border-radius:8px; font-size:14px; font-family:inherit; }
-        .btn { background:linear-gradient(135deg,#6a5cff,#3aa0ff); color:#fff; border:none; padding:10px 18px; border-radius:8px; font-weight:700; cursor:pointer; font-size:14px; }
-        .btn.secondary { background:#eef0f4; color:#1a1d23; }
-        .btn:disabled { opacity:0.5; cursor:not-allowed; }
-        .bubble-grid { display:grid; gap:4px; margin-top:8px; }
-        .qrow { display:flex; align-items:center; gap:8px; font-size:13px; padding:2px 0; }
-        .qrow .qn { width:28px; color:#5b6370; font-variant-numeric: tabular-nums; }
-        .choice-btn { width:28px; height:28px; border-radius:50%; border:1.5px solid #b7bcc4; background:#fff; cursor:pointer; font-size:12px; font-weight:700; }
-        .choice-btn.active { background:#1a1d23; color:#fff; border-color:#1a1d23; }
-        .stat { text-align:center; padding:12px; border-radius:10px; background:#f6f7f9; min-width:90px; }
-        .stat .n { font-size:24px; font-weight:800; }
-        .stat .l { font-size:11px; color:#5b6370; }
-        h1 { font-size:22px; margin:0 0 4px; }
-        h2 { font-size:16px; margin:0 0 12px; }
-        .sub { color:#5b6370; font-size:13px; margin-bottom: 16px;}
-        .imgwrap { border:1px solid #e3e6ea; border-radius:10px; overflow:hidden; max-width:100%; }
-        .imgwrap img { display:block; width:100%; }
-        .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
-        .pill.ok { background:#e3f8ea; color:#1a7f4a; }
-        .pill.bad { background:#fde8e8; color:#c0362c; }
-        .pill.warn { background:#fff4e0; color:#a1650b; }
-        .tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid #e3e6ea; overflow-x:auto; }
-        .tab { background:none; border:none; border-bottom:2px solid transparent; padding:10px 14px; font-size:13px; font-weight:600; color:#5b6370; cursor:pointer; white-space:nowrap; font-family:inherit; }
-        .tab.active { color:#3a3dff; border-bottom-color:#3a3dff; }
-        .tab .check { color:#1a7f4a; margin-right:4px; }
-        .step-nav { display:flex; justify-content:space-between; margin-top:16px; }
-      `}</style>
+    <div className="max-w-5xl">
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">ระบบ OMR — สร้างและตรวจกระดาษคำตอบอัตโนมัติ</h1>
+      <div className="text-sm text-gray-500 mb-5">เลือกวิชา → ออกแบบฟอร์ม → กำหนดเฉลย → สแกนตรวจ → บันทึกผลนักเรียน</div>
 
-      <h1>ระบบ OMR — สร้างและตรวจกระดาษคำตอบอัตโนมัติ</h1>
-      <div className="sub">เลือกวิชา → ออกแบบฟอร์ม → กำหนดเฉลย → สแกนตรวจ → บันทึกผลนักเรียน</div>
-
-      <div className="tabs" role="tablist">
+      <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto" role="tablist">
         {steps.map(s => (
           <button
             key={s.key} type="button" role="tab" aria-selected={activeStep === s.key}
-            className={"tab" + (activeStep === s.key ? ' active' : '')}
+            className={
+              "px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors " +
+              (activeStep === s.key ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700')
+            }
             onClick={() => setActiveStep(s.key)}
           >
-            {s.done && <span className="check">✓</span>}{s.label}
+            {s.done && <span className="text-green-600 mr-1">✓</span>}{s.label}
           </button>
         ))}
       </div>
 
       {/* Step 0: Subject + quiz */}
-      <div className="card" style={{ display: activeStep === 0 ? 'block' : 'none' }}>
-        <h2>0. เลือกวิชาและชุดข้อสอบ</h2>
-        <div className="row">
-          <div className="field">
-            <label>วิชา</label>
-            <select value={subjectId} onChange={e => setSubjectId(e.target.value)}>
+      <div className={card} style={{ display: activeStep === 0 ? 'block' : 'none' }}>
+        <h2 className="text-base font-semibold mb-3">0. เลือกวิชาและชุดข้อสอบ</h2>
+        <div className={row}>
+          <div className={field}>
+            <label className={label}>วิชา</label>
+            <select className={inputCls} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
                 <option key={s.id} value={s.id}>{s.subject_code} {s.subject_name} ({s.grade_level}/{s.room})</option>
@@ -628,9 +615,9 @@ export default function OMRAnswerSheetTool() {
             </select>
           </div>
           {subjectId && (
-            <div className="field">
-              <label>ชุดข้อสอบที่มีอยู่แล้ว</label>
-              <select value={quizId || ''} onChange={e => handleLoadQuiz(e.target.value)} disabled={loadingQuiz}>
+            <div className={field}>
+              <label className={label}>ชุดข้อสอบที่มีอยู่แล้ว</label>
+              <select className={inputCls} value={quizId || ''} onChange={e => handleLoadQuiz(e.target.value)} disabled={loadingQuiz}>
                 <option value="">— สร้างชุดใหม่ —</option>
                 {existingQuizzes.map(q => (
                   <option key={q.id} value={q.id}>{q.title} ({q.num_questions} ข้อ)</option>
@@ -640,97 +627,103 @@ export default function OMRAnswerSheetTool() {
           )}
         </div>
         {!subjectId && subjects.length === 0 && (
-          <div style={{ fontSize: 12, color: '#a1650b', marginTop: 10 }}>⚠ ไม่พบวิชาของบัญชีนี้ — กรุณาสร้างวิชาในระบบก่อน</div>
+          <div className="text-xs text-amber-700 mt-2.5">⚠ ไม่พบวิชาของบัญชีนี้ — กรุณาสร้างวิชาในระบบก่อน</div>
         )}
-        {loadQuizError && <div style={{ fontSize: 12, color: '#c0362c', marginTop: 10 }}>{loadQuizError}</div>}
-        {quizId && <div style={{ marginTop: 10 }}><span className="pill ok">โหลด/บันทึกชุดข้อสอบแล้ว ({quizId.slice(0, 8)}…)</span></div>}
-        <div className="step-nav">
+        {loadQuizError && <div className="text-xs text-red-600 mt-2.5">{loadQuizError}</div>}
+        {quizId && <div className="mt-2.5"><span className={pillOk}>โหลด/บันทึกชุดข้อสอบแล้ว ({quizId.slice(0, 8)}…)</span></div>}
+        <div className="flex justify-between mt-4">
           <span />
-          <button className="btn secondary" onClick={() => setActiveStep(1)}>ถัดไป →</button>
+          <button className={btnSecondary} onClick={() => setActiveStep(1)}>ถัดไป →</button>
         </div>
       </div>
 
       {/* Step 1: Layout config */}
-      <div className="card" style={{ display: activeStep === 1 ? 'block' : 'none' }}>
-        <h2>1. ตั้งค่ากระดาษคำตอบ</h2>
-        <div className="row">
-          <div className="field">
-            <label>ชื่อชุดข้อสอบ</label>
-            <input value={title} onChange={e=>setTitle(e.target.value)} />
+      <div className={card} style={{ display: activeStep === 1 ? 'block' : 'none' }}>
+        <h2 className="text-base font-semibold mb-3">1. ตั้งค่ากระดาษคำตอบ</h2>
+        <div className={row}>
+          <div className={field}>
+            <label className={label}>ชื่อชุดข้อสอบ</label>
+            <input className={inputCls} value={title} onChange={e=>setTitle(e.target.value)} />
           </div>
-          <div className="field">
-            <label>จำนวนข้อ</label>
-            <select value={numQuestions} onChange={e=>setNumQuestions(+e.target.value)}>
+          <div className={field}>
+            <label className={label}>จำนวนข้อ</label>
+            <select className={inputCls} value={numQuestions} onChange={e=>setNumQuestions(+e.target.value)}>
               {[20,30,40,60].map(n => <option key={n} value={n}>{n} ข้อ</option>)}
             </select>
           </div>
-          <div className="field">
-            <label>จำนวนตัวเลือก</label>
-            <select value={numChoices} onChange={e=>setNumChoices(+e.target.value)}>
+          <div className={field}>
+            <label className={label}>จำนวนตัวเลือก</label>
+            <select className={inputCls} value={numChoices} onChange={e=>setNumChoices(+e.target.value)}>
               {[3,4,5].map(n => <option key={n} value={n}>{n} ตัวเลือก</option>)}
             </select>
           </div>
-          <div className="field">
-            <label>รูปแบบตัวเลือก</label>
-            <select value={scheme} onChange={e=>setScheme(e.target.value)}>
+          <div className={field}>
+            <label className={label}>รูปแบบตัวเลือก</label>
+            <select className={inputCls} value={scheme} onChange={e=>setScheme(e.target.value)}>
               <option value="thai">ก ข ค ง</option>
               <option value="en">A B C D</option>
               <option value="num">1 2 3 4</option>
             </select>
           </div>
-          <div className="field">
-            <label>หลักรหัสนักเรียน</label>
-            <select value={idDigits} onChange={e=>setIdDigits(+e.target.value)}>
+          <div className={field}>
+            <label className={label}>หลักรหัสนักเรียน</label>
+            <select className={inputCls} value={idDigits} onChange={e=>setIdDigits(+e.target.value)}>
               {[3,4,5].map(n => <option key={n} value={n}>{n} หลัก</option>)}
             </select>
           </div>
         </div>
-        <div style={{marginTop:16, display:'flex', gap:20, flexWrap:'wrap'}}>
+        <div className="mt-4 flex gap-5 flex-wrap">
           <div>
-            <div className="imgwrap" style={{width: 340}}>
-              <canvas ref={sheetCanvasRef} style={{width:'100%'}}/>
+            <div className={imgwrap} style={{width: 340}}>
+              <canvas ref={sheetCanvasRef} className="w-full"/>
             </div>
-            <div style={{display:'flex', gap:8, marginTop:10, flexWrap:'wrap'}}>
-              <button className="btn" onClick={downloadSheetTopBottomA4}>📄 ดาวน์โหลด PDF (A4 บน-ล่าง = 2 ชุด)</button>
-              <button className="btn secondary" onClick={downloadSheetPNG}>ดาวน์โหลด PNG</button>
+            <div className="flex gap-2 mt-2.5 flex-wrap">
+              <button className={btn} onClick={downloadSheetTopBottomA4}>📄 ดาวน์โหลด PDF (A4 บน-ล่าง = 2 ชุด)</button>
+              <button className={btnSecondary} onClick={downloadSheetPNG}>ดาวน์โหลด PNG</button>
             </div>
-            <div style={{fontSize:11, color:'#a1650b', marginTop:6}}>⚠ ใช้ไฟล์ PDF สำหรับสั่งพิมพ์ เพราะกำหนดขนาด A4 จริงไว้แน่นอน ไฟล์ PNG อาจพิมพ์ออกมาขนาดผิดเพี้ยนขึ้นอยู่กับโปรแกรมที่ใช้เปิด</div>
-            <div style={{fontSize:11, color:'#5b6370', marginTop:4}}>พิมพ์ออกมาจะได้ A4 1 แผ่น มีกระดาษคำตอบ 2 ชุดวางซ้อนกันบน-ล่าง (210×148.5mm ต่อชุด) รูปแบบรหัสนักเรียนเป็นแนวนอน ฝนบรรทัดละ 1 หลัก มีเส้นประให้ตัดแบ่งตรงกลาง แต่ละชุดมีจุดมุม 4 จุดครบในตัวเอง สแกนแยกได้อิสระหลังตัด</div>
+            <div className="text-[11px] text-amber-700 mt-1.5">⚠ ใช้ไฟล์ PDF สำหรับสั่งพิมพ์ เพราะกำหนดขนาด A4 จริงไว้แน่นอน ไฟล์ PNG อาจพิมพ์ออกมาขนาดผิดเพี้ยนขึ้นอยู่กับโปรแกรมที่ใช้เปิด</div>
+            <div className="text-[11px] text-gray-500 mt-1">พิมพ์ออกมาจะได้ A4 1 แผ่น มีกระดาษคำตอบ 2 ชุดวางซ้อนกันบน-ล่าง (210×148.5mm ต่อชุด) รูปแบบรหัสนักเรียนเป็นแนวนอน ฝนบรรทัดละ 1 หลัก มีเส้นประให้ตัดแบ่งตรงกลาง แต่ละชุดมีจุดมุม 4 จุดครบในตัวเอง สแกนแยกได้อิสระหลังตัด</div>
           </div>
-          <div style={{flex:1, minWidth:280}}>
-            <div style={{fontSize:13, color:'#5b6370', lineHeight:1.6}}>
+          <div className="flex-1 min-w-[280px]">
+            <div className="text-sm text-gray-500 leading-relaxed">
               กระดาษคำตอบมี<strong>สี่เหลี่ยมทึบดำ 4 มุม (fiducial markers)</strong> ใช้สำหรับให้ระบบสแกนหาตำแหน่งกระดาษและปรับมุมมองภาพให้ตรง แม้ถ่ายรูปเอียงหรือหมุนเล็กน้อยก็ยังตรวจได้แม่นยำ
               <br/><br/>
               เมื่อพิมพ์จริง: ต้องเห็นมุมทั้ง 4 ชัดเจนในภาพถ่ายเสมอ ห้ามตัดขอบหรือบังมุมกระดาษ
             </div>
           </div>
         </div>
-        <div className="step-nav">
-          <button className="btn secondary" onClick={() => setActiveStep(0)}>← ก่อนหน้า</button>
-          <button className="btn secondary" onClick={() => setActiveStep(2)}>ถัดไป →</button>
+        <div className="flex justify-between mt-4">
+          <button className={btnSecondary} onClick={() => setActiveStep(0)}>← ก่อนหน้า</button>
+          <button className={btnSecondary} onClick={() => setActiveStep(2)}>ถัดไป →</button>
         </div>
       </div>
 
       {/* Step 2: Answer key */}
-      <div className="card" style={{ display: activeStep === 2 ? 'block' : 'none' }}>
-        <h2>2. กำหนดเฉลย {keyComplete ? <span className="pill ok">ครบแล้ว</span> : <span className="pill warn">{Object.keys(answerKey).length}/{numQuestions} ข้อ</span>}</h2>
-        <div className="bubble-grid" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
+      <div className={card} style={{ display: activeStep === 2 ? 'block' : 'none' }}>
+        <h2 className="text-base font-semibold mb-3">2. กำหนดเฉลย {keyComplete ? <span className={pillOk}>ครบแล้ว</span> : <span className={pillWarn}>{Object.keys(answerKey).length}/{numQuestions} ข้อ</span>}</h2>
+        <div className="grid gap-1 mt-2" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
           {Array.from({length: numQuestions}).map((_, qi) => (
-            <div className="qrow" key={qi}>
-              <span className="qn">{String(qi+1).padStart(2,'0')}</span>
+            <div className="flex items-center gap-2 text-sm py-0.5" key={qi}>
+              <span className="w-7 text-gray-500 tabular-nums">{String(qi+1).padStart(2,'0')}</span>
               {letters.map((L, ci) => (
-                <button key={ci} className={"choice-btn" + (answerKey[qi]===ci ? ' active':'')}
-                  onClick={()=>setKeyFor(qi, ci)}>{L}</button>
+                <button
+                  key={ci}
+                  className={
+                    "w-7 h-7 rounded-full border-[1.5px] text-xs font-bold " +
+                    (answerKey[qi]===ci ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 hover:border-gray-400')
+                  }
+                  onClick={()=>setKeyFor(qi, ci)}
+                >{L}</button>
               ))}
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="mt-4 flex items-center gap-2.5 flex-wrap">
           {quizId ? (
-            <span className="pill ok">บันทึกเฉลยแล้ว — หากต้องการแก้ไข ให้เลือก &ldquo;สร้างชุดใหม่&rdquo; แล้วบันทึกเป็นชุดข้อสอบใหม่แทน</span>
+            <span className={pillOk}>บันทึกเฉลยแล้ว — หากต้องการแก้ไข ให้เลือก &ldquo;สร้างชุดใหม่&rdquo; แล้วบันทึกเป็นชุดข้อสอบใหม่แทน</span>
           ) : (
             <button
-              className="btn"
+              className={btn}
               onClick={handleSaveAnswerKey}
               disabled={!subjectId || !keyComplete || savingQuiz}
               title={!subjectId ? 'เลือกวิชาก่อน' : (!keyComplete ? 'กำหนดเฉลยให้ครบก่อน' : '')}
@@ -738,21 +731,21 @@ export default function OMRAnswerSheetTool() {
               {savingQuiz ? 'กำลังบันทึก...' : '💾 บันทึกเฉลยไปยังฐานข้อมูล'}
             </button>
           )}
-          {saveQuizError && <span style={{ fontSize: 12, color: '#c0362c' }}>{saveQuizError}</span>}
+          {saveQuizError && <span className="text-xs text-red-600">{saveQuizError}</span>}
         </div>
-        <div className="step-nav">
-          <button className="btn secondary" onClick={() => setActiveStep(1)}>← ก่อนหน้า</button>
-          <button className="btn secondary" onClick={() => setActiveStep(3)}>ถัดไป →</button>
+        <div className="flex justify-between mt-4">
+          <button className={btnSecondary} onClick={() => setActiveStep(1)}>← ก่อนหน้า</button>
+          <button className={btnSecondary} onClick={() => setActiveStep(3)}>ถัดไป →</button>
         </div>
       </div>
 
       {/* Step 3: Scan */}
-      <div className="card" style={{ display: activeStep === 3 ? 'block' : 'none' }}>
-        <h2>3. ทดสอบสแกนตรวจ</h2>
+      <div className={card} style={{ display: activeStep === 3 ? 'block' : 'none' }}>
+        <h2 className="text-base font-semibold mb-3">3. ทดสอบสแกนตรวจ</h2>
         {quizId && (
-          <div className="field" style={{ marginBottom: 12, maxWidth: 320 }}>
-            <label>นักเรียนเจ้าของกระดาษคำตอบนี้</label>
-            <select value={studentId} onChange={e => setStudentId(e.target.value)}>
+          <div className={field + ' mb-3 max-w-xs'}>
+            <label className={label}>นักเรียนเจ้าของกระดาษคำตอบนี้</label>
+            <select className={inputCls} value={studentId} onChange={e => setStudentId(e.target.value)}>
               <option value="">— เลือกนักเรียน —</option>
               {students.map(st => (
                 <option key={st.id} value={st.id}>{st.student_code} {st.prefix}{st.student_name}</option>
@@ -760,82 +753,82 @@ export default function OMRAnswerSheetTool() {
             </select>
           </div>
         )}
-        <div className="row" style={{marginBottom:12}}>
-          <button className="btn" onClick={openCamera} disabled={!keyComplete} title={!keyComplete? 'กำหนดเฉลยให้ครบก่อน':''}>
+        <div className={row + ' mb-3'}>
+          <button className={btn} onClick={openCamera} disabled={!keyComplete} title={!keyComplete? 'กำหนดเฉลยให้ครบก่อน':''}>
             📷 เปิดกล้องถ่ายกระดาษคำตอบ
           </button>
-          <button className="btn secondary" onClick={generateSimulatedScan} disabled={!keyComplete} title={!keyComplete? 'กำหนดเฉลยให้ครบก่อน':''}>
+          <button className={btnSecondary} onClick={generateSimulatedScan} disabled={!keyComplete} title={!keyComplete? 'กำหนดเฉลยให้ครบก่อน':''}>
             🎲 จำลองรูปถ่ายกระดาษคำตอบ
           </button>
-          <button className="btn secondary" onClick={()=>fileInputRef.current.click()}>📤 อัปโหลดรูปถ่ายจริง</button>
-          <input type="file" accept="image/*" ref={fileInputRef} style={{display:'none'}} onChange={handleFileUpload}/>
-          {scanImage && <button className="btn secondary" onClick={runScan} disabled={!keyComplete || scanStage==='processing'}>
+          <button className={btnSecondary} onClick={()=>fileInputRef.current.click()}>📤 อัปโหลดรูปถ่ายจริง</button>
+          <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload}/>
+          {scanImage && <button className={btnSecondary} onClick={runScan} disabled={!keyComplete || scanStage==='processing'}>
             {scanStage==='processing' ? 'กำลังตรวจ...' : '▶ เริ่มตรวจ'}
           </button>}
         </div>
-        {!keyComplete && <div style={{fontSize:12, color:'#a1650b', marginBottom:12}}>⚠ กรุณากำหนดเฉลยให้ครบทุกข้อก่อนทดสอบสแกน</div>}
-        {cameraError && <div style={{fontSize:12, color:'#c0362c', marginBottom:12}}>{cameraError}</div>}
+        {!keyComplete && <div className="text-xs text-amber-700 mb-3">⚠ กรุณากำหนดเฉลยให้ครบทุกข้อก่อนทดสอบสแกน</div>}
+        {cameraError && <div className="text-xs text-red-600 mb-3">{cameraError}</div>}
 
         {cameraOpen && (
-          <div style={{marginBottom:16}}>
-            <div style={{position:'relative', maxWidth:480, borderRadius:10, overflow:'hidden', border:'1px solid #e3e6ea', background:'#000'}}>
-              <video ref={videoRef} playsInline muted style={{width:'100%', display:'block'}}/>
+          <div className="mb-4">
+            <div className="relative max-w-[480px] rounded-lg overflow-hidden border border-gray-200 bg-black">
+              <video ref={videoRef} playsInline muted className="w-full block"/>
             </div>
-            <div style={{display:'flex', gap:8, marginTop:10}}>
-              <button className="btn" onClick={capturePhoto}>📸 ถ่ายภาพ</button>
-              <button className="btn secondary" onClick={closeCamera}>ยกเลิก</button>
+            <div className="flex gap-2 mt-2.5">
+              <button className={btn} onClick={capturePhoto}>📸 ถ่ายภาพ</button>
+              <button className={btnSecondary} onClick={closeCamera}>ยกเลิก</button>
             </div>
-            <div style={{fontSize:11, color:'#5b6370', marginTop:6}}>จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ — ภาพจะถูกประมวลผลในเครื่องทันที ไม่มีการอัปโหลดไปที่ใดๆ</div>
+            <div className="text-[11px] text-gray-500 mt-1.5">จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ — ภาพจะถูกประมวลผลในเครื่องทันที ไม่มีการอัปโหลดไปที่ใดๆ</div>
           </div>
         )}
 
         {scanImage && (
-          <div className="row" style={{alignItems:'flex-start'}}>
-            <div style={{width:260}}>
-              <div style={{fontSize:12, fontWeight:700, marginBottom:6, color:'#5b6370'}}>ภาพถ่ายต้นฉบับ</div>
-              <div className="imgwrap"><img src={originalAnnotated || scanImage} /></div>
-              {originalAnnotated && <div style={{fontSize:11, color:'#5b6370', marginTop:4}}>วงกลมเขียว = ตำแหน่งมุมที่ตรวจพบ (ควรอยู่ตรงกลางสี่เหลี่ยมดำพอดี)</div>}
+          <div className={row + ' items-start'}>
+            <div className="w-[260px]">
+              <div className="text-xs font-bold mb-1.5 text-gray-500">ภาพถ่ายต้นฉบับ</div>
+              <div className={imgwrap}><img src={originalAnnotated || scanImage} alt="ภาพถ่ายกระดาษคำตอบ" /></div>
+              {originalAnnotated && <div className="text-[11px] text-gray-500 mt-1">วงกลมเขียว = ตำแหน่งมุมที่ตรวจพบ (ควรอยู่ตรงกลางสี่เหลี่ยมดำพอดี)</div>}
             </div>
             {debugCanvas && (
-              <div style={{width:260}}>
-                <div style={{fontSize:12, fontWeight:700, marginBottom:6, color:'#5b6370'}}>หลังปรับมุมมอง (warped)</div>
-                <div className="imgwrap"><img src={debugCanvas} /></div>
+              <div className="w-[260px]">
+                <div className="text-xs font-bold mb-1.5 text-gray-500">หลังปรับมุมมอง (warped)</div>
+                <div className={imgwrap}><img src={debugCanvas} alt="ภาพหลังปรับมุมมอง" /></div>
               </div>
             )}
-            <div style={{flex:1, minWidth:280}}>
+            <div className="flex-1 min-w-[280px]">
               {scanResult && scanResult.error && (
-                <div className="pill bad" style={{padding:'8px 12px', fontSize:13}}>{scanResult.error}</div>
+                <div className={pillBad + ' px-3 py-2 text-sm'}>{scanResult.error}</div>
               )}
               {scanResult && !scanResult.error && (
                 <div>
-                  <div className="row" style={{marginBottom:16}}>
-                    <div className="stat"><div className="n">{scanResult.score}%</div><div className="l">คะแนน</div></div>
-                    <div className="stat"><div className="n">{scanResult.correct}/{scanResult.total}</div><div className="l">ถูก</div></div>
-                    <div className="stat"><div className="n">{scanResult.blank}</div><div className="l">ไม่ตอบ</div></div>
-                    <div className="stat"><div className="n">{scanResult.ambiguous}</div><div className="l">ฝนไม่ชัด</div></div>
+                  <div className={row + ' mb-4'}>
+                    <div className={stat}><div className={statN}>{scanResult.score}%</div><div className={statL}>คะแนน</div></div>
+                    <div className={stat}><div className={statN}>{scanResult.correct}/{scanResult.total}</div><div className={statL}>ถูก</div></div>
+                    <div className={stat}><div className={statN}>{scanResult.blank}</div><div className={statL}>ไม่ตอบ</div></div>
+                    <div className={stat}><div className={statN}>{scanResult.ambiguous}</div><div className={statL}>ฝนไม่ชัด</div></div>
                   </div>
-                  <div style={{fontSize:13, marginBottom:10}}>รหัสนักเรียนที่อ่านได้: <strong>{scanResult.studentId}</strong>
-                    {scanImage && simId && <span style={{color:'#5b6370'}}> (จำลองจาก: {simId})</span>}
+                  <div className="text-sm mb-2.5">รหัสนักเรียนที่อ่านได้: <strong>{scanResult.studentId}</strong>
+                    {scanImage && simId && <span className="text-gray-500"> (จำลองจาก: {simId})</span>}
                   </div>
-                  <div style={{maxHeight:260, overflowY:'auto', border:'1px solid #eee', borderRadius:8, padding:'6px 10px'}}>
+                  <div className="max-h-[260px] overflow-y-auto border border-gray-100 rounded-lg px-2.5 py-1.5">
                     {scanResult.graded.map(g => (
-                      <div key={g.question} style={{display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid #f2f2f2'}}>
+                      <div key={g.question} className="flex justify-between text-xs py-1 border-b border-gray-100 last:border-b-0">
                         <span>ข้อ {g.question+1}</span>
                         <span>
                           ตอบ: {g.blank ? '—' : letters[g.choice]}{' '}
                           เฉลย: {letters[g.key]}{' '}
-                          {g.correct ? <span className="pill ok">ถูก</span> : <span className="pill bad">ผิด</span>}
-                          {g.ambiguous && <span className="pill warn" style={{marginLeft:4}}>ไม่ชัด</span>}
+                          {g.correct ? <span className={pillOk}>ถูก</span> : <span className={pillBad}>ผิด</span>}
+                          {g.ambiguous && <span className={pillWarn + ' ml-1'}>ไม่ชัด</span>}
                         </span>
                       </div>
                     ))}
                   </div>
-                  <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div className="mt-3.5 flex items-center gap-2.5 flex-wrap">
                     {savedResultId ? (
-                      <span className="pill ok">บันทึกผลของนักเรียนแล้ว</span>
+                      <span className={pillOk}>บันทึกผลของนักเรียนแล้ว</span>
                     ) : (
                       <button
-                        className="btn"
+                        className={btn}
                         onClick={handleSaveScanResult}
                         disabled={!quizId || !studentId || savingResult}
                         title={!quizId ? 'บันทึกเฉลยลงฐานข้อมูลก่อน' : (!studentId ? 'เลือกนักเรียนก่อน' : '')}
@@ -843,7 +836,7 @@ export default function OMRAnswerSheetTool() {
                         {savingResult ? 'กำลังบันทึก...' : '💾 บันทึกผลนักเรียนคนนี้'}
                       </button>
                     )}
-                    {saveResultError && <span style={{ fontSize: 12, color: '#c0362c' }}>{saveResultError}</span>}
+                    {saveResultError && <span className="text-xs text-red-600">{saveResultError}</span>}
                   </div>
                 </div>
               )}
@@ -852,20 +845,20 @@ export default function OMRAnswerSheetTool() {
         )}
 
         {quizId && (
-          <div style={{ marginTop: 20, borderTop: '1px solid #eee', paddingTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-              ผลที่บันทึกแล้วของชุดข้อสอบนี้ {loadingRoster && <span style={{ fontWeight: 400, color: '#5b6370' }}>(กำลังโหลด...)</span>}
+          <div className="mt-5 border-t border-gray-100 pt-4">
+            <div className="text-sm font-bold mb-2">
+              ผลที่บันทึกแล้วของชุดข้อสอบนี้ {loadingRoster && <span className="font-normal text-gray-500">(กำลังโหลด...)</span>}
             </div>
             {roster.length === 0 ? (
-              <div style={{ fontSize: 12, color: '#5b6370' }}>ยังไม่มีผลที่บันทึก</div>
+              <div className="text-xs text-gray-500">ยังไม่มีผลที่บันทึก</div>
             ) : (
-              <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+              <div className="max-h-60 overflow-y-auto">
                 {roster.map(r => (
-                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f2f2f2' }}>
+                  <div key={r.id} className="flex justify-between items-center text-xs py-1.5 border-b border-gray-100 last:border-b-0">
                     <span>{r.students?.student_code} {r.students?.prefix}{r.students?.student_name}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="flex items-center gap-2">
                       <span>{r.total_correct}/{numQuestions} ({r.score}%)</span>
-                      <button className="btn secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleDeleteResult(r.id)}>ลบ</button>
+                      <button className={btnTiny} onClick={() => handleDeleteResult(r.id)}>ลบ</button>
                     </span>
                   </div>
                 ))}
@@ -873,19 +866,19 @@ export default function OMRAnswerSheetTool() {
             )}
           </div>
         )}
-        <div className="step-nav">
-          <button className="btn secondary" onClick={() => setActiveStep(2)}>← ก่อนหน้า</button>
+        <div className="flex justify-between mt-4">
+          <button className={btnSecondary} onClick={() => setActiveStep(2)}>← ก่อนหน้า</button>
           <span />
         </div>
       </div>
 
-      <div className="card" style={{fontSize:13, color:'#5b6370', lineHeight:1.7}}>
-        <h2>วิธีทำงานของระบบ (สรุป)</h2>
+      <div className={card + ' text-sm text-gray-500 leading-relaxed'}>
+        <h2 className="text-base font-semibold mb-3 text-gray-900">วิธีทำงานของระบบ (สรุป)</h2>
         1. ตรวจจับจุดดำ 4 มุม (fiducial markers) ด้วย Otsu thresholding แยกพื้นที่มืด/สว่าง<br/>
         2. คำนวณ homography transform จาก 4 จุดที่พบ → ปรับภาพให้ตรงเป็นสี่เหลี่ยมมาตรฐาน (คล้ายการ &ldquo;แปลงมุมกล้อง&rdquo; ให้เหมือนสแกนตรงๆ)<br/>
         3. อ่านความเข้มสีในแต่ละวงกลมคำตอบ (fill ratio) เทียบกับพื้นหลัง เพื่อตัดสินว่าฝนช่องไหน<br/>
         4. เทียบคำตอบที่อ่านได้กับเฉลยที่ครูกำหนดไว้ → คำนวณคะแนน<br/><br/>
-        <strong>ข้อจำกัดของ demo นี้:</strong> เป็นการประมวลผลฝั่งเบราว์เซอร์แบบพื้นฐาน ยังไม่รองรับกระดาษที่ยับ/แสงเงาไม่สม่ำเสมอมาก หรือมุมกล้องเอียงมากๆ — ระบบจริงอาจต้องปรับ threshold แบบ adaptive และเพิ่มการตรวจสอบคุณภาพภาพก่อนประมวลผล
+        <strong className="text-gray-700">ข้อจำกัดของ demo นี้:</strong> เป็นการประมวลผลฝั่งเบราว์เซอร์แบบพื้นฐาน ยังไม่รองรับกระดาษที่ยับ/แสงเงาไม่สม่ำเสมอมาก หรือมุมกล้องเอียงมากๆ — ระบบจริงอาจต้องปรับ threshold แบบ adaptive และเพิ่มการตรวจสอบคุณภาพภาพก่อนประมวลผล
       </div>
     </div>
   );

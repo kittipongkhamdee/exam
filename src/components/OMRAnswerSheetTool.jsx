@@ -77,6 +77,8 @@ export default function OMRAnswerSheetTool() {
   const letters = choiceLetters(scheme, numChoices);
   const [fontReady, setFontReady] = useState(false);
 
+  const [activeStep, setActiveStep] = useState(0);
+
   // --- Supabase-backed quiz/subject/student state ---
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
@@ -392,8 +394,6 @@ export default function OMRAnswerSheetTool() {
       setScanResult(null);
       setSavedResultId(null);
       setSaveResultError(null);
-    setSavedResultId(null);
-    setSaveResultError(null);
       setOriginalAnnotated(null);
       setDebugCanvas(null);
       setScanStage('idle');
@@ -557,6 +557,13 @@ export default function OMRAnswerSheetTool() {
 
   const keyComplete = Object.keys(answerKey).length === numQuestions;
 
+  const steps = [
+    { key: 0, label: '0. เลือกวิชา', done: !!subjectId },
+    { key: 1, label: '1. ตั้งค่ากระดาษคำตอบ', done: sheetReady },
+    { key: 2, label: '2. กำหนดเฉลย', done: keyComplete },
+    { key: 3, label: '3. สแกนตรวจ', done: !!scanResult && !scanResult.error },
+  ];
+
   return (
     <div style={{fontFamily:'"Prompt","Noto Sans Thai",sans-serif', maxWidth: 1100, margin:'0 auto', padding:'24px 16px', color:'#1a1d23'}}>
       <style>{`
@@ -585,13 +592,30 @@ export default function OMRAnswerSheetTool() {
         .pill.ok { background:#e3f8ea; color:#1a7f4a; }
         .pill.bad { background:#fde8e8; color:#c0362c; }
         .pill.warn { background:#fff4e0; color:#a1650b; }
+        .tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid #e3e6ea; overflow-x:auto; }
+        .tab { background:none; border:none; border-bottom:2px solid transparent; padding:10px 14px; font-size:13px; font-weight:600; color:#5b6370; cursor:pointer; white-space:nowrap; font-family:inherit; }
+        .tab.active { color:#3a3dff; border-bottom-color:#3a3dff; }
+        .tab .check { color:#1a7f4a; margin-right:4px; }
+        .step-nav { display:flex; justify-content:space-between; margin-top:16px; }
       `}</style>
 
       <h1>ระบบ OMR — สร้างและตรวจกระดาษคำตอบอัตโนมัติ</h1>
       <div className="sub">เลือกวิชา → ออกแบบฟอร์ม → กำหนดเฉลย → สแกนตรวจ → บันทึกผลนักเรียน</div>
 
+      <div className="tabs" role="tablist">
+        {steps.map(s => (
+          <button
+            key={s.key} type="button" role="tab" aria-selected={activeStep === s.key}
+            className={"tab" + (activeStep === s.key ? ' active' : '')}
+            onClick={() => setActiveStep(s.key)}
+          >
+            {s.done && <span className="check">✓</span>}{s.label}
+          </button>
+        ))}
+      </div>
+
       {/* Step 0: Subject + quiz */}
-      <div className="card">
+      <div className="card" style={{ display: activeStep === 0 ? 'block' : 'none' }}>
         <h2>0. เลือกวิชาและชุดข้อสอบ</h2>
         <div className="row">
           <div className="field">
@@ -620,10 +644,14 @@ export default function OMRAnswerSheetTool() {
         )}
         {loadQuizError && <div style={{ fontSize: 12, color: '#c0362c', marginTop: 10 }}>{loadQuizError}</div>}
         {quizId && <div style={{ marginTop: 10 }}><span className="pill ok">โหลด/บันทึกชุดข้อสอบแล้ว ({quizId.slice(0, 8)}…)</span></div>}
+        <div className="step-nav">
+          <span />
+          <button className="btn secondary" onClick={() => setActiveStep(1)}>ถัดไป →</button>
+        </div>
       </div>
 
       {/* Step 1: Layout config */}
-      <div className="card">
+      <div className="card" style={{ display: activeStep === 1 ? 'block' : 'none' }}>
         <h2>1. ตั้งค่ากระดาษคำตอบ</h2>
         <div className="row">
           <div className="field">
@@ -677,10 +705,14 @@ export default function OMRAnswerSheetTool() {
             </div>
           </div>
         </div>
+        <div className="step-nav">
+          <button className="btn secondary" onClick={() => setActiveStep(0)}>← ก่อนหน้า</button>
+          <button className="btn secondary" onClick={() => setActiveStep(2)}>ถัดไป →</button>
+        </div>
       </div>
 
       {/* Step 2: Answer key */}
-      <div className="card">
+      <div className="card" style={{ display: activeStep === 2 ? 'block' : 'none' }}>
         <h2>2. กำหนดเฉลย {keyComplete ? <span className="pill ok">ครบแล้ว</span> : <span className="pill warn">{Object.keys(answerKey).length}/{numQuestions} ข้อ</span>}</h2>
         <div className="bubble-grid" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
           {Array.from({length: numQuestions}).map((_, qi) => (
@@ -708,10 +740,14 @@ export default function OMRAnswerSheetTool() {
           )}
           {saveQuizError && <span style={{ fontSize: 12, color: '#c0362c' }}>{saveQuizError}</span>}
         </div>
+        <div className="step-nav">
+          <button className="btn secondary" onClick={() => setActiveStep(1)}>← ก่อนหน้า</button>
+          <button className="btn secondary" onClick={() => setActiveStep(3)}>ถัดไป →</button>
+        </div>
       </div>
 
       {/* Step 3: Scan */}
-      <div className="card">
+      <div className="card" style={{ display: activeStep === 3 ? 'block' : 'none' }}>
         <h2>3. ทดสอบสแกนตรวจ</h2>
         {quizId && (
           <div className="field" style={{ marginBottom: 12, maxWidth: 320 }}>
@@ -837,6 +873,10 @@ export default function OMRAnswerSheetTool() {
             )}
           </div>
         )}
+        <div className="step-nav">
+          <button className="btn secondary" onClick={() => setActiveStep(2)}>← ก่อนหน้า</button>
+          <span />
+        </div>
       </div>
 
       <div className="card" style={{fontSize:13, color:'#5b6370', lineHeight:1.7}}>

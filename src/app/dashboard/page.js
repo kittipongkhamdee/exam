@@ -9,10 +9,16 @@ function DashboardContent() {
 
   const cards = [
     {
-      href: '/omr',
-      title: 'กระดาษคำตอบ',
-      desc: 'สร้างกระดาษคำตอบ OMR กำหนดเฉลย และสแกนตรวจอัตโนมัติ',
+      href: '/omr/prepare',
+      title: 'เตรียมข้อสอบ',
+      desc: 'เลือกวิชา ออกแบบกระดาษคำตอบ และกำหนดเฉลย (ทำล่วงหน้าบนคอมพิวเตอร์)',
       accent: 'from-indigo-600 to-blue-500',
+    },
+    {
+      href: '/omr/scan',
+      title: 'สแกนตรวจ',
+      desc: 'สแกนกระดาษคำตอบของนักเรียนด้วยมือถือหลังสอบเสร็จ',
+      accent: 'from-emerald-600 to-teal-500',
     },
     ...(isAdmin
       ? [{

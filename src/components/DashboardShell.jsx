@@ -13,7 +13,8 @@ import { supabase } from '../lib/supabaseClient';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'แดชบอร์ด', icon: HomeIcon, adminOnly: false },
-  { href: '/omr', label: 'กระดาษคำตอบ', icon: SheetIcon, adminOnly: false },
+  { href: '/omr/prepare', label: 'เตรียมข้อสอบ', icon: SheetIcon, adminOnly: false },
+  { href: '/omr/scan', label: 'สแกนตรวจ', icon: CameraIcon, adminOnly: false },
   { href: '/settings', label: 'ตั้งค่า', icon: GearIcon, adminOnly: true },
 ];
 
@@ -179,6 +180,15 @@ function SheetIcon(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <rect x="5" y="3" width="14" height="18" rx="2" />
       <path d="M9 8h6M9 12h6M9 16h3" />
+    </svg>
+  );
+}
+
+function CameraIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+      <circle cx="12" cy="13" r="3.5" />
     </svg>
   );
 }

@@ -122,6 +122,26 @@ export async function listQuizzesForSubject(supabase, subjectId) {
 }
 
 /**
+ * List every quiz across all of the teacher's subjects, most recent first,
+ * each with its subject's name/grade/room attached — for a scanning UI
+ * where the teacher picks a previously-prepared quiz directly, without
+ * choosing a subject first. Relies on the same RLS as listQuizzesForSubject
+ * (omr_quizzes_own) to scope this to the caller's own quizzes.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ */
+export async function listMyQuizzes(supabase) {
+  const { data, error } = await supabase
+    .from('omr_quizzes')
+    .select(`
+      id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, created_at,
+      subjects ( subject_name, subject_code, grade_level, room )
+    `)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Save a graded scan result for one student.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{

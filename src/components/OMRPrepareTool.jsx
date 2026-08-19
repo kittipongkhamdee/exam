@@ -31,6 +31,7 @@ export default function OMRPrepareTool() {
   const layoutStyle = 'topBottom';
 
   const [answerKey, setAnswerKey] = useState({});
+  const [bulkPoints, setBulkPoints] = useState(1);
   const sheetCanvasRef = useRef(null);
   const [sheetReady, setSheetReady] = useState(false);
 
@@ -194,6 +195,18 @@ export default function OMRPrepareTool() {
     setAnswerKey(prev => {
       const entry = prev[qIndex] || { choices: [], points: 1 };
       return { ...prev, [qIndex]: { ...entry, points } };
+    });
+  }
+
+  function applyPointsToAll(rawValue) {
+    const points = Math.max(0.5, Number(rawValue) || 1);
+    setAnswerKey(prev => {
+      const next = { ...prev };
+      for (let qi = 0; qi < numQuestions; qi++) {
+        const entry = next[qi] || { choices: [] };
+        next[qi] = { ...entry, points };
+      }
+      return next;
     });
   }
 
@@ -370,6 +383,15 @@ export default function OMRPrepareTool() {
       <div className={card} style={{ display: activeStep === 2 ? 'block' : 'none' }}>
         <h2 className="text-base font-semibold mb-1">2. กำหนดเฉลย {keyComplete ? <span className={pillOk}>ครบแล้ว</span> : <span className={pillWarn}>{answeredCount}/{numQuestions} ข้อ</span>}</h2>
         <div className="text-xs text-gray-500 mb-3">แตะได้มากกว่า 1 ตัวเลือกต่อข้อถ้ามีคำตอบที่ถูกหลายแบบ (ตอบข้อไหนก็ได้เต็ม) และปรับคะแนนแต่ละข้อได้ — คะแนนรวม {totalPoints} คะแนน</div>
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <label className="text-xs font-semibold text-gray-500">กำหนดคะแนนเท่ากันทุกข้อ</label>
+          <input
+            type="number" min="0.5" step="0.5" value={bulkPoints}
+            onChange={e => setBulkPoints(e.target.value)}
+            className="w-16 px-1.5 py-1 border border-gray-300 rounded text-xs text-center"
+          />
+          <button className={btnTiny} onClick={() => applyPointsToAll(bulkPoints)}>ใช้กับทุกข้อ</button>
+        </div>
         <div className="grid gap-1.5 mt-2" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
           {Array.from({length: numQuestions}).map((_, qi) => (
             <div className="flex items-center gap-2 text-sm py-0.5 flex-wrap" key={qi}>

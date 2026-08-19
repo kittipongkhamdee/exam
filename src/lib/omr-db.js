@@ -5,7 +5,11 @@
 //
 //   omr_quizzes       (id, subject_id, title, num_questions, num_choices,
 //                       id_digits, choice_scheme, created_by, created_at)
-//   omr_answer_keys   (id, quiz_id, question_number, correct_choice)
+//   omr_answer_keys   (id, quiz_id, question_number, correct_choices int[],
+//                       points numeric) — correct_choices holds every
+//                       choice index accepted as correct for that question
+//                       (a student matching any one of them earns `points`
+//                       for the question, not the sum of all of them)
 //   omr_scan_results  (id, quiz_id, student_id, responses jsonb,
 //                       total_correct, score, scanned_by, scanned_at)
 //
@@ -31,7 +35,7 @@
  *   numChoices: number,
  *   idDigits: number,
  *   choiceScheme: 'thai'|'en'|'num',
- *   answerKey: Record<number, number>, // { [questionIndex0based]: choiceIndex0based }
+ *   answerKey: Record<number, { choices: number[], points: number }>, // { [questionIndex0based]: {...} }
  * }} params
  * @returns {Promise<{ quizId: string }>}
  */
@@ -53,10 +57,11 @@ export async function createQuiz(supabase, params) {
 
   if (quizErr) throw quizErr;
 
-  const keyRows = Object.entries(answerKey).map(([qIndex, choiceIndex]) => ({
+  const keyRows = Object.entries(answerKey).map(([qIndex, entry]) => ({
     quiz_id: quiz.id,
     question_number: Number(qIndex) + 1, // stored 1-based; UI/omr-core uses 0-based
-    correct_choice: choiceIndex,
+    correct_choices: entry.choices,
+    points: entry.points,
   }));
 
   if (keyRows.length > 0) {
@@ -83,14 +88,14 @@ export async function getQuizWithAnswerKey(supabase, quizId) {
 
   const { data: keyRows, error: keyErr } = await supabase
     .from('omr_answer_keys')
-    .select('question_number, correct_choice')
+    .select('question_number, correct_choices, points')
     .eq('quiz_id', quizId)
     .order('question_number', { ascending: true });
   if (keyErr) throw keyErr;
 
   const answerKey = {};
   for (const row of keyRows) {
-    answerKey[row.question_number - 1] = row.correct_choice; // back to 0-based
+    answerKey[row.question_number - 1] = { choices: row.correct_choices, points: Number(row.points) }; // back to 0-based
   }
 
   return {

@@ -178,10 +178,10 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // so 3 columns still fits the narrower half-page width without crowding.
   const usableW = pageW - MARGIN * 2;
   const dense = forcedCols >= 3;
-  const bubbleR = dense ? 7 : 8;
+  const bubbleR = dense ? 6 : 8;
   const choiceGap = dense ? 18 : 26;
-  const qLabelW = dense ? 18 : 40;
-  const singleColW = dense ? 100 : 140; // approx width needed for qLabel + 4-5 choice bubbles
+  const qLabelW = dense ? 24 : 40; // must clear the 2-digit "01." label text (12px font) before the first bubble starts
+  const singleColW = dense ? 110 : 140; // approx width needed for qLabel + 4-5 choice bubbles
   const maxCols = Math.max(1, Math.floor(usableW / singleColW));
   const cols = forcedCols || (numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1));
   const perCol = Math.ceil(numQuestions / cols);
@@ -190,16 +190,18 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
 
   // Student ID grid sits below the title/name lines on the half sheet, as a
   // bordered box (too narrow to place it beside the title like the full
-  // sheet does). Same row-per-digit, column-per-value (0-9) arrangement as
-  // the 'topBottom' style — one filled bubble per row, a single 0-9 header
-  // row shared across all digits, rather than the value printed inside
-  // every bubble — since that's easier for a student to fill correctly.
-  const idBoxX = MARGIN;
-  const idBoxY = MARGIN + MARKER + 34;
+  // sheet does), right-aligned to the page edge — same row-per-digit,
+  // column-per-value (0-9) arrangement as the 'topBottom' style (one filled
+  // bubble per row, a single 0-9 header row shared across all digits,
+  // rather than the value printed inside every bubble), and the same
+  // right-aligned placement 'topBottom' uses for its ID box too.
   const idLabelH = 16;
   const idRowH = 20, idColGap = 22;
   const idBoxW = 9 * idColGap + 30;
   const idBoxH = idLabelH + idDigits * idRowH + 14;
+  const idBoxY = MARGIN + MARKER + 34;
+  // Keep clear of the top-right fiducial marker, not just the page margin.
+  const idBoxX = pageW - MARGIN - MARKER - 10 - idBoxW;
   const idStartX = idBoxX + 16;
   const idStartY = idBoxY + idLabelH + 16;
 

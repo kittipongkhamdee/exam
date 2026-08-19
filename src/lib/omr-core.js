@@ -172,30 +172,15 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // pageW controls how many columns the questions wrap into: a narrower page
   // (half-sheet) naturally fits fewer question-columns per available width,
   // so this recomputes the wrap point based on the actual page width rather
-  // than assuming the full-page width always. A caller can also force a
-  // specific column count (e.g. 3, to fit 60 questions on a portrait half
-  // sheet) via forcedCols — bubble/gap sizing shrinks a bit ("dense" mode)
-  // so 3 columns still fits the narrower half-page width without crowding.
+  // than assuming the full-page width always (see the column-count picking
+  // below, after startY is known).
   const usableW = pageW - MARGIN * 2;
-  const dense = forcedCols >= 3;
-  // Bubble radius stays full-size (8) even in dense mode — the current
-  // 3-column use case (60 questions on the landscape-half layout, ~174px
-  // per column) has enough width margin to not need smaller circles, and
-  // smaller ones are harder to fill accurately with a pencil.
-  const bubbleR = 8;
-  const choiceGap = dense ? 22 : 26;
-  const qLabelW = dense ? 28 : 40; // must clear the 2-digit "01." label text (12px font) before the first bubble starts
-  const singleColW = dense ? 120 : 140; // approx width needed for qLabel + 4-5 choice bubbles
-  const maxCols = Math.max(1, Math.floor(usableW / singleColW));
-  const cols = forcedCols || (numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1));
-  const perCol = Math.ceil(numQuestions / cols);
   // 26 left the last row of a 20-row column (e.g. 60 questions x 3 columns,
   // or 40 x 2) sitting just ~2px above the bottom fiducial marker — visibly
   // crowded. 24 still leaves an 8px gap between adjacent bubbles (16px
   // diameter), but frees up ~40px of clearance at the bottom for the
   // worst-case 20-row column.
   const rowH = 24;
-  const colW = usableW / cols;
 
   // Student ID grid sits below the title/name lines on the half sheet, as a
   // bordered box (too narrow to place it beside the title like the full
@@ -219,6 +204,34 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // tall vs. 'half's 297mm — without the question grid running off the
   // bottom edge.
   const startY = idBoxY + idBoxH + 26;
+
+  // Column count picks itself: first, how many rows actually fit below
+  // startY without crowding the bottom fiducial marker; a question count
+  // that would overflow that (e.g. 60 questions, which needs ~30 rows in 2
+  // columns) bumps the column count up until each column's row count fits.
+  // This used to require the teacher to manually tick a "3 columns" box for
+  // large question counts — easy to forget, and forgetting it silently
+  // produced a sheet with rows running off the bottom edge.
+  const maxRowsPerCol = Math.max(1, Math.floor((pageH - MARGIN - MARKER - startY) / rowH));
+  const baseCols = numQuestions > 30 ? 2 : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? 2 : 1);
+  const autoCols = Math.max(baseCols, Math.ceil(numQuestions / maxRowsPerCol));
+  // A caller can still force a specific column count (e.g. to reproduce the
+  // exact layout an already-printed sheet used) via forcedCols — bubble/gap
+  // sizing shrinks a bit ("dense" mode) so 3+ columns still fits the
+  // narrower half-page width without crowding.
+  const dense = (forcedCols || autoCols) >= 3;
+  // Bubble radius stays full-size (8) even in dense mode — the current
+  // 3-column use case (60 questions on the landscape-half layout, ~174px
+  // per column) has enough width margin to not need smaller circles, and
+  // smaller ones are harder to fill accurately with a pencil.
+  const bubbleR = 8;
+  const choiceGap = dense ? 22 : 26;
+  const qLabelW = dense ? 28 : 40; // must clear the 2-digit "01." label text (12px font) before the first bubble starts
+  const singleColW = dense ? 120 : 140; // approx width needed for qLabel + 4-5 choice bubbles
+  const maxCols = Math.max(1, Math.floor(usableW / singleColW));
+  const cols = forcedCols || Math.min(autoCols, maxCols);
+  const perCol = Math.ceil(numQuestions / cols);
+  const colW = usableW / cols;
 
   const questions = [];
   for (let q = 0; q < numQuestions; q++) {

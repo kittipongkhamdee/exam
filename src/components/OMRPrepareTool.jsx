@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
-import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters } from '../lib/omr-core';
+import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
@@ -36,17 +36,21 @@ export default function OMRPrepareTool() {
   // naturally in a phone's portrait camera when scanning. This is the only
   // paper format the app offers now (the earlier 'topBottom' — A4 cut
   // top/bottom — was dropped per the teacher's decision once this format's
-  // scan support was wired up in OMRScanTool). forceCols3 packs the
-  // questions into 3 columns (e.g. 60 questions as 3x20) instead of the
-  // automatic 1-2. Both are saved onto the quiz row (paper_layout, cols) so
-  // the scan flow can warp/read against the exact format the sheet was
-  // printed with, including for older quizzes created before this format
-  // existed (those keep their saved 'topBottom').
+  // scan support was wired up in OMRScanTool). paper_layout and cols are
+  // both saved onto the quiz row so the scan flow can warp/read against the
+  // exact format the sheet was printed with, including for older quizzes
+  // created before this format existed (those keep their saved 'topBottom').
   const pageW = HALF_LANDSCAPE_PAGE_W;
   const pageH = HALF_LANDSCAPE_PAGE_H;
   const layoutStyle = 'halfLandscape';
-  const [forceCols3, setForceCols3] = useState(false);
-  const cols = forceCols3 ? 3 : undefined;
+  // Column count (e.g. 3 columns for 60 questions instead of a 2-column
+  // sheet with rows running off the bottom) is picked automatically by
+  // buildLayout based on how many rows actually fit the page — no manual
+  // toggle to remember. Resolve it once here so the exact value used for
+  // this preview gets frozen into the saved quiz row (createQuiz below),
+  // rather than saving "auto" and letting a future change to the
+  // auto-picking logic silently reflow an already-printed sheet.
+  const cols = buildLayout(numQuestions, numChoices, idDigits, pageW, pageH, layoutStyle).cols;
 
   const [answerKey, setAnswerKey] = useState({});
   const [bulkPoints, setBulkPoints] = useState(1);
@@ -505,12 +509,6 @@ export default function OMRPrepareTool() {
               <option value="num">1 2 3 4</option>
             </select>
           </div>
-          <label className={field + ' justify-end'} style={{ paddingBottom: 8 }}>
-            <span className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" checked={forceCols3} onChange={e => setForceCols3(e.target.checked)} />
-              แบ่ง 3 คอลัมน์ (สำหรับ 60 ข้อ)
-            </span>
-          </label>
         </div>
         <div className={field + ' mt-3'} style={{maxWidth: 480}}>
           <label className={label}>คำอธิบายเพิ่มเติม (ถ้ามี)</label>

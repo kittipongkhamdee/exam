@@ -20,7 +20,23 @@ const NAV_ITEMS = [
 
 export default function DashboardShell({ children }) {
   const { session, isAdmin, loading } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Two independent toggles driven by one hamburger button: below the `md`
+  // breakpoint the sidebar is an off-canvas drawer (mobileOpen, closed by
+  // default so it doesn't block the screen on load); at `md` and above it's
+  // part of the static layout and the button instead collapses its width to
+  // 0 (desktopCollapsed) to hand that space back to the page content — a
+  // plain translate-based drawer wouldn't reclaim any width there since the
+  // sidebar isn't overlaying anything to begin with.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+
+  function toggleSidebar() {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+      setDesktopCollapsed(v => !v);
+    } else {
+      setMobileOpen(v => !v);
+    }
+  }
 
   if (loading) {
     return (
@@ -39,30 +55,33 @@ export default function DashboardShell({ children }) {
   return (
     <div className="flex flex-1 min-h-screen">
       {/* Mobile backdrop */}
-      {sidebarOpen && (
+      {mobileOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/30 md:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => setMobileOpen(false)}
         />
       )}
 
       <aside
         className={
-          "fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-gray-200 bg-white transform transition-transform duration-200 md:static md:translate-x-0 md:flex md:flex-col " +
-          (sidebarOpen ? 'translate-x-0' : '-translate-x-full')
+          "fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-gray-200 bg-white transform transition-[transform,width] duration-200 md:static md:translate-x-0 md:flex md:flex-col md:overflow-hidden " +
+          (mobileOpen ? 'translate-x-0' : '-translate-x-full') + ' ' +
+          (desktopCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-64')
         }
       >
-        <div className="flex items-center gap-2 px-5 h-16 border-b border-gray-200">
-          <span className="text-lg font-bold text-gray-900">ระบบสอบวัดผล</span>
-        </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {items.map(item => (
-            <NavLink key={item.href} {...item} onNavigate={() => setSidebarOpen(false)} />
-          ))}
-        </nav>
-        <div className="px-3 py-4 border-t border-gray-200 text-xs text-gray-500">
-          เข้าสู่ระบบเป็น<br />
-          <span className="font-medium text-gray-700">{session.user.email}</span>
+        <div className="w-64 h-full flex flex-col">
+          <div className="flex items-center gap-2 px-5 h-16 border-b border-gray-200">
+            <span className="text-lg font-bold text-gray-900">ระบบสอบวัดผล</span>
+          </div>
+          <nav className="flex-1 px-3 py-4 space-y-1">
+            {items.map(item => (
+              <NavLink key={item.href} {...item} onNavigate={() => setMobileOpen(false)} />
+            ))}
+          </nav>
+          <div className="px-3 py-4 border-t border-gray-200 text-xs text-gray-500">
+            เข้าสู่ระบบเป็น<br />
+            <span className="font-medium text-gray-700">{session.user.email}</span>
+          </div>
         </div>
       </aside>
 
@@ -71,12 +90,12 @@ export default function DashboardShell({ children }) {
           <button
             type="button"
             aria-label="เปิด/ปิดเมนู"
-            onClick={() => setSidebarOpen(v => !v)}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-gray-600 hover:bg-gray-100 md:hidden"
+            onClick={toggleSidebar}
+            className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-gray-600 hover:bg-gray-100 shrink-0"
           >
             <HamburgerIcon />
           </button>
-          <span className="font-semibold text-gray-800 md:hidden">ระบบสอบวัดผล</span>
+          <span className={"font-semibold text-gray-800 " + (desktopCollapsed ? '' : 'md:hidden')}>ระบบสอบวัดผล</span>
           <div className="ml-auto">
             <button
               type="button"

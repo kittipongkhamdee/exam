@@ -203,7 +203,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const idRowH = 20, idColGap = 22;
   const idBoxW = 9 * idColGap + 30;
   const idBoxH = idLabelH + idDigits * idRowH + 14;
-  const idBoxY = MARGIN + MARKER + 48; // clears the name line + the ชั้น/เลขที่ line below it
+  const idBoxY = MARGIN + MARKER + 58; // clears the name line + the ชั้น/เลขที่ line below it
   // Keep clear of the top-right fiducial marker, not just the page margin.
   const idBoxX = pageW - MARGIN - MARKER - 10 - idBoxW;
   const idStartX = idBoxX + 16;
@@ -506,33 +506,38 @@ function drawSheet(canvas, opts, answers) {
   ctx.font = 'bold 18px "Prompt", sans-serif';
   ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 16);
   ctx.font = '10px "Prompt", sans-serif';
-  ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 28);
+  ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 30);
 
-  // Half-page header is a tight vertical stack: title, subject, then the
-  // name line, then a ชั้น/เลขที่ line right below it (not sharing a
-  // baseline with the subject). Each fill-in blank stretches all the way to
-  // idBoxRightEdge, the same right boundary the note text below wraps to,
-  // instead of stopping short at a fixed number of underscores — unless the
-  // caller already knows the student (batch-generating one sheet per class
-  // roster entry), in which case the actual name/class/number is printed
-  // directly instead of a blank for the student to fill in.
+  // Half-page header is a vertical stack: title, subject, then the name
+  // line, then a ชั้น/เลขที่ line below it (not sharing a baseline with the
+  // subject). Baselines are spaced 20px apart — enough clearance at the
+  // header's 14px font for Thai vowel marks that sit above/below the
+  // baseline (e.g. ชื่อ, สกุล) not to visually crowd the line above/below.
+  // Each fill-in blank stretches all the way to idBoxRightEdge, the same
+  // right boundary the note text below wraps to, instead of stopping short
+  // at a fixed number of underscores — unless the caller already knows the
+  // student (batch-generating one sheet per class roster entry), in which
+  // case the actual name/class/number is printed directly instead of a
+  // blank for the student to fill in.
   ctx.font = '14px "Prompt", sans-serif'; ctx.fillStyle = '#000';
   const idBoxRightEdge = layout.idBoxX - 10;
+  const nameLineY = MARGIN + MARKER + 26;
+  const classLineY = nameLineY + 20;
   if (opts.studentName) {
-    ctx.fillText(`ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, MARGIN + MARKER + 22);
+    ctx.fillText(`ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, nameLineY);
   } else {
-    drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, MARGIN + MARKER + 22, idBoxRightEdge);
+    drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, nameLineY, idBoxRightEdge);
   }
   const classLineMidX = MARGIN + (idBoxRightEdge - MARGIN) * 0.5;
   if (opts.studentClass) {
-    ctx.fillText(`ชั้น: ${opts.studentClass}`, MARGIN, MARGIN + MARKER + 36);
+    ctx.fillText(`ชั้น: ${opts.studentClass}`, MARGIN, classLineY);
   } else {
-    drawFillLine(ctx, 'ชั้น:', MARGIN, MARGIN + MARKER + 36, classLineMidX);
+    drawFillLine(ctx, 'ชั้น:', MARGIN, classLineY, classLineMidX);
   }
   if (opts.studentNumber != null) {
-    ctx.fillText(`เลขที่: ${opts.studentNumber}`, classLineMidX + 16, MARGIN + MARKER + 36);
+    ctx.fillText(`เลขที่: ${opts.studentNumber}`, classLineMidX + 16, classLineY);
   } else {
-    drawFillLine(ctx, 'เลขที่:', classLineMidX + 16, MARGIN + MARKER + 36, idBoxRightEdge);
+    drawFillLine(ctx, 'เลขที่:', classLineMidX + 16, classLineY, idBoxRightEdge);
   }
 
   // Free-form teacher note, printed in the block of blank space to the left

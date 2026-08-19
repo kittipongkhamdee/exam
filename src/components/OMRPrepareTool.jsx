@@ -545,11 +545,6 @@ export default function OMRPrepareTool() {
             </div>
             <div className="text-[11px] text-amber-700 mt-1.5">⚠ ใช้ไฟล์ PDF สำหรับสั่งพิมพ์ (ไฟล์ PNG อาจพิมพ์ออกมาขนาดผิดเพี้ยน)</div>
           </div>
-          <div className="flex-1 min-w-[280px]">
-            <div className="text-sm text-gray-500 leading-relaxed">
-              เมื่อถ่ายรูปกระดาษคำตอบ ต้องเห็นมุมทั้ง 4 ของกระดาษชัดเจนเสมอ ห้ามตัดขอบหรือบังมุม
-            </div>
-          </div>
         </div>
 
         <div className="mt-5 pt-4 border-t border-gray-200">

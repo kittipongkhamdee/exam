@@ -242,8 +242,8 @@ export default function OMRReportTool() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                    <th className="px-4 py-2.5 font-semibold">รหัส</th>
-                    <th className="px-4 py-2.5 font-semibold">ชื่อ-สกุล</th>
+                    <th className="px-4 py-2.5 font-semibold whitespace-nowrap">รหัส</th>
+                    <th className="px-4 py-2.5 font-semibold whitespace-nowrap">ชื่อ-สกุล</th>
                     <th className="px-4 py-2.5 font-semibold text-right">ถูก</th>
                     <th className="px-4 py-2.5 font-semibold text-right">คะแนน</th>
                     <th className="px-4 py-2.5 font-semibold whitespace-nowrap">วันที่สแกน</th>
@@ -252,8 +252,8 @@ export default function OMRReportTool() {
                 <tbody>
                   {sortedResults.map(r => (
                     <tr key={r.id} className="border-b border-gray-100 last:border-b-0">
-                      <td className="px-4 py-2.5 text-gray-500">{r.students?.student_code}</td>
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{r.students?.prefix}{r.students?.student_name}</td>
+                      <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{r.students?.student_code}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{r.students?.prefix}{r.students?.student_name}</td>
                       <td className="px-4 py-2.5 text-right text-gray-500">{r.total_correct}/{selectedQuiz.numQuestions}</td>
                       <td className={"px-4 py-2.5 text-right font-bold " + scoreColor(r.score)}>{r.score}%</td>
                       <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{new Date(r.scanned_at).toLocaleString('th-TH')}</td>

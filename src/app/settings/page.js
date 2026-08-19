@@ -5,6 +5,7 @@ import DashboardShell from '@/components/DashboardShell';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, deleteQuiz } from '@/lib/omr-db';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
 
@@ -81,6 +82,7 @@ function QuizzesPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null); // { id, title } | null
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -96,11 +98,12 @@ function QuizzesPanel() {
 
   useEffect(() => { (async () => { await refresh(); })(); }, [refresh]);
 
-  async function handleDelete(id, title) {
-    if (!window.confirm(`ยืนยันลบชุดข้อสอบ "${title}" ทั้งหมด?\n\nการลบนี้จะลบเฉลย ผลตรวจของนักเรียนทุกคน และรูปที่เก็บไว้ของชุดนี้ไปด้วย และไม่สามารถกู้คืนได้`)) return;
-    setDeletingId(id);
+  async function handleDelete() {
+    if (!confirmTarget) return;
+    setDeletingId(confirmTarget.id);
     try {
-      await deleteQuiz(supabase, id);
+      await deleteQuiz(supabase, confirmTarget.id);
+      setConfirmTarget(null);
       refresh();
     } catch (err) {
       setError(err.message || 'ลบชุดข้อสอบไม่สำเร็จ');
@@ -130,7 +133,7 @@ function QuizzesPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3">
-                <button className={btnTiny} onClick={() => handleDelete(q.id, q.title)} disabled={deletingId === q.id}>
+                <button className={btnTiny} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
                   {deletingId === q.id ? 'กำลังลบ...' : 'ลบ'}
                 </button>
               </div>
@@ -138,6 +141,17 @@ function QuizzesPanel() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="ยืนยันลบชุดข้อสอบ"
+        message={confirmTarget ? `ลบชุดข้อสอบ "${confirmTarget.title}" ทั้งหมด?\n\nการลบนี้จะลบเฉลย ผลตรวจของนักเรียนทุกคน และรูปที่เก็บไว้ของชุดนี้ไปด้วย และไม่สามารถกู้คืนได้` : ''}
+        confirmLabel="ลบชุดข้อสอบ"
+        danger
+        loading={!!deletingId}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

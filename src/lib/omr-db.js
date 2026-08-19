@@ -35,12 +35,14 @@
  *   numChoices: number,
  *   idDigits: number,
  *   choiceScheme: 'thai'|'en'|'num',
+ *   paperLayout: 'topBottom'|'halfLandscape',
+ *   cols?: number|null, // forced column count the sheet was printed with, if any
  *   answerKey: Record<number, { choices: number[], points: number }>, // { [questionIndex0based]: {...} }
  * }} params
  * @returns {Promise<{ quizId: string }>}
  */
 export async function createQuiz(supabase, params) {
-  const { subjectId, title, numQuestions, numChoices, idDigits, choiceScheme, answerKey } = params;
+  const { subjectId, title, numQuestions, numChoices, idDigits, choiceScheme, paperLayout, cols, answerKey } = params;
 
   const { data: quiz, error: quizErr } = await supabase
     .from('omr_quizzes')
@@ -51,6 +53,8 @@ export async function createQuiz(supabase, params) {
       num_choices: numChoices,
       id_digits: idDigits,
       choice_scheme: choiceScheme,
+      paper_layout: paperLayout,
+      cols: cols || null,
     })
     .select('id')
     .single();
@@ -81,7 +85,7 @@ export async function createQuiz(supabase, params) {
 export async function getQuizWithAnswerKey(supabase, quizId) {
   const { data: quiz, error: quizErr } = await supabase
     .from('omr_quizzes')
-    .select('id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, created_at')
+    .select('id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, paper_layout, cols, created_at')
     .eq('id', quizId)
     .single();
   if (quizErr) throw quizErr;
@@ -106,6 +110,8 @@ export async function getQuizWithAnswerKey(supabase, quizId) {
     numChoices: quiz.num_choices,
     idDigits: quiz.id_digits,
     choiceScheme: quiz.choice_scheme,
+    paperLayout: quiz.paper_layout,
+    cols: quiz.cols,
     createdAt: quiz.created_at,
     answerKey,
   };

@@ -281,6 +281,46 @@ export async function listScanResultsForQuiz(supabase, quizId) {
 }
 
 /**
+ * List this teacher's most recent scans across every quiz, newest first —
+ * for the dashboard's "recent activity" panel. Same RLS scoping as
+ * listAllScanPhotos (own scans only, or every scan for an admin), just
+ * without the photo_path filter and capped to `limit` rows instead of
+ * scoped to one quiz.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {number} [limit]
+ */
+export async function listMyRecentScanActivity(supabase, limit = 5) {
+  const { data, error } = await supabase
+    .from('omr_scan_results')
+    .select(`
+      id, score, scanned_at,
+      students ( student_code, student_name, prefix ),
+      omr_quizzes ( id, title, subjects ( subject_name, grade_level, room ) )
+    `)
+    .order('scanned_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Count this teacher's scan results at or after a given timestamp — used
+ * by the dashboard's "scanned today / this week" stats. Same RLS scoping
+ * as listMyRecentScanActivity; a head-only count query so it doesn't pull
+ * any rows.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} sinceIso
+ */
+export async function countScanResultsSince(supabase, sinceIso) {
+  const { count, error } = await supabase
+    .from('omr_scan_results')
+    .select('id', { count: 'exact', head: true })
+    .gte('scanned_at', sinceIso);
+  if (error) throw error;
+  return count || 0;
+}
+
+/**
  * List every kept scan photo across every teacher — for the admin-only
  * "stored scan photos" panel. Ordinary teachers only see their own rows
  * here too (RLS still applies), but an admin session sees everyone's via

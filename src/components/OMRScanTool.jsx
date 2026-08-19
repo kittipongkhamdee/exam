@@ -162,10 +162,14 @@ export default function OMRScanTool() {
         // Live camera captures can come out rotated relative to how the
         // photo visually looked (a getUserMedia quirk on some devices) —
         // findFiducialsWithOrientation tries all 4 quarter-turns and picks
-        // whichever one actually finds the markers in a plausible
-        // rectangle, so a rotated capture is corrected transparently
-        // instead of producing a skewed, wrongly-graded read.
-        const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH);
+        // whichever one actually decodes cleanly, so a rotated capture is
+        // corrected transparently instead of producing a skewed,
+        // wrongly-graded read.
+        const readOpts = {
+          numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
+          idDigits: selectedQuiz.idDigits, layoutStyle, cols,
+        };
+        const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
 
         if (!best) {
           setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' });
@@ -174,10 +178,7 @@ export default function OMRScanTool() {
         }
 
         const warped = best.warped;
-        const { responses, studentId: decodedId, layout } = readBubbles(warped, {
-          numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
-          idDigits: selectedQuiz.idDigits, pageW, pageH, layoutStyle, cols,
-        });
+        const { responses, studentId: decodedId, layout } = readBubbles(warped, { ...readOpts, pageW, pageH });
 
         let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;
         const graded = responses.map(r => {

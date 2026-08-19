@@ -304,20 +304,24 @@ export async function listMyRecentScanActivity(supabase, limit = 5) {
 }
 
 /**
- * Count this teacher's scan results at or after a given timestamp — used
- * by the dashboard's "scanned today / this week" stats. Same RLS scoping
- * as listMyRecentScanActivity; a head-only count query so it doesn't pull
- * any rows.
+ * Aggregate stats over every one of this teacher's scan results, for the
+ * dashboard's stat cards — how many sheets have been graded in total, the
+ * average score across them, and which quizzes have at least one scan (so
+ * the dashboard can flag prepared quizzes nobody's scanned yet). One query
+ * instead of several separate counts, since it needs every row's quiz_id
+ * and score anyway. Same RLS scoping as listMyRecentScanActivity.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {string} sinceIso
  */
-export async function countScanResultsSince(supabase, sinceIso) {
-  const { count, error } = await supabase
-    .from('omr_scan_results')
-    .select('id', { count: 'exact', head: true })
-    .gte('scanned_at', sinceIso);
+export async function getMyScanStats(supabase) {
+  const { data, error } = await supabase.from('omr_scan_results').select('quiz_id, score');
   if (error) throw error;
-  return count || 0;
+  const rows = data || [];
+  const scores = rows.map(r => Number(r.score) || 0);
+  return {
+    totalScanned: rows.length,
+    avgScore: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null,
+    scannedQuizIds: new Set(rows.map(r => r.quiz_id)),
+  };
 }
 
 /**

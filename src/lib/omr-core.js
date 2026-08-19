@@ -501,12 +501,28 @@ function drawSheet(canvas, opts, answers) {
   // capped at a fixed number of lines so it can never grow into the ID box
   // or down into the question grid, regardless of how much text is typed.
   if (opts.note) {
-    ctx.font = '9px "Prompt", sans-serif'; ctx.fillStyle = '#333';
+    ctx.font = '11px "Prompt", sans-serif'; ctx.fillStyle = '#333';
     const noteMaxW = layout.idBoxX - MARGIN - 10;
-    const noteLineH = 13;
+    const noteLineH = 15;
     wrapText(ctx, opts.note, noteMaxW).slice(0, 8).forEach((ln, i) => {
       ctx.fillText(ln, MARGIN, layout.idBoxY + 8 + i * noteLineH);
     });
+  }
+
+  // Hand-written student-ID line, above the bubble box (not inside it) — a
+  // human-readable line where the student writes the ID digits in plain
+  // numerals, as a redundancy check alongside filling in the bubbles below
+  // (matches the box's own digit count, so it never overflows the box's
+  // width even if idDigits differs from the current fixed default of 5).
+  const numIdDigits = layout.idGrid.length;
+  ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.fillText('เลขประจำตัวนักเรียน', layout.idBoxX, MARGIN + MARKER + 10);
+  const writeBoxGap = 4;
+  const writeBoxSize = Math.min(20, Math.floor((layout.idBoxW - (numIdDigits - 1) * writeBoxGap) / numIdDigits));
+  const writeBoxY = MARGIN + MARKER + 16;
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  for (let i = 0; i < numIdDigits; i++) {
+    ctx.strokeRect(layout.idBoxX + i * (writeBoxSize + writeBoxGap), writeBoxY, writeBoxSize, writeBoxSize);
   }
 
   // Student-ID box: bordered, with a "ฝนบรรทัดละ 1 ตัว" label and a single

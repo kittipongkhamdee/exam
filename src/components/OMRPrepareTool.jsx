@@ -26,7 +26,7 @@ export default function OMRPrepareTool() {
   const [idDigits, setIdDigits] = useState(5);
   const [scheme, setScheme] = useState('thai');
   const [title, setTitle] = useState('แบบทดสอบ');
-  const [subject, setSubject] = useState('บทที่ 3 พลังงาน');
+  const [subject, setSubject] = useState('');
   // Free-form note the teacher can type, printed in the block of blank
   // space to the left of the student-ID box (word-wrapped in drawSheet).
   const [note, setNote] = useState('');
@@ -350,6 +350,10 @@ export default function OMRPrepareTool() {
           <div className={field}>
             <label className={label}>ชื่อชุดข้อสอบ</label>
             <input className={inputCls} value={title} onChange={e=>setTitle(e.target.value)} />
+          </div>
+          <div className={field}>
+            <label className={label}>หัวข้อย่อย/บทเรียน (ถ้ามี)</label>
+            <input className={inputCls} value={subject} onChange={e=>setSubject(e.target.value)} placeholder="เช่น บทที่ 3 พลังงาน" />
           </div>
           <div className={field}>
             <label className={label}>จำนวนข้อ</label>

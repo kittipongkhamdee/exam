@@ -189,7 +189,12 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const maxCols = Math.max(1, Math.floor(usableW / singleColW));
   const cols = forcedCols || (numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1));
   const perCol = Math.ceil(numQuestions / cols);
-  const rowH = 26;
+  // 26 left the last row of a 20-row column (e.g. 60 questions x 3 columns,
+  // or 40 x 2) sitting just ~2px above the bottom fiducial marker — visibly
+  // crowded. 24 still leaves an 8px gap between adjacent bubbles (16px
+  // diameter), but frees up ~40px of clearance at the bottom for the
+  // worst-case 20-row column.
+  const rowH = 24;
   const colW = usableW / cols;
 
   // Student ID grid sits below the title/name lines on the half sheet, as a
@@ -301,6 +306,22 @@ function drawFillLine(ctx, label, x, y, lineEndX) {
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   ctx.stroke();
   return afterLabelX;
+}
+
+// Draws text on the ctx's current font, truncating with a trailing "…" if
+// it would otherwise exceed maxWidth — used for values with no natural
+// length limit (a real student name pulled from the roster, unlike a fixed
+// label) so they can never run into whatever sits to their right.
+function fillTextClipped(ctx, text, x, y, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+  let clipped = text;
+  while (clipped.length > 1 && ctx.measureText(clipped + '…').width > maxWidth) {
+    clipped = clipped.slice(0, -1);
+  }
+  ctx.fillText(clipped + '…', x, y);
 }
 
 function choiceLetters(scheme, n) {
@@ -519,18 +540,58 @@ function drawSheet(canvas, opts, answers) {
   // student (batch-generating one sheet per class roster entry), in which
   // case the actual name/class/number is printed directly instead of a
   // blank for the student to fill in.
+  // Hand-written student-ID line, above the bubble box (not inside it) — a
+  // human-readable line where the student writes the ID digits in plain
+  // numerals, as a redundancy check alongside filling in the bubbles below
+  // (matches the box's own digit count, so it never overflows the box's
+  // width even if idDigits differs from the current fixed default of 5).
+  // Right-aligned within the ID box's width (flush with its right edge,
+  // same as the box below it) rather than starting at its left edge, so a
+  // long studentName on the line below has as much clearance as possible
+  // before the two would visually collide — computed up here, before the
+  // name line, so that line can use it as a hard right boundary.
+  // When the caller already knows the student's ID (batch-generating one
+  // sheet per class roster entry), each digit is pre-printed inside its box
+  // too, matching the pre-filled bubbles below — same as the name/class/
+  // number lines above, the student can still see and verify it, they just
+  // don't have to write it out themselves.
+  const numIdDigits = layout.idGrid.length;
+  const writeBoxGap = 4;
+  const writeBoxSize = Math.min(20, Math.floor((layout.idBoxW - (numIdDigits - 1) * writeBoxGap) / numIdDigits));
+  const writeBoxesW = numIdDigits * writeBoxSize + (numIdDigits - 1) * writeBoxGap;
+  const writeBoxStartX = layout.idBoxX + layout.idBoxW - writeBoxesW;
+  const writeBoxY = MARGIN + MARKER + 16;
+  ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.fillText('เลขประจำตัวนักเรียน', layout.idBoxX, MARGIN + MARKER + 10);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  for (let i = 0; i < numIdDigits; i++) {
+    const bx = writeBoxStartX + i * (writeBoxSize + writeBoxGap);
+    ctx.strokeRect(bx, writeBoxY, writeBoxSize, writeBoxSize);
+    if (answers && answers.studentId && answers.studentId[i] != null) {
+      ctx.font = 'bold 12px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(answers.studentId[i]), bx + writeBoxSize / 2, writeBoxY + writeBoxSize - 5);
+      ctx.textAlign = 'left';
+    }
+  }
+
   ctx.font = '14px "Prompt", sans-serif'; ctx.fillStyle = '#000';
   const idBoxRightEdge = layout.idBoxX - 10;
   const nameLineY = MARGIN + MARKER + 26;
   const classLineY = nameLineY + 20;
+  // A batch-generated sheet prints the real student name from the roster,
+  // which (unlike the blank fill-in line) has no natural length limit — cap
+  // it at the write-in ID boxes' own left edge so a long name can never
+  // run into them, regardless of how long a name actually is.
+  const nameMaxW = writeBoxStartX - MARGIN - 12;
   if (opts.studentName) {
-    ctx.fillText(`ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, nameLineY);
+    fillTextClipped(ctx, `ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, nameLineY, nameMaxW);
   } else {
     drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, nameLineY, idBoxRightEdge);
   }
   const classLineMidX = MARGIN + (idBoxRightEdge - MARGIN) * 0.5;
   if (opts.studentClass) {
-    ctx.fillText(`ชั้น: ${opts.studentClass}`, MARGIN, classLineY);
+    fillTextClipped(ctx, `ชั้น: ${opts.studentClass}`, MARGIN, classLineY, classLineMidX - MARGIN - 12);
   } else {
     drawFillLine(ctx, 'ชั้น:', MARGIN, classLineY, classLineMidX);
   }
@@ -551,34 +612,6 @@ function drawSheet(canvas, opts, answers) {
     wrapText(ctx, opts.note, noteMaxW).slice(0, 8).forEach((ln, i) => {
       ctx.fillText(ln, MARGIN, layout.idBoxY + 8 + i * noteLineH);
     });
-  }
-
-  // Hand-written student-ID line, above the bubble box (not inside it) — a
-  // human-readable line where the student writes the ID digits in plain
-  // numerals, as a redundancy check alongside filling in the bubbles below
-  // (matches the box's own digit count, so it never overflows the box's
-  // width even if idDigits differs from the current fixed default of 5).
-  // When the caller already knows the student's ID (batch-generating one
-  // sheet per class roster entry), each digit is pre-printed inside its box
-  // too, matching the pre-filled bubbles below — same as the name/class/
-  // number lines above, the student can still see and verify it, they just
-  // don't have to write it out themselves.
-  const numIdDigits = layout.idGrid.length;
-  ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
-  ctx.fillText('เลขประจำตัวนักเรียน', layout.idBoxX, MARGIN + MARKER + 10);
-  const writeBoxGap = 4;
-  const writeBoxSize = Math.min(20, Math.floor((layout.idBoxW - (numIdDigits - 1) * writeBoxGap) / numIdDigits));
-  const writeBoxY = MARGIN + MARKER + 16;
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
-  for (let i = 0; i < numIdDigits; i++) {
-    const bx = layout.idBoxX + i * (writeBoxSize + writeBoxGap);
-    ctx.strokeRect(bx, writeBoxY, writeBoxSize, writeBoxSize);
-    if (answers && answers.studentId && answers.studentId[i] != null) {
-      ctx.font = 'bold 12px "Prompt", sans-serif'; ctx.fillStyle = '#000';
-      ctx.textAlign = 'center';
-      ctx.fillText(String(answers.studentId[i]), bx + writeBoxSize / 2, writeBoxY + writeBoxSize - 5);
-      ctx.textAlign = 'left';
-    }
   }
 
   // Student-ID box: bordered, with a "ฝนบรรทัดละ 1 ตัว" label and a single
@@ -719,42 +752,43 @@ function rotateCanvas(canvas, degrees) {
 // skewed/sheared warp instead of an outright "corners not found" failure,
 // which is much harder for a teacher to notice than a clean error.
 //
-// Every answer sheet is sparse (title/name/ID box) in its top ~15% and
-// dense (the multi-column bubble grid) across its bottom half, regardless
-// of numQuestions/numChoices/cols — a content-independent way to tell
-// "upright" from "upside-down" once aspect ratio alone has narrowed the 4
-// possible rotations down to a pair, since a 180-degree flip preserves
-// aspect ratio and so can't be told apart from the correct orientation by
-// shape alone. Returns a positive score for a plausibly-upright warp,
-// negative if the dense grid is sitting up top instead (i.e. flipped).
-function contentOrientationScore(warpedCanvas, pageW, pageH) {
-  const ctx = warpedCanvas.getContext('2d');
-  const imgData = ctx.getImageData(0, 0, pageW, pageH);
-  const gray = toGray(imgData);
-  function bandDensity(y0, y1) {
-    let dark = 0;
-    for (let y = y0; y < y1; y++) {
-      for (let x = 0; x < pageW; x++) dark += 255 - gray[y * pageW + x];
-    }
-    return dark / ((y1 - y0) * pageW);
-  }
-  const topDensity = bandDensity(0, Math.floor(pageH * 0.15));
-  const botDensity = bandDensity(Math.floor(pageH * 0.5), Math.floor(pageH * 0.95));
-  return botDensity - topDensity;
+// Scores how "readable" a warped candidate is by actually running the real
+// bubble-decoding pass on it: a correctly-oriented sheet reads its
+// pre-structured student-ID grid (exactly one darkest bubble per digit
+// row, by construction of the sheet) with total confidence, while a
+// wrongly-oriented candidate is sampling essentially arbitrary positions
+// and almost never produces a clean, unambiguous ID. This is a direct,
+// self-verifying signal rather than an indirect proxy (an earlier version
+// of this function compared ink density between the sparse header and the
+// dense bubble grid — "top vs bottom" — but that broke down for compact
+// layouts like 60 questions across 3 columns, where most of the page
+// height past the grid is genuinely blank, and a 180-degree-flipped
+// candidate could end up scoring as fake-dark-heavy as the real one).
+// Blank/ambiguous question responses are weighted far lower than ID
+// confidence, since a real student may legitimately leave questions
+// blank — that's not a sign of wrong orientation the way an undecodable
+// ID is.
+function decodeConfidenceScore(warpedCanvas, readOpts) {
+  const { responses, studentId } = readBubbles(warpedCanvas, readOpts);
+  const idUnclear = (studentId.match(/\?/g) || []).length;
+  const questionUnclear = responses.filter(r => r.ambiguous).length;
+  return -idUnclear * 1000 - questionUnclear;
 }
 
 // Tries corner detection at all 4 quarter-turns of the source canvas.
 // Rotations whose corner quadrilateral aspect ratio doesn't plausibly
 // match the page's actual pageW:pageH are discarded outright (this
-// rejects a 90-degree swap, e.g. a portrait page read as landscape).
-// Among the survivors — normally just the correct orientation and its
-// 180-degree-flipped twin, since flipping preserves aspect ratio —
-// contentOrientationScore breaks the tie by which one actually has its
-// dense bubble grid in the bottom half rather than the top. This corrects
-// a rotated camera capture transparently instead of grading a garbled
-// read (see findFiducials's caller in OMRScanTool.jsx for context on when
-// this happens).
-function findFiducialsWithOrientation(srcCanvas, pageW, pageH) {
+// rejects a 90-degree swap, e.g. a portrait page read as landscape, and
+// saves the cost of decoding it). Among the survivors — normally just the
+// correct orientation and its 180-degree-flipped twin, since flipping
+// preserves aspect ratio — decodeConfidenceScore breaks the tie by which
+// one actually decodes cleanly. readOpts must match what the caller will
+// pass to readBubbles for the real read (numQuestions, numChoices,
+// idDigits, layoutStyle, cols; pageW/pageH come from this function's own
+// params). This corrects a rotated camera capture transparently instead
+// of grading a garbled read (see findFiducials's caller in
+// OMRScanTool.jsx for context on when this happens).
+function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
   const expectedRatio = pageH / pageW;
   const candidates = [];
   for (const deg of [0, 90, 180, 270]) {
@@ -773,7 +807,8 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH) {
     if (aspectScore > 0.35) continue; // clearly the wrong aspect (90-degree swap)
     const warped = warpImage(canvas, corners, pageW, pageH);
     if (!warped) continue;
-    candidates.push({ canvas, corners, rotationDeg: deg, warped, orientationScore: contentOrientationScore(warped, pageW, pageH) });
+    const orientationScore = decodeConfidenceScore(warped, { ...readOpts, pageW, pageH });
+    candidates.push({ canvas, corners, rotationDeg: deg, warped, orientationScore });
   }
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => b.orientationScore - a.orientationScore);

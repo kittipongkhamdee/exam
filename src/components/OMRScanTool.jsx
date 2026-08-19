@@ -16,13 +16,26 @@
 // All OMR image-processing logic lives in ../lib/omr-core.js.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, toGray, findFiducials, warpImage, readBubbles, drawGradedOverlay } from '../lib/omr-core';
+import {
+  TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
+  toGray, findFiducials, warpImage, readBubbles, drawGradedOverlay,
+} from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
 import { useAuth } from '../lib/AuthContext';
 
-const pageW = TOP_BOTTOM_PAGE_W, pageH = TOP_BOTTOM_PAGE_H;
-const layoutStyle = 'topBottom';
+// Every quiz remembers the paper format it was printed with (omr_quizzes.paper_layout,
+// .cols — see omr-db.js/getQuizWithAnswerKey), so scanning warps/reads against the
+// exact page dimensions and column count that sheet actually used, rather than
+// assuming one global format. 'topBottom' quizzes predate the 'halfLandscape'
+// format (the only one OMRPrepareTool offers now) and still need to keep scanning
+// correctly, hence branching on the saved value instead of hardcoding it here.
+function pageOptsForQuiz(quiz) {
+  if (quiz.paperLayout === 'halfLandscape') {
+    return { pageW: HALF_LANDSCAPE_PAGE_W, pageH: HALF_LANDSCAPE_PAGE_H, layoutStyle: 'halfLandscape', cols: quiz.cols || undefined };
+  }
+  return { pageW: TOP_BOTTOM_PAGE_W, pageH: TOP_BOTTOM_PAGE_H, layoutStyle: 'topBottom', cols: undefined };
+}
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -138,6 +151,7 @@ export default function OMRScanTool() {
 
   function runScan(imgSrc) {
     setScanStage('processing');
+    const { pageW, pageH, layoutStyle, cols } = pageOptsForQuiz(selectedQuiz);
     const img = new Image();
     img.onload = () => {
       setTimeout(() => {
@@ -164,7 +178,7 @@ export default function OMRScanTool() {
         }
         const { responses, studentId: decodedId, layout } = readBubbles(warped, {
           numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
-          idDigits: selectedQuiz.idDigits, pageW, pageH, layoutStyle,
+          idDigits: selectedQuiz.idDigits, pageW, pageH, layoutStyle, cols,
         });
 
         let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;

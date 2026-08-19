@@ -134,7 +134,7 @@ function LoginForm() {
           <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-4">
             <ScanCheckIcon className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">ยินดีต้อนรับกลับมา</h1>
+          <h1 className="text-xl font-bold text-gray-900">ระบบสอบวัดผล</h1>
           <p className="mt-1 text-sm text-gray-500">เข้าสู่ระบบเพื่อจัดการและตรวจข้อสอบ</p>
         </div>
 

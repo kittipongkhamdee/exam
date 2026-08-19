@@ -267,12 +267,20 @@ export default function OMRPrepareTool() {
     // independently scannable sheet — still taller than wide (sits
     // naturally in a phone's portrait camera frame), just shorter/wider
     // than a plain portrait-A4 half would be.
+    //
+    // The canvas is rendered at 3x pixel density for print sharpness (see
+    // PRINT_SCALE in omr-core.js), so embedding it as a PNG without
+    // jsPDF's `compress` option produces a raw, uncompressed bitmap in the
+    // PDF — tens of MB for a single page. JPEG is both far smaller AND
+    // much faster to encode than a compressed PNG re-embed for this kind
+    // of black-on-white line art; quality 0.92 is visually indistinguishable
+    // from the PNG source even zoomed in.
     const canvas = sheetCanvasRef.current;
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const halfW = 148.5; // 297mm / 2
-    pdf.addImage(imgData, 'PNG', 0, 0, halfW, 210);
-    pdf.addImage(imgData, 'PNG', halfW, 0, halfW, 210);
+    pdf.addImage(imgData, 'JPEG', 0, 0, halfW, 210);
+    pdf.addImage(imgData, 'JPEG', halfW, 0, halfW, 210);
     pdf.setLineDash([2, 2], 0);
     pdf.setDrawColor(150, 150, 150);
     pdf.line(halfW, 0, halfW, 210);
@@ -310,7 +318,14 @@ export default function OMRPrepareTool() {
       const subj = subjects.find(s => s.id === subjectId);
       const classLabel = subj ? `${subj.grade_level}/${subj.room}` : '';
       const canvas = document.createElement('canvas');
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      // compress:true plus JPEG (instead of the 3x-scaled canvas's raw PNG)
+      // is essential here, not just a nice-to-have — without it, a 25-student
+      // batch produces a 300+MB PDF that takes the better part of a minute
+      // to assemble, since jsPDF has to store each page as an uncompressed
+      // bitmap. JPEG at quality 0.92 is both far smaller and much faster to
+      // encode for this kind of black-on-white line art, and is visually
+      // indistinguishable from the PNG source.
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
       const halfW = 148.5;
 
       function drawStudent(student, seatNumber) {
@@ -320,14 +335,14 @@ export default function OMRPrepareTool() {
           studentClass: classLabel,
           studentNumber: seatNumber,
         }, { studentId: studentIdDigits(student.student_code) });
-        return canvas.toDataURL('image/png');
+        return canvas.toDataURL('image/jpeg', 0.92);
       }
 
       for (let i = 0; i < classStudents.length; i += 2) {
         if (i > 0) pdf.addPage();
-        pdf.addImage(drawStudent(classStudents[i], i + 1), 'PNG', 0, 0, halfW, 210);
+        pdf.addImage(drawStudent(classStudents[i], i + 1), 'JPEG', 0, 0, halfW, 210);
         if (classStudents[i + 1]) {
-          pdf.addImage(drawStudent(classStudents[i + 1], i + 2), 'PNG', halfW, 0, halfW, 210);
+          pdf.addImage(drawStudent(classStudents[i + 1], i + 2), 'JPEG', halfW, 0, halfW, 210);
         }
         pdf.setLineDash([2, 2], 0);
         pdf.setDrawColor(150, 150, 150);

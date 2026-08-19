@@ -255,6 +255,35 @@ function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
   return positions;
 }
 
+// Word-wraps text to fit maxWidth on the canvas ctx's current font. Splits
+// on whitespace first, but also hard-breaks any single "word" wider than
+// maxWidth on its own — necessary for Thai text, which often has no spaces
+// between words at all, so a naive whitespace-only wrap could otherwise
+// produce one line far wider than the available space.
+function wrapText(ctx, text, maxWidth) {
+  const lines = [];
+  const words = text.split(/\s+/).filter(Boolean);
+  let line = '';
+  for (let word of words) {
+    while (ctx.measureText(word).width > maxWidth) {
+      let cut = word.length;
+      while (cut > 1 && ctx.measureText(word.slice(0, cut)).width > maxWidth) cut--;
+      if (line) { lines.push(line); line = ''; }
+      lines.push(word.slice(0, cut));
+      word = word.slice(cut);
+    }
+    const candidate = line ? line + ' ' + word : word;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 function choiceLetters(scheme, n) {
   if (scheme === 'thai') return ['ก','ข','ค','ง','จ'].slice(0, n);
   if (scheme === 'num') return ['1','2','3','4','5'].slice(0, n);
@@ -466,6 +495,19 @@ function drawSheet(canvas, opts, answers) {
   ctx.font = '10px "Prompt", sans-serif';
   ctx.fillText('ชื่อ-นามสกุล: ________________________', MARGIN, MARGIN + MARKER + 22);
   ctx.fillText('ชั้น: ______________  เลขที่: ______________', MARGIN, MARGIN + MARKER + 36);
+
+  // Free-form teacher note, printed in the block of blank space to the left
+  // of the ID box (same vertical band as the box itself) — word-wrapped and
+  // capped at a fixed number of lines so it can never grow into the ID box
+  // or down into the question grid, regardless of how much text is typed.
+  if (opts.note) {
+    ctx.font = '9px "Prompt", sans-serif'; ctx.fillStyle = '#333';
+    const noteMaxW = layout.idBoxX - MARGIN - 10;
+    const noteLineH = 13;
+    wrapText(ctx, opts.note, noteMaxW).slice(0, 8).forEach((ln, i) => {
+      ctx.fillText(ln, MARGIN, layout.idBoxY + 8 + i * noteLineH);
+    });
+  }
 
   // Student-ID box: bordered, with a "ฝนบรรทัดละ 1 ตัว" label and a single
   // 0-9 header row shared across every digit row below it — same

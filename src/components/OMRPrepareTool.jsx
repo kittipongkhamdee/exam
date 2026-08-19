@@ -27,6 +27,9 @@ export default function OMRPrepareTool() {
   const [scheme, setScheme] = useState('thai');
   const [title, setTitle] = useState('แบบทดสอบ');
   const [subject, setSubject] = useState('บทที่ 3 พลังงาน');
+  // Free-form note the teacher can type, printed in the block of blank
+  // space to the left of the student-ID box (word-wrapped in drawSheet).
+  const [note, setNote] = useState('');
   // Paper layout: A4 turned landscape, then cut left/right into two
   // 148.5x210mm portrait-shaped halves — still taller than wide, so it sits
   // naturally in a phone's portrait camera when scanning. This is the only
@@ -190,9 +193,9 @@ export default function OMRPrepareTool() {
 
   const regenerate = useCallback(() => {
     if (!sheetCanvasRef.current) return;
-    drawSheet(sheetCanvasRef.current, { title, subject, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols }, null);
+    drawSheet(sheetCanvasRef.current, { title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols }, null);
     setSheetReady(true);
-  }, [title, subject, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, fontReady]);
+  }, [title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, fontReady]);
 
   useEffect(() => { regenerate(); }, [regenerate]);
 
@@ -374,6 +377,14 @@ export default function OMRPrepareTool() {
               แบ่ง 3 คอลัมน์ (สำหรับ 60 ข้อ)
             </span>
           </label>
+        </div>
+        <div className={field + ' mt-3'} style={{maxWidth: 480}}>
+          <label className={label}>คำอธิบายเพิ่มเติม (ถ้ามี)</label>
+          <textarea
+            className={inputCls} rows={3} maxLength={200} value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="เช่น คำชี้แจงพิเศษ, ห้องสอบ, ภาคเรียน ฯลฯ — จะแสดงในช่องว่างข้างกรอบรหัสนักเรียน"
+          />
         </div>
         <div className="mt-4 flex gap-5 flex-wrap">
           <div>

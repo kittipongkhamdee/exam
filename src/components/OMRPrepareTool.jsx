@@ -71,6 +71,16 @@ export default function OMRPrepareTool() {
   const [roster, setRoster] = useState([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
 
+  // Class roster (every student in the selected subject's grade/room) — used
+  // to batch-generate one personalized answer sheet per student, distinct
+  // from `roster` above (which is scan RESULTS for a saved quiz, not the
+  // student list).
+  const [classStudents, setClassStudents] = useState([]);
+  const [loadingClassStudents, setLoadingClassStudents] = useState(false);
+  const [generatingBatch, setGeneratingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchError, setBatchError] = useState(null);
+
   // Load the signed-in teacher's own subjects once.
   useEffect(() => {
     (async () => {
@@ -106,6 +116,8 @@ export default function OMRPrepareTool() {
     (async () => {
       setQuizId(null);
       setRoster([]);
+      setClassStudents([]);
+      setBatchError(null);
       if (!subjectId) { setExistingQuizzes([]); return; }
       const subj = subjects.find(s => s.id === subjectId);
       if (subj) setTitle(`แบบทดสอบ${subj.subject_name}`);
@@ -113,6 +125,20 @@ export default function OMRPrepareTool() {
         setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       } catch {
         setExistingQuizzes([]);
+      }
+      if (subj) {
+        setLoadingClassStudents(true);
+        try {
+          const { data, error } = await supabase
+            .from('students')
+            .select('id, student_code, student_name, prefix')
+            .eq('grade_level', subj.grade_level)
+            .eq('room', subj.room)
+            .order('student_code', { ascending: true });
+          setClassStudents(error ? [] : (data || []));
+        } finally {
+          setLoadingClassStudents(false);
+        }
       }
     })();
   }, [subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -259,6 +285,65 @@ export default function OMRPrepareTool() {
     link.download = 'answer-sheet.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
+  }
+
+  // student_code is a 5-digit school ID matching idDigits by convention —
+  // this still degrades gracefully (pad/truncate) for any code that isn't
+  // exactly idDigits digits, rather than throwing and blocking the batch.
+  function studentIdDigits(code) {
+    const onlyDigits = (code || '').replace(/\D/g, '');
+    return onlyDigits.padStart(idDigits, '0').slice(-idDigits).split('');
+  }
+
+  // Batch-generates one personalized answer sheet per student in the class
+  // roster — name, class, running number pre-printed and the ID grid
+  // pre-bubbled from their student_code — two students per A4 landscape
+  // page (left/right half), as one combined PDF. Uses its own offscreen
+  // canvas (not sheetCanvasRef) so it doesn't flicker the on-screen preview
+  // while generating.
+  async function handleGenerateClassPDF() {
+    if (classStudents.length === 0) return;
+    setGeneratingBatch(true);
+    setBatchProgress(0);
+    setBatchError(null);
+    try {
+      const subj = subjects.find(s => s.id === subjectId);
+      const classLabel = subj ? `${subj.grade_level}/${subj.room}` : '';
+      const canvas = document.createElement('canvas');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const halfW = 148.5;
+
+      function drawStudent(student, seatNumber) {
+        drawSheet(canvas, {
+          title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols,
+          studentName: `${student.prefix || ''}${student.student_name}`,
+          studentClass: classLabel,
+          studentNumber: seatNumber,
+        }, { studentId: studentIdDigits(student.student_code) });
+        return canvas.toDataURL('image/png');
+      }
+
+      for (let i = 0; i < classStudents.length; i += 2) {
+        if (i > 0) pdf.addPage();
+        pdf.addImage(drawStudent(classStudents[i], i + 1), 'PNG', 0, 0, halfW, 210);
+        if (classStudents[i + 1]) {
+          pdf.addImage(drawStudent(classStudents[i + 1], i + 2), 'PNG', halfW, 0, halfW, 210);
+        }
+        pdf.setLineDash([2, 2], 0);
+        pdf.setDrawColor(150, 150, 150);
+        pdf.line(halfW, 0, halfW, 210);
+        setBatchProgress(Math.min(i + 2, classStudents.length));
+        // Yield to the event loop so the progress UI actually paints between
+        // canvas draws instead of the whole batch running in one blocking tick.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      pdf.save(`answer-sheets-${subj?.grade_level || 'x'}-${subj?.room || 'x'}-x${classStudents.length}.pdf`);
+    } catch (err) {
+      setBatchError(err.message || 'สร้างกระดาษคำตอบทั้งห้องไม่สำเร็จ');
+    } finally {
+      setGeneratingBatch(false);
+    }
   }
 
   const answeredCount = Array.from({ length: numQuestions }).filter((_, qi) => (answerKey[qi]?.choices?.length ?? 0) > 0).length;
@@ -410,6 +495,29 @@ export default function OMRPrepareTool() {
             </div>
           </div>
         </div>
+
+        <div className="mt-5 pt-4 border-t border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900 mb-1">สร้างกระดาษคำตอบทั้งห้อง (ใส่ชื่อ/เลขประจำตัวให้อัตโนมัติ)</h3>
+          {!subjectId ? (
+            <div className="text-xs text-gray-500">เลือกวิชาในขั้นตอนที่ 0 ก่อน เพื่อดึงรายชื่อนักเรียนของห้องนั้น</div>
+          ) : loadingClassStudents ? (
+            <div className="text-xs text-gray-500">กำลังโหลดรายชื่อนักเรียน...</div>
+          ) : classStudents.length === 0 ? (
+            <div className="text-xs text-gray-500">ไม่พบนักเรียนของห้องนี้ในระบบ</div>
+          ) : (
+            <>
+              <div className="text-xs text-gray-500 mb-2">
+                พบนักเรียน {classStudents.length} คน — แต่ละคนจะได้กระดาษคำตอบของตัวเอง พร้อมชื่อ-สกุล, ชั้น, เลขที่ และฝนวงกลมเลขประจำตัวนักเรียนให้อัตโนมัติจากรหัสนักเรียนในระบบ รวมเป็น PDF เดียว ({Math.ceil(classStudents.length / 2)} แผ่น A4)
+              </div>
+              <button className={btn} onClick={handleGenerateClassPDF} disabled={generatingBatch}>
+                {generatingBatch ? `กำลังสร้าง... (${batchProgress}/${classStudents.length})` : `📚 สร้าง PDF ทั้งห้อง (${classStudents.length} คน)`}
+              </button>
+              {batchError && <div className="text-xs text-red-600 mt-2">{batchError}</div>}
+              <div className="text-[11px] text-gray-500 mt-1.5">เลขที่ในกระดาษคำตอบเรียงตามรหัสนักเรียนจากน้อยไปมาก — นักเรียนยังต้องเขียนชื่อ-สกุลด้วยลายมือตามที่พิมพ์ไว้เพื่อยืนยัน และตรวจสอบวงกลมเลขประจำตัวที่ฝนไว้ให้ก่อนเริ่มทำข้อสอบ</div>
+            </>
+          )}
+        </div>
+
         <div className="flex justify-between mt-4">
           <button className={btnSecondary} onClick={() => setActiveStep(0)}>← ก่อนหน้า</button>
           <button className={btnSecondary} onClick={() => setActiveStep(2)}>ถัดไป →</button>

@@ -512,13 +512,28 @@ function drawSheet(canvas, opts, answers) {
   // name line, then a ชั้น/เลขที่ line right below it (not sharing a
   // baseline with the subject). Each fill-in blank stretches all the way to
   // idBoxRightEdge, the same right boundary the note text below wraps to,
-  // instead of stopping short at a fixed number of underscores.
+  // instead of stopping short at a fixed number of underscores — unless the
+  // caller already knows the student (batch-generating one sheet per class
+  // roster entry), in which case the actual name/class/number is printed
+  // directly instead of a blank for the student to fill in.
   ctx.font = '10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
   const idBoxRightEdge = layout.idBoxX - 10;
-  drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, MARGIN + MARKER + 22, idBoxRightEdge);
+  if (opts.studentName) {
+    ctx.fillText(`ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, MARGIN + MARKER + 22);
+  } else {
+    drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, MARGIN + MARKER + 22, idBoxRightEdge);
+  }
   const classLineMidX = MARGIN + (idBoxRightEdge - MARGIN) * 0.5;
-  drawFillLine(ctx, 'ชั้น:', MARGIN, MARGIN + MARKER + 36, classLineMidX);
-  drawFillLine(ctx, 'เลขที่:', classLineMidX + 16, MARGIN + MARKER + 36, idBoxRightEdge);
+  if (opts.studentClass) {
+    ctx.fillText(`ชั้น: ${opts.studentClass}`, MARGIN, MARGIN + MARKER + 36);
+  } else {
+    drawFillLine(ctx, 'ชั้น:', MARGIN, MARGIN + MARKER + 36, classLineMidX);
+  }
+  if (opts.studentNumber != null) {
+    ctx.fillText(`เลขที่: ${opts.studentNumber}`, classLineMidX + 16, MARGIN + MARKER + 36);
+  } else {
+    drawFillLine(ctx, 'เลขที่:', classLineMidX + 16, MARGIN + MARKER + 36, idBoxRightEdge);
+  }
 
   // Free-form teacher note, printed in the block of blank space to the left
   // of the ID box (same vertical band as the box itself) — word-wrapped and

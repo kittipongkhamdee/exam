@@ -284,6 +284,25 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
+// Draws "label" followed by a blank line stretching from right after the
+// label to lineEndX, on the ctx's current font/fillStyle — used for
+// fill-in-the-blank fields (name/class/number) whose blank should reach a
+// specific right edge (e.g. flush with the note text column) rather than a
+// fixed number of underscore characters, which looks arbitrarily short on
+// wider pages and doesn't adapt if the label text itself changes width.
+// Returns the x position right after the label, for a caller that needs to
+// start a second label/blank further along the same line.
+function drawFillLine(ctx, label, x, y, lineEndX) {
+  ctx.fillText(label, x, y);
+  const afterLabelX = x + ctx.measureText(label).width + 4;
+  ctx.beginPath();
+  ctx.moveTo(afterLabelX, y + 2);
+  ctx.lineTo(lineEndX, y + 2);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.stroke();
+  return afterLabelX;
+}
+
 function choiceLetters(scheme, n) {
   if (scheme === 'thai') return ['ก','ข','ค','ง','จ'].slice(0, n);
   if (scheme === 'num') return ['1','2','3','4','5'].slice(0, n);
@@ -491,10 +510,15 @@ function drawSheet(canvas, opts, answers) {
 
   // Half-page header is a tight vertical stack: title, subject, then the
   // name line, then a ชั้น/เลขที่ line right below it (not sharing a
-  // baseline with the subject).
-  ctx.font = '10px "Prompt", sans-serif';
-  ctx.fillText('ชื่อ-นามสกุล: ________________________', MARGIN, MARGIN + MARKER + 22);
-  ctx.fillText('ชั้น: ______________  เลขที่: ______________', MARGIN, MARGIN + MARKER + 36);
+  // baseline with the subject). Each fill-in blank stretches all the way to
+  // idBoxRightEdge, the same right boundary the note text below wraps to,
+  // instead of stopping short at a fixed number of underscores.
+  ctx.font = '10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  const idBoxRightEdge = layout.idBoxX - 10;
+  drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, MARGIN + MARKER + 22, idBoxRightEdge);
+  const classLineMidX = MARGIN + (idBoxRightEdge - MARGIN) * 0.5;
+  drawFillLine(ctx, 'ชั้น:', MARGIN, MARGIN + MARKER + 36, classLineMidX);
+  drawFillLine(ctx, 'เลขที่:', classLineMidX + 16, MARGIN + MARKER + 36, idBoxRightEdge);
 
   // Free-form teacher note, printed in the block of blank space to the left
   // of the ID box (same vertical band as the box itself) — word-wrapped and

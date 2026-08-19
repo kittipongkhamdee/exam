@@ -553,6 +553,11 @@ function drawSheet(canvas, opts, answers) {
   // numerals, as a redundancy check alongside filling in the bubbles below
   // (matches the box's own digit count, so it never overflows the box's
   // width even if idDigits differs from the current fixed default of 5).
+  // When the caller already knows the student's ID (batch-generating one
+  // sheet per class roster entry), each digit is pre-printed inside its box
+  // too, matching the pre-filled bubbles below — same as the name/class/
+  // number lines above, the student can still see and verify it, they just
+  // don't have to write it out themselves.
   const numIdDigits = layout.idGrid.length;
   ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
   ctx.fillText('เลขประจำตัวนักเรียน', layout.idBoxX, MARGIN + MARKER + 10);
@@ -561,7 +566,14 @@ function drawSheet(canvas, opts, answers) {
   const writeBoxY = MARGIN + MARKER + 16;
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   for (let i = 0; i < numIdDigits; i++) {
-    ctx.strokeRect(layout.idBoxX + i * (writeBoxSize + writeBoxGap), writeBoxY, writeBoxSize, writeBoxSize);
+    const bx = layout.idBoxX + i * (writeBoxSize + writeBoxGap);
+    ctx.strokeRect(bx, writeBoxY, writeBoxSize, writeBoxSize);
+    if (answers && answers.studentId && answers.studentId[i] != null) {
+      ctx.font = 'bold 12px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(answers.studentId[i]), bx + writeBoxSize / 2, writeBoxY + writeBoxSize - 5);
+      ctx.textAlign = 'left';
+    }
   }
 
   // Student-ID box: bordered, with a "ฝนบรรทัดละ 1 ตัว" label and a single

@@ -152,6 +152,37 @@ export async function listMyQuizzes(supabase) {
   return data;
 }
 
+/**
+ * List every quiz across every teacher — for the admin-only "quiz sets"
+ * management panel. Ordinary teachers only see their own rows here too
+ * (RLS still applies), but an admin session sees everyone's via the
+ * admin_all_omr_quizzes policy. Ownership is derived through
+ * subjects.user_id (what RLS itself keys on, and reliably set), not
+ * omr_quizzes.created_by (never actually set on insert) — and since
+ * subjects.user_id has no FK to profiles for PostgREST to auto-embed
+ * (it points at auth.users), the teacher's name is looked up in a
+ * separate query and merged in here rather than nested in the select.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ */
+export async function listAllQuizzes(supabase) {
+  const { data, error } = await supabase
+    .from('omr_quizzes')
+    .select(`
+      id, title, num_questions, num_choices, created_at,
+      subjects ( subject_name, grade_level, room, user_id )
+    `)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const userIds = [...new Set((data || []).map(q => q.subjects?.user_id).filter(Boolean))];
+  let nameByUserId = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+    nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.full_name]));
+  }
+  return (data || []).map(q => ({ ...q, teacherName: nameByUserId[q.subjects?.user_id] || null }));
+}
+
 // Storage bucket for kept scan photos. Private (not the `public` bucket
 // pattern used elsewhere in this project) since answer sheets can carry
 // student names/handwriting. Objects are pathed `{teacherUid}/...` and RLS
@@ -283,6 +314,32 @@ export async function deleteScanResult(supabase, resultId, photoPath) {
     await supabase.storage.from(SCAN_PHOTO_BUCKET).remove([photoPath]);
   }
   const { error } = await supabase.from('omr_scan_results').delete().eq('id', resultId);
+  if (error) throw error;
+}
+
+/**
+ * Delete a quiz entirely — its answer key and every scan result cascade
+ * automatically (omr_answer_keys/omr_scan_results both have ON DELETE
+ * CASCADE to omr_quizzes at the DB level). Any kept scan photos are
+ * removed from storage first, since CASCADE only cleans up DB rows, not
+ * storage objects — leaving those behind would silently accumulate.
+ * A teacher can delete their own quizzes and an admin can delete anyone's
+ * (both already covered by the existing RLS policies on these tables).
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} quizId
+ */
+export async function deleteQuiz(supabase, quizId) {
+  const { data: results, error: fetchErr } = await supabase
+    .from('omr_scan_results')
+    .select('photo_path')
+    .eq('quiz_id', quizId)
+    .not('photo_path', 'is', null);
+  if (fetchErr) throw fetchErr;
+  const photoPaths = (results || []).map(r => r.photo_path).filter(Boolean);
+  if (photoPaths.length > 0) {
+    await supabase.storage.from(SCAN_PHOTO_BUCKET).remove(photoPaths);
+  }
+  const { error } = await supabase.from('omr_quizzes').delete().eq('id', quizId);
   if (error) throw error;
 }
 

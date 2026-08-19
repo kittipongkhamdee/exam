@@ -15,7 +15,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, getScanPhotoUrl } from '../lib/omr-db';
+import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
@@ -63,6 +63,8 @@ export default function OMRPrepareTool() {
   const [quizId, setQuizId] = useState(null);
   const [savingQuiz, setSavingQuiz] = useState(false);
   const [saveQuizError, setSaveQuizError] = useState(null);
+  const [deletingQuiz, setDeletingQuiz] = useState(false);
+  const [deleteQuizError, setDeleteQuizError] = useState(null);
 
   const [existingQuizzes, setExistingQuizzes] = useState([]);
   const [loadingQuiz, setLoadingQuiz] = useState(false);
@@ -180,6 +182,24 @@ export default function OMRPrepareTool() {
       setSaveQuizError(err.message || 'บันทึกเฉลยไม่สำเร็จ');
     } finally {
       setSavingQuiz(false);
+    }
+  }
+
+  async function handleDeleteQuiz() {
+    if (!quizId) return;
+    if (!window.confirm(`ยืนยันลบชุดข้อสอบ "${title}" ทั้งหมด?\n\nการลบนี้จะลบเฉลย ผลตรวจของนักเรียนทุกคน และรูปที่เก็บไว้ของชุดนี้ไปด้วย และไม่สามารถกู้คืนได้`)) return;
+    setDeletingQuiz(true);
+    setDeleteQuizError(null);
+    try {
+      await deleteQuiz(supabase, quizId);
+      setQuizId(null);
+      setRoster([]);
+      setAnswerKey({});
+      setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
+    } catch (err) {
+      setDeleteQuizError(err.message || 'ลบชุดข้อสอบไม่สำเร็จ');
+    } finally {
+      setDeletingQuiz(false);
     }
   }
 
@@ -436,7 +456,15 @@ export default function OMRPrepareTool() {
           <div className="text-xs text-amber-700 mt-2.5">⚠ ไม่พบวิชาของบัญชีนี้ — กรุณาสร้างวิชาในระบบก่อน</div>
         )}
         {loadQuizError && <div className="text-xs text-red-600 mt-2.5">{loadQuizError}</div>}
-        {quizId && <div className="mt-2.5"><span className={pillOk}>โหลด/บันทึกชุดข้อสอบแล้ว ({quizId.slice(0, 8)}…)</span></div>}
+        {quizId && (
+          <div className="mt-2.5 flex items-center gap-2.5 flex-wrap">
+            <span className={pillOk}>โหลด/บันทึกชุดข้อสอบแล้ว ({quizId.slice(0, 8)}…)</span>
+            <button className={btnTiny} onClick={handleDeleteQuiz} disabled={deletingQuiz}>
+              {deletingQuiz ? 'กำลังลบ...' : '🗑 ลบชุดข้อสอบนี้'}
+            </button>
+            {deleteQuizError && <span className="text-xs text-red-600">{deleteQuizError}</span>}
+          </div>
+        )}
         <div className="flex justify-between mt-4">
           <span />
           <button className={btnSecondary} onClick={() => setActiveStep(1)}>ถัดไป →</button>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
-import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto } from '@/lib/omr-db';
+import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, deleteQuiz } from '@/lib/omr-db';
 
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
 
@@ -76,6 +76,72 @@ function ScanPhotosPanel() {
   );
 }
 
+function QuizzesPanel() {
+  const [quizzes, setQuizzes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setQuizzes(await listAllQuizzes(supabase));
+    } catch (err) {
+      setError(err.message || 'โหลดรายการชุดข้อสอบไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { (async () => { await refresh(); })(); }, [refresh]);
+
+  async function handleDelete(id, title) {
+    if (!window.confirm(`ยืนยันลบชุดข้อสอบ "${title}" ทั้งหมด?\n\nการลบนี้จะลบเฉลย ผลตรวจของนักเรียนทุกคน และรูปที่เก็บไว้ของชุดนี้ไปด้วย และไม่สามารถกู้คืนได้`)) return;
+    setDeletingId(id);
+    try {
+      await deleteQuiz(supabase, id);
+      refresh();
+    } catch (err) {
+      setError(err.message || 'ลบชุดข้อสอบไม่สำเร็จ');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="font-semibold text-gray-900">ชุดข้อสอบทั้งหมดในระบบ</div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        รายการชุดข้อสอบของครูทุกคน แอดมินลบชุดข้อสอบของครูคนใดก็ได้ (ลบแล้วเฉลย ผลตรวจ และรูปที่เก็บไว้ของชุดนั้นจะหายไปทั้งหมด กู้คืนไม่ได้)
+      </p>
+      {loading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
+      {error && <div className="text-sm text-red-600">{error}</div>}
+      {!loading && quizzes.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบในระบบ</div>}
+      {quizzes.length > 0 && (
+        <div className="max-h-96 overflow-y-auto -mx-5 px-5">
+          {quizzes.map(q => (
+            <div key={q.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
+              <div className="min-w-0">
+                <div className="font-medium text-gray-900 truncate">{q.title}</div>
+                <div className="text-xs text-gray-500 truncate">
+                  {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                  {' · ครู: '}{q.teacherName || 'ไม่ทราบ'}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-3">
+                <button className={btnTiny} onClick={() => handleDelete(q.id, q.title)} disabled={deletingId === q.id}>
+                  {deletingId === q.id ? 'กำลังลบ...' : 'ลบ'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsContent() {
   const { isAdmin } = useAuth();
 
@@ -93,6 +159,7 @@ function SettingsContent() {
       <h1 className="text-2xl font-bold text-gray-900">ตั้งค่าระบบ</h1>
       <p className="mt-1 text-sm text-gray-500">สำหรับผู้ดูแลระบบเท่านั้น</p>
 
+      <QuizzesPanel />
       <ScanPhotosPanel />
     </div>
   );

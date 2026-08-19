@@ -185,22 +185,8 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const maxCols = Math.max(1, Math.floor(usableW / singleColW));
   const cols = forcedCols || (numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1));
   const perCol = Math.ceil(numQuestions / cols);
-  const startY = 340; // half-sheet stacks the ID grid above questions so needs more clearance
   const rowH = 26;
   const colW = usableW / cols;
-
-  const questions = [];
-  for (let q = 0; q < numQuestions; q++) {
-    const col = Math.floor(q / perCol);
-    const rowInCol = q % perCol;
-    const x0 = MARGIN + col * colW + qLabelW;
-    const y = startY + rowInCol * rowH;
-    const choices = [];
-    for (let c = 0; c < numChoices; c++) {
-      choices.push({ x: x0 + c * choiceGap, y, r: bubbleR });
-    }
-    questions.push({ index: q, labelX: MARGIN + col * colW, labelY: y, choices });
-  }
 
   // Student ID grid sits below the title/name lines on the half sheet, as a
   // bordered box (too narrow to place it beside the title like the full
@@ -216,6 +202,26 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const idBoxH = idLabelH + idDigits * idRowH + 14;
   const idStartX = idBoxX + 16;
   const idStartY = idBoxY + idLabelH + 16;
+
+  // Questions start right below the ID box (not a fixed offset) so this
+  // still fits a shorter page — e.g. the 'halfLandscape' variant, at 210mm
+  // tall vs. 'half's 297mm — without the question grid running off the
+  // bottom edge.
+  const startY = idBoxY + idBoxH + 30;
+
+  const questions = [];
+  for (let q = 0; q < numQuestions; q++) {
+    const col = Math.floor(q / perCol);
+    const rowInCol = q % perCol;
+    const x0 = MARGIN + col * colW + qLabelW;
+    const y = startY + rowInCol * rowH;
+    const choices = [];
+    for (let c = 0; c < numChoices; c++) {
+      choices.push({ x: x0 + c * choiceGap, y, r: bubbleR });
+    }
+    questions.push({ index: q, labelX: MARGIN + col * colW, labelY: y, choices });
+  }
+
   const idGrid = [];
   for (let d = 0; d < idDigits; d++) {
     const digits = [];

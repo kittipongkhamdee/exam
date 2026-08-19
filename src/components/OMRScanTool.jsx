@@ -2,16 +2,14 @@
 // OMRScanTool.jsx
 //
 // Mobile-first scan flow for exam day: pick a quiz that was already
-// prepared on a computer (OMRPrepareTool, at /omr/prepare), pick the
-// student whose sheet is about to be photographed, capture/upload the
-// photo, and save the graded result — repeating fast for a whole class.
-//
-// The student is picked from the class roster *before* scanning (not
-// auto-matched from the ID bubbles the sheet decodes) so a saved result is
-// always tied to a known student row, matching how lib/omr-db.js's
-// omr_scan_results.student_id is modeled. The decoded ID is only shown
-// alongside the result as a sanity check that the right sheet/student was
-// picked.
+// prepared on a computer (OMRPrepareTool, at /omr/prepare), then either
+// pick the student whose sheet is about to be photographed before
+// scanning (the default flow — a saved result is always tied to a known
+// student row, matching how lib/omr-db.js's omr_scan_results.student_id
+// is modeled), or, in "rapid" mode, skip that pick and let each capture
+// match itself to a student afterward via the ID bubbles the sheet already
+// encodes (matchStudentByDecodedId), for scanning a whole stack of sheets
+// back-to-back without stopping to tap a name each time.
 //
 // All OMR image-processing logic lives in ../lib/omr-core.js.
 
@@ -37,6 +35,21 @@ function pageOptsForQuiz(quiz) {
   return { pageW: TOP_BOTTOM_PAGE_W, pageH: TOP_BOTTOM_PAGE_H, layoutStyle: 'topBottom', cols: undefined };
 }
 
+// "Rapid" scan mode skips picking a student up front and instead matches
+// the decoded ID (from the bubbled student-ID grid, already read by every
+// scan regardless of mode) against the class roster by student_code — the
+// same right-aligned/zero-padded digit convention OMRPrepareTool uses when
+// pre-bubbling a batch sheet's ID grid. Returns null on an ambiguous
+// decode ('?' in any digit) or no matching student, so callers can fall
+// back to the manual picker.
+function matchStudentByDecodedId(students, decodedId, idDigits) {
+  if (!decodedId || decodedId.includes('?')) return null;
+  return students.find(s => {
+    const code = (s.student_code || '').replace(/\D/g, '');
+    return code.padStart(idDigits, '0').slice(-idDigits) === decodedId;
+  }) || null;
+}
+
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-3 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -60,6 +73,14 @@ export default function OMRScanTool() {
 
   const [students, setStudents] = useState([]);
   const [studentId, setStudentId] = useState('');
+  // Rapid mode skips picking a student up front and matches the decoded ID
+  // (via matchStudentByDecodedId) after each capture instead — lets a
+  // teacher scan a whole stack of sheets back-to-back. forcePicker lets
+  // them still fall back to the manual list for one paper (a mis-decode,
+  // an ambiguous digit) without leaving rapid mode for the rest of the
+  // stack.
+  const [rapidMode, setRapidMode] = useState(false);
+  const [forcePicker, setForcePicker] = useState(false);
 
   const [roster, setRoster] = useState([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -125,6 +146,7 @@ export default function OMRScanTool() {
     setSelectedQuiz(null);
     setStudents([]);
     setStudentId('');
+    setForcePicker(false);
     setRoster([]);
     resetScan();
   }
@@ -141,11 +163,13 @@ export default function OMRScanTool() {
 
   function pickStudent(id) {
     setStudentId(id);
+    setForcePicker(false);
     resetScan();
   }
 
   function handleNextStudent() {
     setStudentId('');
+    setForcePicker(false);
     resetScan();
   }
 
@@ -292,7 +316,12 @@ export default function OMRScanTool() {
   }, []);
 
   async function handleSaveScanResult() {
-    if (!selectedQuiz || !studentId || !scanResult || scanResult.error) return;
+    // In rapid mode studentId is only set once a student is confirmed (via
+    // the manual picker or, implicitly, by matchedStudent below) — until
+    // then this falls back to whatever the current render matched from the
+    // decoded ID.
+    const targetStudentId = studentId || matchedStudent?.id;
+    if (!selectedQuiz || !targetStudentId || !scanResult || scanResult.error) return;
     setSavingResult(true);
     setSaveResultError(null);
     try {
@@ -310,7 +339,7 @@ export default function OMRScanTool() {
         question: g.question, choice: g.choice, ambiguous: g.ambiguous, blank: g.blank,
       }));
       const { resultId } = await saveScanResult(supabase, {
-        quizId: selectedQuiz.id, studentId, responses, totalCorrect: scanResult.correct, score: scanResult.score,
+        quizId: selectedQuiz.id, studentId: targetStudentId, responses, totalCorrect: scanResult.correct, score: scanResult.score,
         scannedBy: session.user.id, photoPath,
       });
       setSavedResultId(resultId);
@@ -338,6 +367,12 @@ export default function OMRScanTool() {
 
   const scannedStudentIds = new Set(roster.map(r => r.students?.id).filter(Boolean));
   const selectedStudent = students.find(s => s.id === studentId) || null;
+  // Only attempt a match once a scan has actually decoded something — and
+  // only in rapid mode, since the normal flow already has a known student.
+  const matchedStudent = (rapidMode && !studentId && scanResult && !scanResult.error && selectedQuiz)
+    ? matchStudentByDecodedId(students, scanResult.decodedId, selectedQuiz.idDigits)
+    : null;
+  const effectiveStudent = selectedStudent || matchedStudent;
   const filteredQuizzes = quizzes.filter(q => {
     if (!quizFilter.trim()) return true;
     const hay = `${q.title} ${q.subjects?.subject_name || ''} ${q.subjects?.subject_code || ''}`.toLowerCase();
@@ -365,6 +400,23 @@ export default function OMRScanTool() {
             className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " + (saveScanPhotos ? 'bg-indigo-600' : 'bg-gray-300')}
           >
             <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (saveScanPhotos ? 'translate-x-6' : 'translate-x-1')} />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRapidMode(!rapidMode)}
+          className={card + ' w-full flex items-center justify-between gap-3 text-left cursor-pointer select-none'}
+        >
+          <span>
+            <span className="block text-sm font-semibold text-gray-900">⚡ ตรวจแบบรัว (ไม่ต้องเลือกชื่อก่อน)</span>
+            <span className="block text-xs text-gray-500 mt-0.5">อ่านชื่อนักเรียนจากรหัสประจำตัวที่ฝนไว้ในกระดาษคำตอบเองหลังถ่ายภาพ เหมาะกับการถ่ายทีละหลายแผ่นต่อเนื่อง</span>
+          </span>
+          <span
+            role="switch" aria-checked={rapidMode}
+            className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " + (rapidMode ? 'bg-indigo-600' : 'bg-gray-300')}
+          >
+            <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (rapidMode ? 'translate-x-6' : 'translate-x-1')} />
           </span>
         </button>
 
@@ -400,10 +452,17 @@ export default function OMRScanTool() {
   }
 
   // --- Screen 2: pick a student ---
-  if (!studentId) {
+  // Skipped entirely in rapid mode unless the teacher explicitly asked for
+  // it (forcePicker) — e.g. after a decode that didn't match anyone.
+  if (!studentId && (!rapidMode || forcePicker)) {
     return (
       <div className="max-w-lg mx-auto">
         <QuizHeader quiz={selectedQuiz} onChangeQuiz={handleChangeQuiz} scannedCount={roster.length} totalCount={students.length} />
+        {rapidMode && (
+          <button type="button" className="text-xs font-semibold text-indigo-600 mt-3" onClick={() => setForcePicker(false)}>
+            ← กลับไปตรวจแบบรัว
+          </button>
+        )}
         <h2 className="text-base font-semibold mb-3 mt-4">เลือกนักเรียนเจ้าของกระดาษคำตอบ</h2>
         {students.length === 0 ? (
           <div className="text-sm text-gray-500">ไม่พบนักเรียนของวิชานี้ ({selectedQuiz.gradeLevel}/{selectedQuiz.room})</div>
@@ -439,9 +498,26 @@ export default function OMRScanTool() {
       <div className={card + ' mt-4'}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm text-gray-500">นักเรียน</div>
-          <button className="text-xs font-semibold text-indigo-600" onClick={() => setStudentId('')}>เปลี่ยนนักเรียน</button>
+          <button
+            className="text-xs font-semibold text-indigo-600"
+            onClick={() => { setStudentId(''); if (rapidMode) setForcePicker(true); }}
+          >
+            {rapidMode ? 'เลือกนักเรียนเอง' : 'เปลี่ยนนักเรียน'}
+          </button>
         </div>
-        <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {selectedStudent?.prefix}{selectedStudent?.student_name}</div>
+        {rapidMode && !studentId ? (
+          matchedStudent ? (
+            <div className="font-semibold text-gray-900 mb-4">{matchedStudent.student_code} {matchedStudent.prefix}{matchedStudent.student_name}</div>
+          ) : scanResult && !scanResult.error ? (
+            <div className={pillBad + ' px-3 py-2 text-sm block mb-4'}>
+              ไม่พบนักเรียนที่มีรหัสตรงกับ &ldquo;{scanResult.decodedId}&rdquo; ในห้องนี้ — เลือกนักเรียนเอง
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400 mb-4">⚡ โหมดตรวจรัว — ถ่ายภาพเพื่ออ่านชื่อนักเรียนจากรหัสอัตโนมัติ</div>
+          )
+        ) : (
+          <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {selectedStudent?.prefix}{selectedStudent?.student_name}</div>
+        )}
 
         {!scanImage && (
           <div className="flex flex-col gap-2">
@@ -489,8 +565,14 @@ export default function OMRScanTool() {
                   <div className={stat}><div className={statN}>{scanResult.ambiguous}</div><div className={statL}>ไม่ชัด</div></div>
                 </div>
                 <div className="text-xs text-gray-500 mb-3">
-                  รหัสที่อ่านได้จากกระดาษ: <strong className="text-gray-700">{scanResult.decodedId}</strong> — ตรวจสอบว่าตรงกับนักเรียนที่เลือกไว้
+                  รหัสที่อ่านได้จากกระดาษ: <strong className="text-gray-700">{scanResult.decodedId}</strong>
+                  {rapidMode && !studentId ? ' — ระบบจับคู่ชื่อให้อัตโนมัติจากรหัสนี้' : ' — ตรวจสอบว่าตรงกับนักเรียนที่เลือกไว้'}
                 </div>
+                {effectiveStudent && scannedStudentIds.has(effectiveStudent.id) && !savedResultId && (
+                  <div className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
+                    ⚠ {effectiveStudent.prefix}{effectiveStudent.student_name} เคยถูกสแกนแล้ว — บันทึกซ้ำจะเพิ่มผลใหม่อีกรายการ
+                  </div>
+                )}
 
                 {savedResultId ? (
                   <div className="flex items-center gap-3 flex-wrap">
@@ -499,7 +581,7 @@ export default function OMRScanTool() {
                   </div>
                 ) : (
                   <div className="flex gap-2 flex-wrap">
-                    <button className={btn} onClick={handleSaveScanResult} disabled={savingResult}>
+                    <button className={btn} onClick={handleSaveScanResult} disabled={savingResult || !effectiveStudent}>
                       {savingResult ? 'กำลังบันทึก...' : '💾 บันทึกผล'}
                     </button>
                     <button className={btnSecondary} onClick={resetScan}>↺ ถ่ายใหม่</button>

@@ -61,6 +61,22 @@ export default function OMRPrepareTool() {
   const [fontReady, setFontReady] = useState(false);
 
   const [activeStep, setActiveStep] = useState(0);
+  // The answer-key grid (step 2) only switches to a 2-column layout once
+  // there's actually room for it — each row (question number + up to 5
+  // choice bubbles + a points input) needs roughly 300px on its own, and at
+  // narrower widths (including a phone, or a tablet with the sidebar open)
+  // forcing 2 columns wrapped each row onto two lines instead, which looked
+  // broken. 1280px comfortably clears even the worst case of a full-width
+  // desktop sidebar (256px) plus page padding still leaving 2 columns their
+  // ~300px each.
+  const [isWideScreen, setIsWideScreen] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const update = () => setIsWideScreen(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   // --- Supabase-backed quiz/subject state ---
   const [subjects, setSubjects] = useState([]);
@@ -580,13 +596,13 @@ export default function OMRPrepareTool() {
         <div
           className="grid gap-1.5 mt-2"
           style={{
-            gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr',
+            gridTemplateColumns: numQuestions > 20 && isWideScreen ? '1fr 1fr' : '1fr',
             // grid-auto-flow: column (with an explicit row count) fills each
             // column top-to-bottom before moving to the next one, instead of
             // the default row-first flow that interleaves 01/02, 03/04, ...
             // side by side.
-            gridTemplateRows: numQuestions > 20 ? `repeat(${Math.ceil(numQuestions / 2)}, auto)` : undefined,
-            gridAutoFlow: numQuestions > 20 ? 'column' : 'row',
+            gridTemplateRows: numQuestions > 20 && isWideScreen ? `repeat(${Math.ceil(numQuestions / 2)}, auto)` : undefined,
+            gridAutoFlow: numQuestions > 20 && isWideScreen ? 'column' : 'row',
           }}
         >
           {Array.from({length: numQuestions}).map((_, qi) => (

@@ -503,8 +503,8 @@ function drawSheet(canvas, opts, answers) {
   // ---------- Half-page layout (unchanged) ----------
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = 'bold 14px "Prompt", sans-serif';
-  ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 14);
+  ctx.font = 'bold 18px "Prompt", sans-serif';
+  ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 16);
   ctx.font = '10px "Prompt", sans-serif';
   ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 28);
 
@@ -516,7 +516,7 @@ function drawSheet(canvas, opts, answers) {
   // caller already knows the student (batch-generating one sheet per class
   // roster entry), in which case the actual name/class/number is printed
   // directly instead of a blank for the student to fill in.
-  ctx.font = '10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.font = '14px "Prompt", sans-serif'; ctx.fillStyle = '#000';
   const idBoxRightEdge = layout.idBoxX - 10;
   if (opts.studentName) {
     ctx.fillText(`ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, MARGIN + MARKER + 22);
@@ -540,9 +540,9 @@ function drawSheet(canvas, opts, answers) {
   // capped at a fixed number of lines so it can never grow into the ID box
   // or down into the question grid, regardless of how much text is typed.
   if (opts.note) {
-    ctx.font = '11px "Prompt", sans-serif'; ctx.fillStyle = '#333';
+    ctx.font = '12px "Prompt", sans-serif'; ctx.fillStyle = '#333';
     const noteMaxW = layout.idBoxX - MARGIN - 10;
-    const noteLineH = 15;
+    const noteLineH = 16;
     wrapText(ctx, opts.note, noteMaxW).slice(0, 8).forEach((ln, i) => {
       ctx.fillText(ln, MARGIN, layout.idBoxY + 8 + i * noteLineH);
     });

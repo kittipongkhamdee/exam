@@ -36,7 +36,7 @@ const TOP_BOTTOM_PAGE_W = PAGE_W, TOP_BOTTOM_PAGE_H = Math.round(148.5 * PX_PER_
 const MARKER = 26; // fiducial square size
 const MARGIN = 40;
 
-function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH = PAGE_H, layoutStyle = 'auto') {
+function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH = PAGE_H, layoutStyle = 'auto', forcedCols) {
   // Returns bubble center coordinates for each question/choice, and ID grid.
   // layoutStyle picks which template to use — 'auto' infers from pageW for
   // backward compatibility (narrow width = half-page template), but callers
@@ -172,18 +172,22 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // pageW controls how many columns the questions wrap into: a narrower page
   // (half-sheet) naturally fits fewer question-columns per available width,
   // so this recomputes the wrap point based on the actual page width rather
-  // than assuming the full-page width always.
+  // than assuming the full-page width always. A caller can also force a
+  // specific column count (e.g. 3, to fit 60 questions on a portrait half
+  // sheet) via forcedCols — bubble/gap sizing shrinks a bit ("dense" mode)
+  // so 3 columns still fits the narrower half-page width without crowding.
   const usableW = pageW - MARGIN * 2;
-  const singleColW = 140; // approx width needed for qLabel + 4-5 choice bubbles
+  const dense = forcedCols >= 3;
+  const bubbleR = dense ? 7 : 8;
+  const choiceGap = dense ? 18 : 26;
+  const qLabelW = dense ? 18 : 40;
+  const singleColW = dense ? 100 : 140; // approx width needed for qLabel + 4-5 choice bubbles
   const maxCols = Math.max(1, Math.floor(usableW / singleColW));
-  const cols = numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1);
+  const cols = forcedCols || (numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1));
   const perCol = Math.ceil(numQuestions / cols);
   const startY = 340; // half-sheet stacks the ID grid above questions so needs more clearance
   const rowH = 26;
   const colW = usableW / cols;
-  const bubbleR = 8;
-  const choiceGap = 26;
-  const qLabelW = 40;
 
   const questions = [];
   for (let q = 0; q < numQuestions; q++) {
@@ -240,7 +244,7 @@ function drawSheet(canvas, opts, answers) {
   canvas.width = pageW; canvas.height = pageH;
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pageW, pageH);
 
-  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle);
+  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols);
   const letters = choiceLetters(opts.scheme, opts.numChoices);
   const resolvedStyle = layout.layoutStyle;
 
@@ -743,7 +747,7 @@ function readBubbles(warpedCanvas, opts) {
   const pageW = opts.pageW || PAGE_W;
   const pageH = opts.pageH || PAGE_H;
   const layoutStyle = opts.layoutStyle || 'auto';
-  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle);
+  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols);
   const ctx = warpedCanvas.getContext('2d');
   const imgData = ctx.getImageData(0, 0, pageW, pageH);
   const gray = toGray(imgData);

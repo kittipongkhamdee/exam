@@ -418,7 +418,7 @@ export default function OMRPrepareTool() {
         <a href="/omr/scan" className="text-indigo-600 font-semibold"> สแกนตรวจ</a> เพื่อตรวจด้วยมือถือ
       </div>
 
-      <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto" role="tablist">
+      <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto overflow-y-hidden" role="tablist">
         {steps.map(s => (
           <button
             key={s.key} type="button" role="tab" aria-selected={activeStep === s.key}

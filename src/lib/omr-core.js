@@ -273,11 +273,19 @@ function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
   return positions;
 }
 
-// Word-wraps text to fit maxWidth on the canvas ctx's current font. Splits
-// on whitespace first, but also hard-breaks any single "word" wider than
-// maxWidth on its own — necessary for Thai text, which often has no spaces
-// between words at all, so a naive whitespace-only wrap could otherwise
-// produce one line far wider than the available space.
+// Thai script has no spaces between words, so a plain whitespace split
+// treats an entire unspaced sentence as one giant "word" — wrapping it
+// then requires cutting mid-word at an arbitrary character position,
+// which can slice through a combining vowel/tone sequence and produce a
+// broken, nonsensical syllable (e.g. "และ" cut into "แ" + "ละ"). Intl's
+// Thai dictionary-based word segmenter finds the real word boundaries
+// instead, so wrapping never has to cut inside a word in the common case.
+// Falls back to null (handled below) on a runtime without Intl.Segmenter.
+const thaiSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter('th', { granularity: 'word' })
+  : null;
+
+// Word-wraps text to fit maxWidth on the canvas ctx's current font.
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
   // Explicit newlines (e.g. a teacher's numbered คำชี้แจง list, one item
@@ -285,34 +293,32 @@ function wrapText(ctx, text, maxWidth) {
   // each \n-separated paragraph independently rather than letting the
   // word-wrap below flow line 2 onto the end of line 1's wrapped text.
   for (const para of text.split('\n')) {
-    const words = para.split(/\s+/).filter(Boolean);
-    if (words.length === 0) { lines.push(''); continue; }
+    if (para.length === 0) { lines.push(''); continue; }
+    // Each segment (a word, a run of whitespace, or a punctuation mark) is
+    // treated as an atomic unit and concatenated directly — Intl.Segmenter
+    // already includes any actual spaces in the source as their own
+    // segments, so no extra separator needs to be inserted between them
+    // (unlike English-style whitespace-split wrapping).
+    const segments = thaiSegmenter
+      ? [...thaiSegmenter.segment(para)].map(s => s.segment)
+      : para.split(/(\s+)/).filter(Boolean);
     let line = '';
-    for (let word of words) {
-      while (ctx.measureText(word).width > maxWidth) {
-        // Thai script has no spaces within a sentence, so a numbered item
-        // like "1. <long unbroken clause>" is a short word ("1.") followed
-        // by one giant unbreakable word — pack as many of its leading
-        // characters onto the current line as still fit (keeping "1."
-        // attached to its sentence) before falling back to a fresh line.
-        const prefix = line ? line + ' ' : '';
-        let cut = word.length;
-        while (cut > 0 && ctx.measureText(prefix + word.slice(0, cut)).width > maxWidth) cut--;
-        if (cut === 0) {
-          if (line) { lines.push(line); line = ''; }
-          cut = word.length;
-          while (cut > 1 && ctx.measureText(word.slice(0, cut)).width > maxWidth) cut--;
-          lines.push(word.slice(0, cut));
-        } else {
-          lines.push(prefix + word.slice(0, cut));
-          line = '';
-        }
-        word = word.slice(cut);
+    for (let seg of segments) {
+      while (ctx.measureText(seg).width > maxWidth) {
+        // Last-resort hard-break: only reached for a single dictionary
+        // word/token still wider than the whole column on its own (rare —
+        // a very long compound word or number) or when Intl.Segmenter is
+        // unavailable.
+        let cut = seg.length;
+        while (cut > 1 && ctx.measureText(seg.slice(0, cut)).width > maxWidth) cut--;
+        if (line) { lines.push(line); line = ''; }
+        lines.push(seg.slice(0, cut));
+        seg = seg.slice(cut);
       }
-      const candidate = line ? line + ' ' + word : word;
+      const candidate = line + seg;
       if (line && ctx.measureText(candidate).width > maxWidth) {
         lines.push(line);
-        line = word;
+        line = seg;
       } else {
         line = candidate;
       }

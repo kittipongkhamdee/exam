@@ -261,12 +261,26 @@ function choiceLetters(scheme, n) {
   return ['A','B','C','D','E'].slice(0, n);
 }
 
+// The layout math throughout this file targets ~100dpi (PAGE_W=850px for a
+// 210mm-wide sheet) — fine on screen, but text/circles print visibly soft
+// at that resolution once stretched to true physical size. drawSheet
+// renders at PRINT_SCALE times that pixel density instead (canvas.toDataURL
+// then exports a proportionally larger PNG) while every coordinate in
+// buildLayout/drawSheet itself stays in the original ~100dpi logical units —
+// ctx.scale() maps them onto the higher-resolution canvas transparently, so
+// nothing else in this file needs to change. This only affects the
+// generator's rendered/exported image; it has no effect on scanning, which
+// always resamples the photographed sheet to the logical pageW x pageH via
+// warpImage regardless of the camera's own resolution.
+const PRINT_SCALE = 3;
+
 function drawSheet(canvas, opts, answers) {
   const pageW = opts.pageW || PAGE_W;
   const pageH = opts.pageH || PAGE_H;
   const layoutStyle = opts.layoutStyle || 'auto';
   const ctx = canvas.getContext('2d');
-  canvas.width = pageW; canvas.height = pageH;
+  canvas.width = pageW * PRINT_SCALE; canvas.height = pageH * PRINT_SCALE;
+  ctx.scale(PRINT_SCALE, PRINT_SCALE);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pageW, pageH);
 
   const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols);
@@ -280,7 +294,7 @@ function drawSheet(canvas, opts, answers) {
     drawFiducials(ctx, pageW, pageH);
     ctx.fillStyle = '#000';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 15px "Prompt", sans-serif';
+    ctx.font = 'bold 16px "Prompt", sans-serif';
     ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 8, MARGIN + 16);
 
     // Left box: name + class/room/no, two rows separated by a line.
@@ -292,17 +306,17 @@ function drawSheet(canvas, opts, answers) {
     ctx.moveTo(nameBoxX, nameBoxY + nameBoxH / 2);
     ctx.lineTo(nameBoxX + nameBoxW, nameBoxY + nameBoxH / 2);
     ctx.stroke();
-    ctx.font = '10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+    ctx.font = '11px "Prompt", sans-serif'; ctx.fillStyle = '#000';
     ctx.fillText('ชื่อ-สกุล: ________________________________', nameBoxX + 8, nameBoxY + nameBoxH * 0.32 + 4);
     ctx.fillText('ชั้น/ห้อง: _______  เลขที่: _______', nameBoxX + 8, nameBoxY + nameBoxH * 0.82 + 4);
 
     // Right box: student ID grid, right-aligned to the page edge.
     ctx.strokeRect(layout.idBoxX, layout.headerBoxY, layout.idBoxW, layout.idBoxH);
-    ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
-    ctx.fillText('รหัสนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 10, layout.headerBoxY + 14);
+    ctx.font = 'bold 11px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+    ctx.fillText('เลขประจำตัวนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 10, layout.headerBoxY + 14);
 
     // Column headers 0-9 above the ID rows
-    ctx.font = 'bold 9px "Prompt", sans-serif'; ctx.fillStyle = '#666';
+    ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#666';
     for (let v = 0; v <= 9; v++) {
       ctx.fillText(String(v), layout.idStartX + v * layout.idColGap - 3, layout.idStartY - 10);
     }
@@ -441,15 +455,15 @@ function drawSheet(canvas, opts, answers) {
   // ---------- Half-page layout (unchanged) ----------
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = 'bold 13px "Prompt", sans-serif';
+  ctx.font = 'bold 14px "Prompt", sans-serif';
   ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 14);
-  ctx.font = '9px "Prompt", sans-serif';
+  ctx.font = '10px "Prompt", sans-serif';
   ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 28);
 
   // Half-page header is a tight vertical stack: title, subject, then the
   // name line, then a ชั้น/เลขที่ line right below it (not sharing a
   // baseline with the subject).
-  ctx.font = '9px "Prompt", sans-serif';
+  ctx.font = '10px "Prompt", sans-serif';
   ctx.fillText('ชื่อ-นามสกุล: ________________________', MARGIN, MARGIN + MARKER + 22);
   ctx.fillText('ชั้น: ______________  เลขที่: ______________', MARGIN, MARGIN + MARKER + 36);
 
@@ -460,9 +474,9 @@ function drawSheet(canvas, opts, answers) {
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2;
   ctx.strokeRect(layout.idBoxX, layout.idBoxY, layout.idBoxW, layout.idBoxH);
   ctx.font = 'bold 9px "Prompt", sans-serif'; ctx.fillStyle = '#000';
-  ctx.fillText('รหัสนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 8, layout.idBoxY + 12);
+  ctx.fillText('เลขประจำตัวนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 8, layout.idBoxY + 12);
 
-  ctx.font = 'bold 8px "Prompt", sans-serif'; ctx.fillStyle = '#666';
+  ctx.font = 'bold 9px "Prompt", sans-serif'; ctx.fillStyle = '#666';
   for (let v = 0; v <= 9; v++) {
     ctx.fillText(String(v), layout.idStartX + v * layout.idColGap - 3, layout.idStartY - 9);
   }
@@ -481,7 +495,7 @@ function drawSheet(canvas, opts, answers) {
   });
 
   // Header row for choice letters (once per column)
-  ctx.font = 'bold 11px "Prompt", sans-serif';
+  ctx.font = 'bold 12px "Prompt", sans-serif';
   for (let col = 0; col < layout.cols; col++) {
     letters.forEach((L, ci) => {
       const q0 = layout.questions.find(q => q.index === col * layout.perCol);

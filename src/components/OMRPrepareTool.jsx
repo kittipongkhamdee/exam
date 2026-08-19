@@ -15,7 +15,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, drawSheet, choiceLetters } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult } from '../lib/omr-db';
+import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, getScanPhotoUrl } from '../lib/omr-db';
 
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
@@ -133,9 +133,18 @@ export default function OMRPrepareTool() {
     }
   }
 
-  async function handleDeleteResult(id) {
-    await deleteScanResult(supabase, id);
+  async function handleDeleteResult(id, photoPath) {
+    await deleteScanResult(supabase, id, photoPath);
     refreshRoster(quizId);
+  }
+
+  async function handleViewPhoto(photoPath) {
+    try {
+      const url = await getScanPhotoUrl(supabase, photoPath);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // best-effort — a missing/expired photo just won't open
+    }
   }
 
   // Canvas text does not automatically wait for a webfont to finish
@@ -398,7 +407,8 @@ export default function OMRPrepareTool() {
                   <span>{r.students?.student_code} {r.students?.prefix}{r.students?.student_name}</span>
                   <span className="flex items-center gap-2">
                     <span>{r.total_correct}/{numQuestions} ({r.score}%)</span>
-                    <button className={btnTiny} onClick={() => handleDeleteResult(r.id)}>ลบ</button>
+                    {r.photo_path && <button className={btnTiny} onClick={() => handleViewPhoto(r.photo_path)}>ดูรูป</button>}
+                    <button className={btnTiny} onClick={() => handleDeleteResult(r.id, r.photo_path)}>ลบ</button>
                   </span>
                 </div>
               ))}

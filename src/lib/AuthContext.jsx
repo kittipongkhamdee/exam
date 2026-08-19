@@ -1,9 +1,9 @@
 'use client';
-// AuthContext — tracks the Supabase session and whether the signed-in user
-// is an admin (profiles.is_admin), shared across the dashboard shell and
-// any page that needs to gate content by role (e.g. /settings).
+// AuthContext — tracks the Supabase session and profile-derived settings
+// (is_admin, save_scan_photos) shared across the dashboard shell and any
+// page that needs to read/change them (e.g. /settings, the scan tool).
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 
 const AuthContext = createContext(null);
@@ -11,18 +11,21 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined); // undefined = loading
   const [isAdmin, setIsAdmin] = useState(false);
+  const [saveScanPhotos, setSaveScanPhotosState] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     async function loadProfile(sess) {
-      if (!sess) { setIsAdmin(false); return; }
+      if (!sess) { setIsAdmin(false); setSaveScanPhotosState(false); return; }
       const { data } = await supabase
         .from('profiles')
-        .select('is_admin')
+        .select('is_admin, save_scan_photos')
         .eq('id', sess.user.id)
         .maybeSingle();
-      if (active) setIsAdmin(!!data?.is_admin);
+      if (!active) return;
+      setIsAdmin(!!data?.is_admin);
+      setSaveScanPhotosState(!!data?.save_scan_photos);
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -39,8 +42,18 @@ export function AuthProvider({ children }) {
     return () => { active = false; sub.subscription.unsubscribe(); };
   }, []);
 
+  const setSaveScanPhotos = useCallback(async (value) => {
+    if (!session) return;
+    setSaveScanPhotosState(value); // optimistic
+    const { error } = await supabase
+      .from('profiles')
+      .update({ save_scan_photos: value })
+      .eq('id', session.user.id);
+    if (error) { setSaveScanPhotosState(!value); throw error; }
+  }, [session]);
+
   return (
-    <AuthContext.Provider value={{ session, isAdmin, loading: session === undefined }}>
+    <AuthContext.Provider value={{ session, isAdmin, saveScanPhotos, setSaveScanPhotos, loading: session === undefined }}>
       {children}
     </AuthContext.Provider>
   );

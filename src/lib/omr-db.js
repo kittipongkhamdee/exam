@@ -141,6 +141,52 @@ export async function listMyQuizzes(supabase) {
   return data;
 }
 
+// Storage bucket for kept scan photos. Private (not the `public` bucket
+// pattern used elsewhere in this project) since answer sheets can carry
+// student names/handwriting. Objects are pathed `{teacherUid}/...` and RLS
+// (see migration add_omr_scan_photo_storage) only lets the owning teacher
+// or an admin read/write/delete under their own prefix.
+const SCAN_PHOTO_BUCKET = 'omr-scan-photos';
+
+// The teacher's "keep scan photos" preference itself lives on
+// profiles.save_scan_photos and is read/written via AuthContext
+// (src/lib/AuthContext.jsx's saveScanPhotos/setSaveScanPhotos), not here —
+// the scan tool already holds a Supabase session via that context, so it
+// doesn't need a separate OMR-specific accessor for one profile column.
+
+/**
+ * Upload a graded-overlay photo (a PNG Blob/File, e.g. from
+ * canvas.toBlob) for one scan result and return its storage path.
+ * Does not touch the omr_scan_results row — pass the returned path to
+ * saveScanResult's `photoPath` param.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ userId: string, quizId: string, blob: Blob }} params
+ * @returns {Promise<{ path: string }>}
+ */
+export async function uploadScanPhoto(supabase, { userId, quizId, blob }) {
+  const path = `${userId}/${quizId}/${crypto.randomUUID()}.png`;
+  const { error } = await supabase.storage
+    .from(SCAN_PHOTO_BUCKET)
+    .upload(path, blob, { contentType: 'image/png' });
+  if (error) throw error;
+  return { path };
+}
+
+/**
+ * Get a temporary signed URL to view a kept scan photo (the bucket is
+ * private, so a plain public URL won't work).
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} path
+ * @param {number} [expiresIn] seconds, default 1 hour
+ */
+export async function getScanPhotoUrl(supabase, path, expiresIn = 3600) {
+  const { data, error } = await supabase.storage
+    .from(SCAN_PHOTO_BUCKET)
+    .createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 /**
  * Save a graded scan result for one student.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
@@ -150,10 +196,12 @@ export async function listMyQuizzes(supabase) {
  *   responses: Array<{question:number, choice:number|null, ambiguous:boolean, blank:boolean}>,
  *   totalCorrect: number,
  *   score: number,
+ *   scannedBy?: string,
+ *   photoPath?: string|null,
  * }} params
  */
 export async function saveScanResult(supabase, params) {
-  const { quizId, studentId, responses, totalCorrect, score } = params;
+  const { quizId, studentId, responses, totalCorrect, score, scannedBy, photoPath } = params;
   const { data, error } = await supabase
     .from('omr_scan_results')
     .insert({
@@ -162,6 +210,8 @@ export async function saveScanResult(supabase, params) {
       responses,
       total_correct: totalCorrect,
       score,
+      scanned_by: scannedBy || null,
+      photo_path: photoPath || null,
     })
     .select('id')
     .single();
@@ -179,7 +229,7 @@ export async function listScanResultsForQuiz(supabase, quizId) {
   const { data, error } = await supabase
     .from('omr_scan_results')
     .select(`
-      id, total_correct, score, scanned_at,
+      id, total_correct, score, scanned_at, photo_path,
       students ( id, student_code, student_name, prefix, room )
     `)
     .eq('quiz_id', quizId)
@@ -189,11 +239,52 @@ export async function listScanResultsForQuiz(supabase, quizId) {
 }
 
 /**
- * Delete a scan result (e.g. to re-scan a misread sheet).
+ * List every kept scan photo across every teacher — for the admin-only
+ * "stored scan photos" panel. Ordinary teachers only see their own rows
+ * here too (RLS still applies), but an admin session sees everyone's via
+ * the admin_all_omr_scan_results policy.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ */
+export async function listAllScanPhotos(supabase) {
+  const { data, error } = await supabase
+    .from('omr_scan_results')
+    .select(`
+      id, photo_path, total_correct, score, scanned_at,
+      students ( student_code, student_name, prefix ),
+      omr_quizzes ( title, subjects ( subject_name, grade_level, room ) ),
+      profiles ( full_name )
+    `)
+    .not('photo_path', 'is', null)
+    .order('scanned_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Delete a scan result (e.g. to re-scan a misread sheet). Also removes its
+ * stored photo from the bucket, if any.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} resultId
+ * @param {string} [photoPath]
  */
-export async function deleteScanResult(supabase, resultId) {
+export async function deleteScanResult(supabase, resultId, photoPath) {
+  if (photoPath) {
+    await supabase.storage.from(SCAN_PHOTO_BUCKET).remove([photoPath]);
+  }
   const { error } = await supabase.from('omr_scan_results').delete().eq('id', resultId);
+  if (error) throw error;
+}
+
+/**
+ * Delete just the stored photo for a scan result, keeping the grading data
+ * intact. Used by the admin "stored scan photos" panel.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} resultId
+ * @param {string} photoPath
+ */
+export async function deleteScanPhoto(supabase, resultId, photoPath) {
+  const { error: storageErr } = await supabase.storage.from(SCAN_PHOTO_BUCKET).remove([photoPath]);
+  if (storageErr) throw storageErr;
+  const { error } = await supabase.from('omr_scan_results').update({ photo_path: null }).eq('id', resultId);
   if (error) throw error;
 }

@@ -816,6 +816,54 @@ function readBubbles(warpedCanvas, opts) {
   return { responses, studentId, layout };
 }
 
+// Draws a graded, reviewable copy of a warped (perspective-corrected) sheet:
+// a solid ring around the choice the student filled (green if correct, red
+// if wrong), a dashed blue ring around the correct choice when the student
+// missed it, and a check/cross mark by each question number. This is the
+// image saved for later review when a teacher opts in to keeping scan
+// photos (see lib/omr-db.js's photo_path column) — the raw, unrectified
+// camera photo is not what's kept.
+function drawGradedOverlay(warpedCanvas, { layout, graded }) {
+  const canvas = document.createElement('canvas');
+  canvas.width = warpedCanvas.width;
+  canvas.height = warpedCanvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(warpedCanvas, 0, 0);
+
+  const byQuestion = new Map(graded.map(g => [g.question, g]));
+  layout.questions.forEach((q, qi) => {
+    const g = byQuestion.get(qi);
+    if (!g) return;
+
+    q.choices.forEach((c, ci) => {
+      const isChosen = g.choice === ci;
+      const isKey = g.key === ci;
+      if (isChosen) {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = g.correct ? '#00c853' : '#e53935';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      } else if (isKey) {
+        ctx.save();
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = '#1e88e5';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+
+    ctx.font = 'bold 12px "Prompt", sans-serif';
+    ctx.fillStyle = g.correct ? '#00c853' : '#e53935';
+    ctx.fillText(g.correct ? '✓' : '✗', q.labelX - 16, q.labelY + 4);
+  });
+
+  return canvas;
+}
+
 // ---------- Exports ----------
 export {
   PAGE_W, PAGE_H, PX_PER_MM,
@@ -836,4 +884,5 @@ export {
   solveLinear,
   warpImage,
   readBubbles,
+  drawGradedOverlay,
 };

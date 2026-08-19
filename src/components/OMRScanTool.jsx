@@ -16,9 +16,10 @@
 // All OMR image-processing logic lives in ../lib/omr-core.js.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, choiceLetters, toGray, findFiducials, warpImage, readBubbles } from '../lib/omr-core';
+import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, choiceLetters, toGray, findFiducials, warpImage, readBubbles, drawGradedOverlay } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult } from '../lib/omr-db';
+import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
+import { useAuth } from '../lib/AuthContext';
 
 const pageW = TOP_BOTTOM_PAGE_W, pageH = TOP_BOTTOM_PAGE_H;
 const layoutStyle = 'topBottom';
@@ -37,6 +38,7 @@ const statN = 'text-xl font-extrabold';
 const statL = 'text-[11px] text-gray-500';
 
 export default function OMRScanTool() {
+  const { session, saveScanPhotos, setSaveScanPhotos } = useAuth();
   const [quizzes, setQuizzes] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [quizFilter, setQuizFilter] = useState('');
@@ -50,6 +52,8 @@ export default function OMRScanTool() {
   const [loadingRoster, setLoadingRoster] = useState(false);
 
   const [scanImage, setScanImage] = useState(null);
+  const [gradedImageUrl, setGradedImageUrl] = useState(null);
+  const gradedCanvasRef = useRef(null);
   const [scanResult, setScanResult] = useState(null);
   const [scanStage, setScanStage] = useState('idle');
   const fileInputRef = useRef(null);
@@ -116,6 +120,8 @@ export default function OMRScanTool() {
 
   function resetScan() {
     setScanImage(null);
+    setGradedImageUrl(null);
+    gradedCanvasRef.current = null;
     setScanResult(null);
     setScanStage('idle');
     setSavedResultId(null);
@@ -158,7 +164,7 @@ export default function OMRScanTool() {
           setScanStage('done');
           return;
         }
-        const { responses, studentId: decodedId } = readBubbles(warped, {
+        const { responses, studentId: decodedId, layout } = readBubbles(warped, {
           numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
           idDigits: selectedQuiz.idDigits, pageW, pageH, layoutStyle,
         });
@@ -172,6 +178,13 @@ export default function OMRScanTool() {
           if (r.ambiguous) ambiguous++;
           return { ...r, correct: isCorrect, key };
         });
+
+        // Build the reviewable graded overlay now (while the warped canvas
+        // and layout are on hand) so it's ready to preview and, if the
+        // teacher has opted in, upload on save — see resetScan/handleSaveScanResult.
+        const gradedCanvas = drawGradedOverlay(warped, { layout, graded });
+        gradedCanvasRef.current = gradedCanvas;
+        setGradedImageUrl(gradedCanvas.toDataURL('image/png'));
 
         setScanResult({
           decodedId, graded, correct, total: selectedQuiz.numQuestions, blank, ambiguous,
@@ -189,6 +202,8 @@ export default function OMRScanTool() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       setScanImage(ev.target.result);
+      setGradedImageUrl(null);
+      gradedCanvasRef.current = null;
       setScanResult(null);
       setSavedResultId(null);
       setSaveResultError(null);
@@ -238,6 +253,8 @@ export default function OMRScanTool() {
     canvas.getContext('2d').drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL('image/png');
     setScanImage(dataUrl);
+    setGradedImageUrl(null);
+    gradedCanvasRef.current = null;
     setScanResult(null);
     setSavedResultId(null);
     setSaveResultError(null);
@@ -256,11 +273,22 @@ export default function OMRScanTool() {
     setSavingResult(true);
     setSaveResultError(null);
     try {
+      let photoPath = null;
+      if (saveScanPhotos && gradedCanvasRef.current) {
+        const blob = await new Promise(resolve => gradedCanvasRef.current.toBlob(resolve, 'image/png'));
+        if (blob) {
+          ({ path: photoPath } = await uploadScanPhoto(supabase, {
+            userId: session.user.id, quizId: selectedQuiz.id, blob,
+          }));
+        }
+      }
+
       const responses = scanResult.graded.map(g => ({
         question: g.question, choice: g.choice, ambiguous: g.ambiguous, blank: g.blank,
       }));
       const { resultId } = await saveScanResult(supabase, {
         quizId: selectedQuiz.id, studentId, responses, totalCorrect: scanResult.correct, score: scanResult.score,
+        scannedBy: session.user.id, photoPath,
       });
       setSavedResultId(resultId);
       refreshRoster(selectedQuiz.id);
@@ -271,9 +299,18 @@ export default function OMRScanTool() {
     }
   }
 
-  async function handleDeleteResult(id) {
-    await deleteScanResult(supabase, id);
+  async function handleDeleteResult(id, photoPath) {
+    await deleteScanResult(supabase, id, photoPath);
     refreshRoster(selectedQuiz.id);
+  }
+
+  async function handleViewPhoto(photoPath) {
+    try {
+      const url = await getScanPhotoUrl(supabase, photoPath);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // best-effort — a missing/expired photo just won't open
+    }
   }
 
   const scannedStudentIds = new Set(roster.map(r => r.students?.id).filter(Boolean));
@@ -290,6 +327,23 @@ export default function OMRScanTool() {
       <div className="max-w-lg mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">สแกนตรวจ</h1>
         <div className="text-sm text-gray-500 mb-4">เลือกชุดข้อสอบที่เตรียมไว้แล้วเพื่อเริ่มสแกน</div>
+
+        <button
+          type="button"
+          onClick={() => setSaveScanPhotos(!saveScanPhotos)}
+          className={card + ' w-full flex items-center justify-between gap-3 text-left cursor-pointer select-none'}
+        >
+          <span>
+            <span className="block text-sm font-semibold text-gray-900">🖼️ เก็บรูปกระดาษคำตอบไว้ดูย้อนหลัง</span>
+            <span className="block text-xs text-gray-500 mt-0.5">บันทึกรูปที่ตรวจแล้ว (พร้อมทำเครื่องหมายถูก/ผิด) ไว้เปิดดูภายหลัง</span>
+          </span>
+          <span
+            role="switch" aria-checked={saveScanPhotos}
+            className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " + (saveScanPhotos ? 'bg-indigo-600' : 'bg-gray-300')}
+          >
+            <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (saveScanPhotos ? 'translate-x-6' : 'translate-x-1')} />
+          </span>
+        </button>
 
         <input
           type="text" placeholder="ค้นหาชุดข้อสอบ / วิชา..." value={quizFilter}
@@ -390,7 +444,9 @@ export default function OMRScanTool() {
 
         {scanImage && (
           <div className="mt-2">
-            <div className={imgwrap + ' max-w-[220px] mb-3'}><img src={scanImage} alt="ภาพถ่ายกระดาษคำตอบ" /></div>
+            <div className={imgwrap + ' max-w-[220px] mb-3'}>
+              <img src={gradedImageUrl || scanImage} alt="ภาพกระดาษคำตอบ" />
+            </div>
 
             {scanStage === 'processing' && <div className="text-sm text-gray-500">กำลังตรวจ...</div>}
 
@@ -444,7 +500,8 @@ export default function OMRScanTool() {
                 <span>{r.students?.student_code} {r.students?.prefix}{r.students?.student_name}</span>
                 <span className="flex items-center gap-2">
                   <span>{r.total_correct}/{selectedQuiz.numQuestions} ({r.score}%)</span>
-                  <button className={btnTiny} onClick={() => handleDeleteResult(r.id)}>ลบ</button>
+                  {r.photo_path && <button className={btnTiny} onClick={() => handleViewPhoto(r.photo_path)}>ดูรูป</button>}
+                  <button className={btnTiny} onClick={() => handleDeleteResult(r.id, r.photo_path)}>ลบ</button>
                 </span>
               </div>
             ))}

@@ -271,7 +271,7 @@ export async function listScanResultsForQuiz(supabase, quizId) {
   const { data, error } = await supabase
     .from('omr_scan_results')
     .select(`
-      id, total_correct, score, scanned_at, photo_path,
+      id, total_correct, score, scanned_at, photo_path, responses,
       students ( id, student_code, student_name, prefix, room )
     `)
     .eq('quiz_id', quizId)

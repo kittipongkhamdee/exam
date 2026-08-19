@@ -22,7 +22,7 @@ const NAV_GROUPS = [
     items: [
       { href: '/omr/prepare', label: 'เตรียมข้อสอบ', icon: SheetIcon, adminOnly: false },
       { href: '/omr/scan', label: 'สแกนตรวจ', icon: CameraIcon, adminOnly: false },
-      { label: 'รายงาน', icon: ReportIcon, adminOnly: false, comingSoon: true },
+      { href: '/omr/report', label: 'รายงาน', icon: ReportIcon, adminOnly: false },
     ],
   },
   {

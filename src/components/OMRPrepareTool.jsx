@@ -175,8 +175,26 @@ export default function OMRPrepareTool() {
 
   useEffect(() => { regenerate(); }, [regenerate]);
 
-  function setKeyFor(qIndex, choiceIndex) {
-    setAnswerKey(prev => ({ ...prev, [qIndex]: choiceIndex }));
+  // A question's correct-choice set can hold more than one index — a
+  // student matching any one of them earns the question's full points, not
+  // one entry per match. Each question also carries its own point value
+  // (default 1) instead of every question being worth the same.
+  function toggleChoice(qIndex, choiceIndex) {
+    setAnswerKey(prev => {
+      const entry = prev[qIndex] || { choices: [], points: 1 };
+      const choices = entry.choices.includes(choiceIndex)
+        ? entry.choices.filter(c => c !== choiceIndex)
+        : [...entry.choices, choiceIndex].sort((a, b) => a - b);
+      return { ...prev, [qIndex]: { ...entry, choices } };
+    });
+  }
+
+  function setPointsFor(qIndex, rawValue) {
+    const points = Math.max(0.5, Number(rawValue) || 1);
+    setAnswerKey(prev => {
+      const entry = prev[qIndex] || { choices: [], points: 1 };
+      return { ...prev, [qIndex]: { ...entry, points } };
+    });
   }
 
   function downloadSheetTopBottomA4() {
@@ -205,7 +223,9 @@ export default function OMRPrepareTool() {
     link.click();
   }
 
-  const keyComplete = Object.keys(answerKey).length === numQuestions;
+  const answeredCount = Array.from({ length: numQuestions }).filter((_, qi) => (answerKey[qi]?.choices?.length ?? 0) > 0).length;
+  const keyComplete = answeredCount === numQuestions;
+  const totalPoints = Array.from({ length: numQuestions }).reduce((sum, _, qi) => sum + (answerKey[qi]?.points ?? 1), 0);
 
   const steps = [
     { key: 0, label: '0. เลือกวิชา', done: !!subjectId },
@@ -348,21 +368,33 @@ export default function OMRPrepareTool() {
 
       {/* Step 2: Answer key */}
       <div className={card} style={{ display: activeStep === 2 ? 'block' : 'none' }}>
-        <h2 className="text-base font-semibold mb-3">2. กำหนดเฉลย {keyComplete ? <span className={pillOk}>ครบแล้ว</span> : <span className={pillWarn}>{Object.keys(answerKey).length}/{numQuestions} ข้อ</span>}</h2>
-        <div className="grid gap-1 mt-2" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
+        <h2 className="text-base font-semibold mb-1">2. กำหนดเฉลย {keyComplete ? <span className={pillOk}>ครบแล้ว</span> : <span className={pillWarn}>{answeredCount}/{numQuestions} ข้อ</span>}</h2>
+        <div className="text-xs text-gray-500 mb-3">แตะได้มากกว่า 1 ตัวเลือกต่อข้อถ้ามีคำตอบที่ถูกหลายแบบ (ตอบข้อไหนก็ได้เต็ม) และปรับคะแนนแต่ละข้อได้ — คะแนนรวม {totalPoints} คะแนน</div>
+        <div className="grid gap-1.5 mt-2" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
           {Array.from({length: numQuestions}).map((_, qi) => (
-            <div className="flex items-center gap-2 text-sm py-0.5" key={qi}>
+            <div className="flex items-center gap-2 text-sm py-0.5 flex-wrap" key={qi}>
               <span className="w-7 text-gray-500 tabular-nums">{String(qi+1).padStart(2,'0')}</span>
-              {letters.map((L, ci) => (
-                <button
-                  key={ci}
-                  className={
-                    "w-7 h-7 rounded-full border-[1.5px] text-xs font-bold " +
-                    (answerKey[qi]===ci ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 hover:border-gray-400')
-                  }
-                  onClick={()=>setKeyFor(qi, ci)}
-                >{L}</button>
-              ))}
+              {letters.map((L, ci) => {
+                const active = !!answerKey[qi]?.choices?.includes(ci);
+                return (
+                  <button
+                    key={ci}
+                    className={
+                      "w-7 h-7 rounded-full border-[1.5px] text-xs font-bold " +
+                      (active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-300 hover:border-gray-400')
+                    }
+                    onClick={() => toggleChoice(qi, ci)}
+                  >{L}</button>
+                );
+              })}
+              <input
+                type="number" min="0.5" step="0.5"
+                value={answerKey[qi]?.points ?? 1}
+                onChange={e => setPointsFor(qi, e.target.value)}
+                className="w-14 px-1.5 py-1 border border-gray-300 rounded text-xs text-center"
+                title="คะแนนของข้อนี้"
+              />
+              <span className="text-[10px] text-gray-400">คะแนน</span>
             </div>
           ))}
         </div>

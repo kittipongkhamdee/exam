@@ -837,7 +837,7 @@ function drawGradedOverlay(warpedCanvas, { layout, graded }) {
 
     q.choices.forEach((c, ci) => {
       const isChosen = g.choice === ci;
-      const isKey = g.key === ci;
+      const isKey = g.keyChoices.includes(ci);
       if (isChosen) {
         ctx.beginPath();
         ctx.arc(c.x, c.y, c.r + 3, 0, Math.PI * 2);

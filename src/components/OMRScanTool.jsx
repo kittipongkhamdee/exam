@@ -16,7 +16,7 @@
 // All OMR image-processing logic lives in ../lib/omr-core.js.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, choiceLetters, toGray, findFiducials, warpImage, readBubbles, drawGradedOverlay } from '../lib/omr-core';
+import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, toGray, findFiducials, warpImage, readBubbles, drawGradedOverlay } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
 import { useAuth } from '../lib/AuthContext';
@@ -65,8 +65,6 @@ export default function OMRScanTool() {
   const [savingResult, setSavingResult] = useState(false);
   const [saveResultError, setSaveResultError] = useState(null);
   const [savedResultId, setSavedResultId] = useState(null);
-
-  const letters = selectedQuiz ? choiceLetters(selectedQuiz.choiceScheme, selectedQuiz.numChoices) : [];
 
   useEffect(() => {
     (async () => {
@@ -169,14 +167,17 @@ export default function OMRScanTool() {
           idDigits: selectedQuiz.idDigits, pageW, pageH, layoutStyle,
         });
 
-        let correct = 0, blank = 0, ambiguous = 0;
+        let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;
         const graded = responses.map(r => {
-          const key = selectedQuiz.answerKey[r.question];
-          const isCorrect = key !== undefined && r.choice === key;
-          if (isCorrect) correct++;
+          const entry = selectedQuiz.answerKey[r.question];
+          const keyChoices = entry?.choices || [];
+          const points = entry?.points ?? 1;
+          totalPoints += points;
+          const isCorrect = !r.blank && keyChoices.includes(r.choice);
+          if (isCorrect) { correct++; earnedPoints += points; }
           if (r.blank) blank++;
           if (r.ambiguous) ambiguous++;
-          return { ...r, correct: isCorrect, key };
+          return { ...r, correct: isCorrect, keyChoices, points };
         });
 
         // Build the reviewable graded overlay now (while the warped canvas
@@ -188,7 +189,8 @@ export default function OMRScanTool() {
 
         setScanResult({
           decodedId, graded, correct, total: selectedQuiz.numQuestions, blank, ambiguous,
-          score: selectedQuiz.numQuestions ? Math.round((correct / selectedQuiz.numQuestions) * 1000) / 10 : 0,
+          earnedPoints, totalPoints,
+          score: totalPoints ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : 0,
         });
         setScanStage('done');
       }, 200);
@@ -460,8 +462,8 @@ export default function OMRScanTool() {
             {scanResult && !scanResult.error && (
               <div>
                 <div className="grid grid-cols-4 gap-2 mb-3">
-                  <div className={stat}><div className={statN}>{scanResult.score}%</div><div className={statL}>คะแนน</div></div>
-                  <div className={stat}><div className={statN}>{scanResult.correct}/{scanResult.total}</div><div className={statL}>ถูก</div></div>
+                  <div className={stat}><div className={statN}>{scanResult.earnedPoints}/{scanResult.totalPoints}</div><div className={statL}>คะแนน ({scanResult.score}%)</div></div>
+                  <div className={stat}><div className={statN}>{scanResult.correct}/{scanResult.total}</div><div className={statL}>ข้อถูก</div></div>
                   <div className={stat}><div className={statN}>{scanResult.blank}</div><div className={statL}>ไม่ตอบ</div></div>
                   <div className={stat}><div className={statN}>{scanResult.ambiguous}</div><div className={statL}>ไม่ชัด</div></div>
                 </div>

@@ -58,6 +58,19 @@ export default function OMRReportTool() {
     })();
   }, []);
 
+  // Deep-link support (e.g. the dashboard's "recent activity" links straight
+  // into a quiz's report): once the quiz list is in, auto-select whichever
+  // one ?quizId= names. A plain URLSearchParams read instead of
+  // next/navigation's useSearchParams — this page has no server-rendered
+  // search-param usage to keep in sync with, so it avoids that hook's
+  // Suspense-boundary requirement for no benefit here.
+  useEffect(() => {
+    if (typeof window === 'undefined' || selectedQuiz || quizzes.length === 0) return;
+    const quizId = new URLSearchParams(window.location.search).get('quizId');
+    const row = quizId && quizzes.find(q => q.id === quizId);
+    if (row) handleSelectQuiz(row);
+  }, [quizzes]);
+
   const loadResults = useCallback(async (quizId) => {
     setLoadingResults(true);
     try {

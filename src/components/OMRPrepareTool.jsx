@@ -18,6 +18,11 @@ import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
 
+// Default text for the free-form "คำอธิบายเพิ่มเติม" note — the standard
+// exam-instructions boilerplate, so a new sheet always prints something
+// useful unless the teacher clears or edits it themselves.
+const DEFAULT_NOTE = 'คำชี้แจง\n1. ให้นักเรียนเลือกคำตอบที่ถูกที่สุดเพียงข้อเดียวและฝนลงบนกระดาษคำตอบ\n2. ห้ามนำข้อสอบออกจากห้องสอบโดยเด็ดขาด หากมีข้อสงสัยควรสอบถามกรรมการคุมห้องสอบ\n3. เมื่อทำข้อสอบเสร็จแล้วส่งข้อสอบคืนที่กรรมการคุมห้องสอบ';
+
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
   const [numChoices, setNumChoices] = useState(4);
@@ -30,7 +35,7 @@ export default function OMRPrepareTool() {
   const [subject, setSubject] = useState('');
   // Free-form note the teacher can type, printed in the block of blank
   // space to the left of the student-ID box (word-wrapped in drawSheet).
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(DEFAULT_NOTE);
   // Paper layout: A4 turned landscape, then cut left/right into two
   // 148.5x210mm portrait-shaped halves — still taller than wide, so it sits
   // naturally in a phone's portrait camera when scanning. This is the only
@@ -513,7 +518,7 @@ export default function OMRPrepareTool() {
         <div className={field + ' mt-3'} style={{maxWidth: 480}}>
           <label className={label}>คำอธิบายเพิ่มเติม (ถ้ามี)</label>
           <textarea
-            className={inputCls} rows={3} maxLength={200} value={note}
+            className={inputCls} rows={5} maxLength={300} value={note}
             onChange={e => setNote(e.target.value)}
             placeholder="เช่น คำชี้แจงพิเศษ, ห้องสอบ, ภาคเรียน ฯลฯ — จะแสดงในช่องว่างข้างกรอบรหัสนักเรียน"
           />

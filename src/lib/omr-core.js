@@ -280,25 +280,45 @@ function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
 // produce one line far wider than the available space.
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
-  const words = text.split(/\s+/).filter(Boolean);
-  let line = '';
-  for (let word of words) {
-    while (ctx.measureText(word).width > maxWidth) {
-      let cut = word.length;
-      while (cut > 1 && ctx.measureText(word.slice(0, cut)).width > maxWidth) cut--;
-      if (line) { lines.push(line); line = ''; }
-      lines.push(word.slice(0, cut));
-      word = word.slice(cut);
+  // Explicit newlines (e.g. a teacher's numbered คำชี้แจง list, one item
+  // per line) are a forced break, not just whitespace to collapse — wrap
+  // each \n-separated paragraph independently rather than letting the
+  // word-wrap below flow line 2 onto the end of line 1's wrapped text.
+  for (const para of text.split('\n')) {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (words.length === 0) { lines.push(''); continue; }
+    let line = '';
+    for (let word of words) {
+      while (ctx.measureText(word).width > maxWidth) {
+        // Thai script has no spaces within a sentence, so a numbered item
+        // like "1. <long unbroken clause>" is a short word ("1.") followed
+        // by one giant unbreakable word — pack as many of its leading
+        // characters onto the current line as still fit (keeping "1."
+        // attached to its sentence) before falling back to a fresh line.
+        const prefix = line ? line + ' ' : '';
+        let cut = word.length;
+        while (cut > 0 && ctx.measureText(prefix + word.slice(0, cut)).width > maxWidth) cut--;
+        if (cut === 0) {
+          if (line) { lines.push(line); line = ''; }
+          cut = word.length;
+          while (cut > 1 && ctx.measureText(word.slice(0, cut)).width > maxWidth) cut--;
+          lines.push(word.slice(0, cut));
+        } else {
+          lines.push(prefix + word.slice(0, cut));
+          line = '';
+        }
+        word = word.slice(cut);
+      }
+      const candidate = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
     }
-    const candidate = line ? line + ' ' + word : word;
-    if (line && ctx.measureText(candidate).width > maxWidth) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = candidate;
-    }
+    if (line) lines.push(line);
   }
-  if (line) lines.push(line);
   return lines;
 }
 
@@ -653,6 +673,17 @@ function drawSheet(canvas, opts, answers) {
       }
     });
   });
+
+  // Divider separating the header block (title/name/class/ID box/note)
+  // from the question grid below — without it, a longer note ran straight
+  // into the "ก ข ค ง" column headers with nothing marking where one
+  // section ends and the other begins.
+  const dividerY = layout.questions[0].labelY - 22;
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN, dividerY);
+  ctx.lineTo(pageW - MARGIN, dividerY);
+  ctx.stroke();
 
   // Header row for choice letters (once per column)
   ctx.font = 'bold 12px "Prompt", sans-serif';

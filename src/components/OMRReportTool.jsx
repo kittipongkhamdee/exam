@@ -20,6 +20,9 @@ const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold
 const stat = 'text-center p-3 rounded-lg bg-gray-50';
 const statN = 'text-xl font-extrabold';
 const statL = 'text-[11px] text-gray-500';
+const chip = 'px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors';
+const chipActive = 'bg-indigo-600 border-indigo-600 text-white';
+const chipInactive = 'bg-white border-gray-300 text-gray-600 hover:border-indigo-300';
 
 function scoreColor(pct) {
   if (pct >= 80) return 'text-green-600';
@@ -36,6 +39,7 @@ export default function OMRReportTool() {
   const [quizzes, setQuizzes] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [quizFilter, setQuizFilter] = useState('');
+  const [gradeFilter, setGradeFilter] = useState(''); // '' = every grade level
   const [quizLoadError, setQuizLoadError] = useState(null);
 
   const [selectedQuiz, setSelectedQuiz] = useState(null); // full quiz + answerKey + subject name
@@ -81,7 +85,9 @@ export default function OMRReportTool() {
     setResults([]);
   }
 
+  const gradeLevels = [...new Set(quizzes.map(q => q.subjects?.grade_level).filter(Boolean))];
   const filteredQuizzes = quizzes.filter(q => {
+    if (gradeFilter && q.subjects?.grade_level !== gradeFilter) return false;
     if (!quizFilter.trim()) return true;
     const hay = `${q.title} ${q.subjects?.subject_name || ''} ${q.subjects?.subject_code || ''}`.toLowerCase();
     return hay.includes(quizFilter.trim().toLowerCase());
@@ -97,8 +103,27 @@ export default function OMRReportTool() {
         <input
           type="text" placeholder="ค้นหาชุดข้อสอบ / วิชา..." value={quizFilter}
           onChange={e => setQuizFilter(e.target.value)}
-          className="w-full px-3 py-3 border border-gray-300 rounded-lg text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          className="w-full px-3 py-3 border border-gray-300 rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
         />
+
+        {gradeLevels.length > 1 && (
+          <div className="flex gap-1.5 flex-wrap mb-4">
+            <button
+              type="button" onClick={() => setGradeFilter('')}
+              className={chip + ' ' + (gradeFilter === '' ? chipActive : chipInactive)}
+            >
+              ทั้งหมด
+            </button>
+            {gradeLevels.map(g => (
+              <button
+                key={g} type="button" onClick={() => setGradeFilter(g)}
+                className={chip + ' ' + (gradeFilter === g ? chipActive : chipInactive)}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        )}
 
         {loadingQuizzes && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {quizLoadError && <div className="text-sm text-red-600 mb-3">{quizLoadError}</div>}

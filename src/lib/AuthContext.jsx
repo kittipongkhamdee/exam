@@ -1,7 +1,8 @@
 'use client';
 // AuthContext — tracks the Supabase session and profile-derived settings
-// (is_admin, save_scan_photos) shared across the dashboard shell and any
-// page that needs to read/change them (e.g. /settings, the scan tool).
+// (is_admin, full_name, save_scan_photos) shared across the dashboard
+// shell and any page that needs to read/change them (e.g. /settings, the
+// scan tool, the dashboard's greeting banner).
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabaseClient';
@@ -11,20 +12,22 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined); // undefined = loading
   const [isAdmin, setIsAdmin] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [saveScanPhotos, setSaveScanPhotosState] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     async function loadProfile(sess) {
-      if (!sess) { setIsAdmin(false); setSaveScanPhotosState(false); return; }
+      if (!sess) { setIsAdmin(false); setFullName(''); setSaveScanPhotosState(false); return; }
       const { data } = await supabase
         .from('profiles')
-        .select('is_admin, save_scan_photos')
+        .select('is_admin, save_scan_photos, full_name')
         .eq('id', sess.user.id)
         .maybeSingle();
       if (!active) return;
       setIsAdmin(!!data?.is_admin);
+      setFullName(data?.full_name || '');
       setSaveScanPhotosState(!!data?.save_scan_photos);
     }
 
@@ -53,7 +56,7 @@ export function AuthProvider({ children }) {
   }, [session]);
 
   return (
-    <AuthContext.Provider value={{ session, isAdmin, saveScanPhotos, setSaveScanPhotos, loading: session === undefined }}>
+    <AuthContext.Provider value={{ session, isAdmin, fullName, saveScanPhotos, setSaveScanPhotos, loading: session === undefined }}>
       {children}
     </AuthContext.Provider>
   );

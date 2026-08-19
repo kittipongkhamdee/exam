@@ -552,7 +552,18 @@ export default function OMRPrepareTool() {
           />
           <button className={btnTiny} onClick={() => applyPointsToAll(bulkPoints)}>ใช้กับทุกข้อ</button>
         </div>
-        <div className="grid gap-1.5 mt-2" style={{gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr'}}>
+        <div
+          className="grid gap-1.5 mt-2"
+          style={{
+            gridTemplateColumns: numQuestions > 20 ? '1fr 1fr' : '1fr',
+            // grid-auto-flow: column (with an explicit row count) fills each
+            // column top-to-bottom before moving to the next one, instead of
+            // the default row-first flow that interleaves 01/02, 03/04, ...
+            // side by side.
+            gridTemplateRows: numQuestions > 20 ? `repeat(${Math.ceil(numQuestions / 2)}, auto)` : undefined,
+            gridAutoFlow: numQuestions > 20 ? 'column' : 'row',
+          }}
+        >
           {Array.from({length: numQuestions}).map((_, qi) => (
             <div className="flex items-center gap-2 text-sm py-0.5 flex-wrap" key={qi}>
               <span className="w-7 text-gray-500 tabular-nums">{String(qi+1).padStart(2,'0')}</span>

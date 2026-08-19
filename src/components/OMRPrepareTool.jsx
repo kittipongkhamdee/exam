@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
-import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, drawSheet, choiceLetters } from '../lib/omr-core';
+import { TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_PAGE_W, HALF_PAGE_H, drawSheet, choiceLetters } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, getScanPhotoUrl } from '../lib/omr-db';
 
@@ -24,11 +24,18 @@ export default function OMRPrepareTool() {
   const [scheme, setScheme] = useState('thai');
   const [title, setTitle] = useState('แบบทดสอบวิทยาศาสตร์ ม.1');
   const [subject, setSubject] = useState('บทที่ 3 พลังงาน');
-  // Only one paper layout now: A4 cut top/bottom into two independent
-  // half-height sheets. Kept as constants (not state) since there's no
-  // longer a picker for it.
-  const pageW = TOP_BOTTOM_PAGE_W, pageH = TOP_BOTTOM_PAGE_H;
-  const layoutStyle = 'topBottom';
+  // Paper layout: 'topBottom' (A4 cut top/bottom into two landscape halves —
+  // the current default, saved quizzes assume this) or 'half' (A4 cut
+  // left/right into two portrait halves — easier to hold in a phone's
+  // portrait camera when scanning; EXPERIMENTAL PREVIEW ONLY for now, see
+  // the note in Step 1). forceCols3 packs the 'half' layout's questions into
+  // 3 columns (e.g. 60 questions as 3x20) instead of the automatic 1-2.
+  const [paperLayout, setPaperLayout] = useState('topBottom');
+  const [forceCols3, setForceCols3] = useState(false);
+  const pageW = paperLayout === 'half' ? HALF_PAGE_W : TOP_BOTTOM_PAGE_W;
+  const pageH = paperLayout === 'half' ? HALF_PAGE_H : TOP_BOTTOM_PAGE_H;
+  const layoutStyle = paperLayout === 'half' ? 'half' : 'topBottom';
+  const cols = paperLayout === 'half' && forceCols3 ? 3 : undefined;
 
   const [answerKey, setAnswerKey] = useState({});
   const [bulkPoints, setBulkPoints] = useState(1);
@@ -170,9 +177,9 @@ export default function OMRPrepareTool() {
 
   const regenerate = useCallback(() => {
     if (!sheetCanvasRef.current) return;
-    drawSheet(sheetCanvasRef.current, { title, subject, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle }, null);
+    drawSheet(sheetCanvasRef.current, { title, subject, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols }, null);
     setSheetReady(true);
-  }, [title, subject, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, fontReady]);
+  }, [title, subject, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, fontReady]);
 
   useEffect(() => { regenerate(); }, [regenerate]);
 
@@ -226,6 +233,24 @@ export default function OMRPrepareTool() {
     pdf.setDrawColor(150, 150, 150);
     pdf.line(0, halfH, 210, halfH);
     pdf.save('answer-sheet-a4-top-bottom-x2.pdf');
+  }
+
+  function downloadSheetHalfA4() {
+    // A4 portrait cut left-right into two independent portrait halves, each
+    // 105mm wide x 297mm tall, with a dashed cut line between them. Each
+    // half keeps its own full set of 4 fiducial markers, so after cutting,
+    // each half is a complete, independently scannable sheet — a portrait
+    // shape that sits naturally in a phone's portrait camera frame.
+    const canvas = sheetCanvasRef.current;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const imgData = canvas.toDataURL('image/png');
+    const halfW = 105; // 210mm / 2
+    pdf.addImage(imgData, 'PNG', 0, 0, halfW, 297);
+    pdf.addImage(imgData, 'PNG', halfW, 0, halfW, 297);
+    pdf.setLineDash([2, 2], 0);
+    pdf.setDrawColor(150, 150, 150);
+    pdf.line(halfW, 0, halfW, 297);
+    pdf.save('answer-sheet-a4-left-right-x2.pdf');
   }
 
   function downloadSheetPNG() {
@@ -352,18 +377,46 @@ export default function OMRPrepareTool() {
               {[3,4,5].map(n => <option key={n} value={n}>{n} หลัก</option>)}
             </select>
           </div>
+          <div className={field}>
+            <label className={label}>รูปแบบกระดาษ</label>
+            <select className={inputCls} value={paperLayout} onChange={e=>setPaperLayout(e.target.value)}>
+              <option value="topBottom">บน-ล่าง (แนวนอน) = 2 ชุด</option>
+              <option value="half">ซ้าย-ขวา (แนวตั้ง) = 2 ชุด</option>
+            </select>
+          </div>
+          {paperLayout === 'half' && (
+            <label className={field + ' justify-end'} style={{ paddingBottom: 8 }}>
+              <span className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={forceCols3} onChange={e => setForceCols3(e.target.checked)} />
+                แบ่ง 3 คอลัมน์ (สำหรับ 60 ข้อ)
+              </span>
+            </label>
+          )}
         </div>
+        {paperLayout === 'half' && (
+          <div className="text-xs text-amber-700 mt-2 mb-1">
+            ⚠ ทดลอง: รูปแบบนี้ยังใช้ได้แค่ดูตัวอย่าง/พิมพ์เท่านั้น หน้าสแกนตรวจยังอ่านได้เฉพาะแบบ &ldquo;บน-ล่าง&rdquo; — ถ้าชอบแบบนี้แล้วต้องการใช้จริง แจ้งได้เลย จะเชื่อมให้หน้าสแกนอ่านแบบนี้ได้ด้วย
+          </div>
+        )}
         <div className="mt-4 flex gap-5 flex-wrap">
           <div>
-            <div className={imgwrap} style={{width: 340}}>
+            <div className={imgwrap} style={{width: paperLayout === 'half' ? 170 : 340}}>
               <canvas ref={sheetCanvasRef} className="w-full"/>
             </div>
             <div className="flex gap-2 mt-2.5 flex-wrap">
-              <button className={btn} onClick={downloadSheetTopBottomA4}>📄 ดาวน์โหลด PDF (A4 บน-ล่าง = 2 ชุด)</button>
+              {paperLayout === 'half' ? (
+                <button className={btn} onClick={downloadSheetHalfA4}>📄 ดาวน์โหลด PDF (A4 ซ้าย-ขวา = 2 ชุด)</button>
+              ) : (
+                <button className={btn} onClick={downloadSheetTopBottomA4}>📄 ดาวน์โหลด PDF (A4 บน-ล่าง = 2 ชุด)</button>
+              )}
               <button className={btnSecondary} onClick={downloadSheetPNG}>ดาวน์โหลด PNG</button>
             </div>
             <div className="text-[11px] text-amber-700 mt-1.5">⚠ ใช้ไฟล์ PDF สำหรับสั่งพิมพ์ เพราะกำหนดขนาด A4 จริงไว้แน่นอน ไฟล์ PNG อาจพิมพ์ออกมาขนาดผิดเพี้ยนขึ้นอยู่กับโปรแกรมที่ใช้เปิด</div>
-            <div className="text-[11px] text-gray-500 mt-1">พิมพ์ออกมาจะได้ A4 1 แผ่น มีกระดาษคำตอบ 2 ชุดวางซ้อนกันบน-ล่าง (210×148.5mm ต่อชุด) รูปแบบรหัสนักเรียนเป็นแนวนอน ฝนบรรทัดละ 1 หลัก มีเส้นประให้ตัดแบ่งตรงกลาง แต่ละชุดมีจุดมุม 4 จุดครบในตัวเอง สแกนแยกได้อิสระหลังตัด</div>
+            {paperLayout === 'half' ? (
+              <div className="text-[11px] text-gray-500 mt-1">พิมพ์ออกมาจะได้ A4 1 แผ่น มีกระดาษคำตอบ 2 ชุดวางเรียงกันซ้าย-ขวา (105×297mm ต่อชุด แนวตั้ง) เหมาะกับการถ่ายด้วยกล้องมือถือแนวตั้ง มีเส้นประให้ตัดแบ่งตรงกลาง แต่ละชุดมีจุดมุม 4 จุดครบในตัวเอง สแกนแยกได้อิสระหลังตัด</div>
+            ) : (
+              <div className="text-[11px] text-gray-500 mt-1">พิมพ์ออกมาจะได้ A4 1 แผ่น มีกระดาษคำตอบ 2 ชุดวางซ้อนกันบน-ล่าง (210×148.5mm ต่อชุด) รูปแบบรหัสนักเรียนเป็นแนวนอน ฝนบรรทัดละ 1 หลัก มีเส้นประให้ตัดแบ่งตรงกลาง แต่ละชุดมีจุดมุม 4 จุดครบในตัวเอง สแกนแยกได้อิสระหลังตัด</div>
+            )}
           </div>
           <div className="flex-1 min-w-[280px]">
             <div className="text-sm text-gray-500 leading-relaxed">

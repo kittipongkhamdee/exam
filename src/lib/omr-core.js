@@ -178,10 +178,14 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // so 3 columns still fits the narrower half-page width without crowding.
   const usableW = pageW - MARGIN * 2;
   const dense = forcedCols >= 3;
-  const bubbleR = dense ? 6 : 8;
-  const choiceGap = dense ? 18 : 26;
-  const qLabelW = dense ? 24 : 40; // must clear the 2-digit "01." label text (12px font) before the first bubble starts
-  const singleColW = dense ? 110 : 140; // approx width needed for qLabel + 4-5 choice bubbles
+  // Bubble radius stays full-size (8) even in dense mode — the current
+  // 3-column use case (60 questions on the landscape-half layout, ~174px
+  // per column) has enough width margin to not need smaller circles, and
+  // smaller ones are harder to fill accurately with a pencil.
+  const bubbleR = 8;
+  const choiceGap = dense ? 22 : 26;
+  const qLabelW = dense ? 28 : 40; // must clear the 2-digit "01." label text (12px font) before the first bubble starts
+  const singleColW = dense ? 120 : 140; // approx width needed for qLabel + 4-5 choice bubbles
   const maxCols = Math.max(1, Math.floor(usableW / singleColW));
   const cols = forcedCols || (numQuestions > 30 ? Math.min(2, maxCols) : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? Math.min(2, maxCols) : 1));
   const perCol = Math.ceil(numQuestions / cols);

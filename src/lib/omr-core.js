@@ -202,20 +202,33 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
     questions.push({ index: q, labelX: MARGIN + col * colW, labelY: y, choices });
   }
 
-  // Student ID grid sits below the title on the half sheet (too narrow to
-  // place it beside the title like the full sheet does).
-  const idStartX = MARGIN;
-  const idStartY = 150;
+  // Student ID grid sits below the title/name lines on the half sheet, as a
+  // bordered box (too narrow to place it beside the title like the full
+  // sheet does). Same row-per-digit, column-per-value (0-9) arrangement as
+  // the 'topBottom' style — one filled bubble per row, a single 0-9 header
+  // row shared across all digits, rather than the value printed inside
+  // every bubble — since that's easier for a student to fill correctly.
+  const idBoxX = MARGIN;
+  const idBoxY = MARGIN + MARKER + 34;
+  const idLabelH = 16;
+  const idRowH = 20, idColGap = 22;
+  const idBoxW = 9 * idColGap + 30;
+  const idBoxH = idLabelH + idDigits * idRowH + 14;
+  const idStartX = idBoxX + 16;
+  const idStartY = idBoxY + idLabelH + 16;
   const idGrid = [];
   for (let d = 0; d < idDigits; d++) {
     const digits = [];
     for (let v = 0; v <= 9; v++) {
-      digits.push({ x: idStartX + d * 24, y: idStartY + v * 18, r: 6, value: v });
+      digits.push({ x: idStartX + v * idColGap, y: idStartY + d * idRowH, r: 7, value: v });
     }
     idGrid.push(digits);
   }
 
-  return { questions, idGrid, cols, perCol, layoutStyle: 'halfPortrait' };
+  return {
+    questions, idGrid, cols, perCol, layoutStyle: 'halfPortrait',
+    idBoxX, idBoxY, idBoxW, idBoxH, idLabelH, idStartX, idStartY, idColGap,
+  };
 }
 
 function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
@@ -426,35 +439,26 @@ function drawSheet(canvas, opts, answers) {
   ctx.font = '9px "Prompt", sans-serif';
   ctx.fillText('ชื่อ-นามสกุล: ________________________', MARGIN, MARGIN + MARKER + 22);
 
-  ctx.font = '9px "Prompt", sans-serif';
-  ctx.fillStyle = '#000';
-  ctx.fillText('เลขที่ / รหัสนักเรียน:', MARGIN, MARGIN + MARKER + 42);
+  // Student-ID box: bordered, with a "ฝนบรรทัดละ 1 ตัว" label and a single
+  // 0-9 header row shared across every digit row below it — same
+  // arrangement as the 'topBottom' style's ID box (row = digit position,
+  // column = value), rather than printing the value inside every bubble.
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2;
+  ctx.strokeRect(layout.idBoxX, layout.idBoxY, layout.idBoxW, layout.idBoxH);
+  ctx.font = 'bold 9px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.fillText('รหัสนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 8, layout.idBoxY + 12);
 
-  // ID grid — a header row above it labels each column with its place value
-  // (หมื่น/พัน/ร้อย/สิบ/หน่วย) so students don't fill digits into the wrong
-  // column, which is an easy mistake with a 5-column grid of bare 0-9s.
-  const placeNames = ['หมื่น','พัน','ร้อย','สิบ','หน่วย'];
-  const idDigitCount = layout.idGrid.length;
-  const placeLabelsForCount = placeNames.slice(placeNames.length - idDigitCount);
-  ctx.font = 'bold 8px "Prompt", sans-serif';
-  ctx.fillStyle = '#666';
-  layout.idGrid.forEach((digitCol, d) => {
-    if (digitCol.length === 0) return;
-    const label = placeLabelsForCount[d] || '';
-    const topCellY = digitCol[0].y;
-    ctx.fillText(label, digitCol[0].x - 10, topCellY - 10);
-  });
+  ctx.font = 'bold 8px "Prompt", sans-serif'; ctx.fillStyle = '#666';
+  for (let v = 0; v <= 9; v++) {
+    ctx.fillText(String(v), layout.idStartX + v * layout.idColGap - 3, layout.idStartY - 9);
+  }
 
-  layout.idGrid.forEach((digitCol) => {
-    digitCol.forEach((cell) => {
+  layout.idGrid.forEach((digitRow, d) => {
+    digitRow.forEach((cell) => {
       ctx.beginPath();
       ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
       ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.font = '8px "Prompt", sans-serif';
-      ctx.fillStyle = '#333';
-      ctx.fillText(String(cell.value), cell.x - 3, cell.y + 3);
-      const digitIndex = layout.idGrid.indexOf(digitCol);
-      if (answers && answers.studentId && answers.studentId[digitIndex] === String(cell.value)) {
+      if (answers && answers.studentId && answers.studentId[d] === String(cell.value)) {
         ctx.beginPath();
         ctx.arc(cell.x, cell.y, cell.r - 2, 0, Math.PI * 2);
         ctx.fillStyle = '#000'; ctx.fill();

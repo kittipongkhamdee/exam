@@ -562,7 +562,7 @@ function drawSheet(canvas, opts, answers) {
   const writeBoxStartX = layout.idBoxX + layout.idBoxW - writeBoxesW;
   const writeBoxY = MARGIN + MARKER + 16;
   ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
-  ctx.fillText('เลขประจำตัวนักเรียน', layout.idBoxX, MARGIN + MARKER + 10);
+  ctx.fillText('เลขประจำตัวนักเรียน', writeBoxStartX, MARGIN + MARKER + 10);
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   for (let i = 0; i < numIdDigits; i++) {
     const bx = writeBoxStartX + i * (writeBoxSize + writeBoxGap);
@@ -585,9 +585,9 @@ function drawSheet(canvas, opts, answers) {
   // run into them, regardless of how long a name actually is.
   const nameMaxW = writeBoxStartX - MARGIN - 12;
   if (opts.studentName) {
-    fillTextClipped(ctx, `ชื่อ-นามสกุล: ${opts.studentName}`, MARGIN, nameLineY, nameMaxW);
+    fillTextClipped(ctx, `ชื่อ: ${opts.studentName}`, MARGIN, nameLineY, nameMaxW);
   } else {
-    drawFillLine(ctx, 'ชื่อ-นามสกุล:', MARGIN, nameLineY, idBoxRightEdge);
+    drawFillLine(ctx, 'ชื่อ:', MARGIN, nameLineY, idBoxRightEdge);
   }
   const classLineMidX = MARGIN + (idBoxRightEdge - MARGIN) * 0.5;
   if (opts.studentClass) {

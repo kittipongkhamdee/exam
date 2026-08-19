@@ -203,7 +203,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const idRowH = 20, idColGap = 22;
   const idBoxW = 9 * idColGap + 30;
   const idBoxH = idLabelH + idDigits * idRowH + 14;
-  const idBoxY = MARGIN + MARKER + 34;
+  const idBoxY = MARGIN + MARKER + 48; // clears the name line + the ชั้น/เลขที่ line below it
   // Keep clear of the top-right fiducial marker, not just the page margin.
   const idBoxX = pageW - MARGIN - MARKER - 10 - idBoxW;
   const idStartX = idBoxX + 16;
@@ -213,7 +213,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // still fits a shorter page — e.g. the 'halfLandscape' variant, at 210mm
   // tall vs. 'half's 297mm — without the question grid running off the
   // bottom edge.
-  const startY = idBoxY + idBoxH + 30;
+  const startY = idBoxY + idBoxH + 26;
 
   const questions = [];
   for (let q = 0; q < numQuestions; q++) {
@@ -446,10 +446,12 @@ function drawSheet(canvas, opts, answers) {
   ctx.font = '9px "Prompt", sans-serif';
   ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 28);
 
-  // Half-page header is a tight vertical stack: title, subject, then name
-  // line clearly below both (not sharing a baseline with the subject).
+  // Half-page header is a tight vertical stack: title, subject, then the
+  // name line, then a ชั้น/เลขที่ line right below it (not sharing a
+  // baseline with the subject).
   ctx.font = '9px "Prompt", sans-serif';
   ctx.fillText('ชื่อ-นามสกุล: ________________________', MARGIN, MARGIN + MARKER + 22);
+  ctx.fillText('ชั้น: ______________  เลขที่: ______________', MARGIN, MARGIN + MARKER + 36);
 
   // Student-ID box: bordered, with a "ฝนบรรทัดละ 1 ตัว" label and a single
   // 0-9 header row shared across every digit row below it — same

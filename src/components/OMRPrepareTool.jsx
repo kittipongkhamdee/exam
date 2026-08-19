@@ -20,9 +20,12 @@ import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResult
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
   const [numChoices, setNumChoices] = useState(4);
+  // Fixed at 5 digits — no longer a picker. Kept as state (not a plain
+  // constant) so loading an older saved quiz that used a different digit
+  // count via handleLoadQuiz still displays/prints correctly.
   const [idDigits, setIdDigits] = useState(5);
   const [scheme, setScheme] = useState('thai');
-  const [title, setTitle] = useState('แบบทดสอบวิทยาศาสตร์ ม.1');
+  const [title, setTitle] = useState('แบบทดสอบ');
   const [subject, setSubject] = useState('บทที่ 3 พลังงาน');
   // Paper layout: 'topBottom' (A4 cut top/bottom into two landscape halves —
   // the current default, saved quizzes assume this) or 'half' (A4 turned
@@ -90,19 +93,24 @@ export default function OMRPrepareTool() {
     }
   }, []);
 
-  // When a subject is picked: load its existing quizzes.
+  // When a subject is picked: load its existing quizzes, and default the
+  // quiz title to "แบบทดสอบ<ชื่อวิชา>" — the teacher can still edit it
+  // freely afterward. handleLoadQuiz overwrites this with the saved title
+  // if an existing quiz is then picked from the dropdown below.
   useEffect(() => {
     (async () => {
       setQuizId(null);
       setRoster([]);
       if (!subjectId) { setExistingQuizzes([]); return; }
+      const subj = subjects.find(s => s.id === subjectId);
+      if (subj) setTitle(`แบบทดสอบ${subj.subject_name}`);
       try {
         setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       } catch {
         setExistingQuizzes([]);
       }
     })();
-  }, [subjectId]);
+  }, [subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLoadQuiz(id) {
     if (!id) return;
@@ -373,12 +381,6 @@ export default function OMRPrepareTool() {
               <option value="thai">ก ข ค ง</option>
               <option value="en">A B C D</option>
               <option value="num">1 2 3 4</option>
-            </select>
-          </div>
-          <div className={field}>
-            <label className={label}>หลักรหัสนักเรียน</label>
-            <select className={inputCls} value={idDigits} onChange={e=>setIdDigits(+e.target.value)}>
-              {[3,4,5].map(n => <option key={n} value={n}>{n} หลัก</option>)}
             </select>
           </div>
           <div className={field}>

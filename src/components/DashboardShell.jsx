@@ -128,33 +128,101 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-24">
+    <div className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
-        <h1 className="text-xl font-bold text-gray-900">เข้าสู่ระบบ</h1>
-        <p className="mt-1 mb-6 text-sm text-gray-500">
-          ใช้บัญชีครูของระบบ PP5 เพื่อจัดการกระดาษคำตอบ OMR
-        </p>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            type="email" required placeholder="อีเมล" value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-          <input
-            type="password" required placeholder="รหัสผ่าน" value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-          {error && <div className="text-xs text-red-600">{error}</div>}
-          <button
-            type="submit" disabled={submitting}
-            className="w-full rounded-lg bg-gradient-to-r from-indigo-600 to-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {submitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
-          </button>
-        </form>
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-4">
+            <ScanCheckIcon className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="text-xl font-bold text-gray-900">ยินดีต้อนรับกลับมา</h1>
+          <p className="mt-1 text-sm text-gray-500">เข้าสู่ระบบเพื่อจัดการและตรวจข้อสอบ</p>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">อีเมล</label>
+              <div className="relative">
+                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="email" required placeholder="อีเมลของคุณ" value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">รหัสผ่าน</label>
+              <div className="relative">
+                <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="password" required placeholder="รหัสผ่าน" value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            {error && <div className="text-xs text-red-600">{error}</div>}
+            <button
+              type="submit" disabled={submitting}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {submitting ? 'กำลังเข้าสู่ระบบ...' : (<><ArrowRightIcon className="h-4 w-4" /> เข้าสู่ระบบ</>)}
+            </button>
+          </form>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/promptpay-qr.jpg" alt="PromptPay QR" className="h-20 w-20 rounded-lg object-cover shrink-0 border border-gray-100" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+              ☕ เลี้ยงกาแฟผู้พัฒนา
+            </div>
+            <div className="text-sm font-bold text-gray-900">085-203-7897</div>
+            <div className="text-xs text-gray-500">นายกิตติพงษ์ คำดี</div>
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function ScanCheckIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 8V5a1 1 0 0 1 1-1h3" />
+      <path d="M16 4h3a1 1 0 0 1 1 1v3" />
+      <path d="M20 16v3a1 1 0 0 1-1 1h-3" />
+      <path d="M8 20H5a1 1 0 0 1-1-1v-3" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+function MailIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
+
+function LockIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
   );
 }
 

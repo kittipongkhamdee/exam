@@ -18,7 +18,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
-  toGray, findFiducials, warpImage, readBubbles, drawGradedOverlay,
+  findFiducialsWithOrientation, readBubbles, drawGradedOverlay,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
@@ -159,23 +159,21 @@ export default function OMRScanTool() {
         srcCanvas.width = img.width; srcCanvas.height = img.height;
         srcCanvas.getContext('2d').drawImage(img, 0, 0);
 
-        const sctx = srcCanvas.getContext('2d');
-        const imgData = sctx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
-        const gray = toGray(imgData);
-        const { corners } = findFiducials(gray, srcCanvas.width, srcCanvas.height);
+        // Live camera captures can come out rotated relative to how the
+        // photo visually looked (a getUserMedia quirk on some devices) —
+        // findFiducialsWithOrientation tries all 4 quarter-turns and picks
+        // whichever one actually finds the markers in a plausible
+        // rectangle, so a rotated capture is corrected transparently
+        // instead of producing a skewed, wrongly-graded read.
+        const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH);
 
-        if (corners.some(c => c === null)) {
+        if (!best) {
           setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' });
           setScanStage('done');
           return;
         }
 
-        const warped = warpImage(srcCanvas, corners, pageW, pageH);
-        if (!warped) {
-          setScanResult({ error: 'คำนวณการปรับมุมมองภาพไม่สำเร็จ (มุมที่ตรวจพบอาจผิดพลาด)' });
-          setScanStage('done');
-          return;
-        }
+        const warped = best.warped;
         const { responses, studentId: decodedId, layout } = readBubbles(warped, {
           numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
           idDigits: selectedQuiz.idDigits, pageW, pageH, layoutStyle, cols,
@@ -235,8 +233,16 @@ export default function OMRScanTool() {
       return;
     }
     try {
+      // No explicit width/height ideal here (previously 1920x1080, a fixed
+      // landscape request): forcing a landscape stream while the phone is
+      // physically held in portrait to frame a portrait-shaped answer
+      // sheet is exactly what triggers the rotated-buffer quirk that
+      // findFiducialsWithOrientation exists to correct for — better not to
+      // provoke it in the first place. Letting the browser pick its own
+      // default resolution keeps it aligned with the device's actual
+      // current orientation.
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
       cameraStreamRef.current = stream;

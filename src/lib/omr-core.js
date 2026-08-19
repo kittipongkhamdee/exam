@@ -686,6 +686,95 @@ function findFiducials(gray, width, height) {
   return { corners, threshold: otsuThreshold(gray) };
 }
 
+// Rotates a canvas by 0/90/180/270 degrees, swapping width/height for a
+// quarter turn.
+function rotateCanvas(canvas, degrees) {
+  if (degrees === 0) return canvas;
+  const swap = degrees === 90 || degrees === 270;
+  const w = canvas.width, h = canvas.height;
+  const out = document.createElement('canvas');
+  out.width = swap ? h : w;
+  out.height = swap ? w : h;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate(degrees * Math.PI / 180);
+  ctx.drawImage(canvas, -w / 2, -h / 2);
+  return out;
+}
+
+// Live camera captures (unlike file uploads, which get EXIF orientation
+// auto-applied by the browser when decoded into an <img>/Image) can come
+// out of canvas.drawImage(videoElement, ...) rotated relative to how the
+// photo visually looked on screen — a known getUserMedia quirk on some
+// Android/browser combinations, especially when a stream is requested at
+// fixed landscape dimensions while the phone is physically held in
+// portrait to frame a portrait-shaped answer sheet. findFiducials assumes
+// the buffer is already upright, so a rotated buffer makes it mislabel
+// which detected marker is TL/TR/BL/BR — producing a severely
+// skewed/sheared warp instead of an outright "corners not found" failure,
+// which is much harder for a teacher to notice than a clean error.
+//
+// Every answer sheet is sparse (title/name/ID box) in its top ~15% and
+// dense (the multi-column bubble grid) across its bottom half, regardless
+// of numQuestions/numChoices/cols — a content-independent way to tell
+// "upright" from "upside-down" once aspect ratio alone has narrowed the 4
+// possible rotations down to a pair, since a 180-degree flip preserves
+// aspect ratio and so can't be told apart from the correct orientation by
+// shape alone. Returns a positive score for a plausibly-upright warp,
+// negative if the dense grid is sitting up top instead (i.e. flipped).
+function contentOrientationScore(warpedCanvas, pageW, pageH) {
+  const ctx = warpedCanvas.getContext('2d');
+  const imgData = ctx.getImageData(0, 0, pageW, pageH);
+  const gray = toGray(imgData);
+  function bandDensity(y0, y1) {
+    let dark = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = 0; x < pageW; x++) dark += 255 - gray[y * pageW + x];
+    }
+    return dark / ((y1 - y0) * pageW);
+  }
+  const topDensity = bandDensity(0, Math.floor(pageH * 0.15));
+  const botDensity = bandDensity(Math.floor(pageH * 0.5), Math.floor(pageH * 0.95));
+  return botDensity - topDensity;
+}
+
+// Tries corner detection at all 4 quarter-turns of the source canvas.
+// Rotations whose corner quadrilateral aspect ratio doesn't plausibly
+// match the page's actual pageW:pageH are discarded outright (this
+// rejects a 90-degree swap, e.g. a portrait page read as landscape).
+// Among the survivors — normally just the correct orientation and its
+// 180-degree-flipped twin, since flipping preserves aspect ratio —
+// contentOrientationScore breaks the tie by which one actually has its
+// dense bubble grid in the bottom half rather than the top. This corrects
+// a rotated camera capture transparently instead of grading a garbled
+// read (see findFiducials's caller in OMRScanTool.jsx for context on when
+// this happens).
+function findFiducialsWithOrientation(srcCanvas, pageW, pageH) {
+  const expectedRatio = pageH / pageW;
+  const candidates = [];
+  for (const deg of [0, 90, 180, 270]) {
+    const canvas = rotateCanvas(srcCanvas, deg);
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const gray = toGray(imgData);
+    const { corners } = findFiducials(gray, canvas.width, canvas.height);
+    if (corners.some(c => c === null)) continue;
+    const [tl, tr, bl] = corners;
+    const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+    const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+    if (topW === 0 || leftH === 0) continue;
+    const detectedRatio = leftH / topW;
+    const aspectScore = Math.abs(Math.log(detectedRatio / expectedRatio));
+    if (aspectScore > 0.35) continue; // clearly the wrong aspect (90-degree swap)
+    const warped = warpImage(canvas, corners, pageW, pageH);
+    if (!warped) continue;
+    candidates.push({ canvas, corners, rotationDeg: deg, warped, orientationScore: contentOrientationScore(warped, pageW, pageH) });
+  }
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.orientationScore - a.orientationScore);
+  return candidates[0]; // { canvas, corners, rotationDeg, warped }
+}
+
 // Otsu threshold computed over a single rectangular region only, rather
 // than the whole image — adapts to that region's local lighting.
 function otsuThresholdRegion(gray, width, height, region) {
@@ -1022,6 +1111,7 @@ export {
   drawSheet,
   toGray,
   findFiducials,
+  findFiducialsWithOrientation,
   otsuThreshold,
   otsuThresholdRegion,
   findBlobCandidates,

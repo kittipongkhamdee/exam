@@ -117,6 +117,39 @@ function ClockIcon(props) {
   );
 }
 
+function ExpandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3" />
+    </svg>
+  );
+}
+
+function CollapseIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M9 3v3a2 2 0 0 1-2 2H4M15 3v3a2 2 0 0 0 2 2h3M9 21v-3a2 2 0 0 0-2-2H4M15 21v-3a2 2 0 0 1 2-2h3" />
+    </svg>
+  );
+}
+
+function escapeSvgText(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// A faint, tiled, unselectable watermark identifying who's looking at this
+// screen and when — doesn't stop a screenshot (no web page can), but makes
+// one traceable back to a student if it's ever shared, which is the
+// realistic deterrent available here.
+function watermarkBackground(line1, line2) {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="280" height="180">` +
+    `<text x="10" y="80" transform="rotate(-24 140 90)" font-size="13" font-family="sans-serif" fill="#000" fill-opacity="0.07">${escapeSvgText(line1)}</text>` +
+    `<text x="10" y="100" transform="rotate(-24 140 90)" font-size="13" font-family="sans-serif" fill="#000" fill-opacity="0.07">${escapeSvgText(line2)}</text>` +
+    `</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
 export default function StudentExamTool() {
   const [savedSession] = useState(() => (typeof window !== 'undefined' ? loadSession() : null));
   const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted'
@@ -131,6 +164,42 @@ export default function StudentExamTool() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittedRef = useRef(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // The Fullscreen API is a display preference the student toggles
+  // themselves, not an anti-cheat signal — leaving it doesn't count as a
+  // violation, since that would punish someone for simply preferring a
+  // non-fullscreen view. iOS Safari doesn't support requestFullscreen() on
+  // ordinary pages at all (only iPad, and only in some versions), so the
+  // button below only renders where document.fullscreenEnabled says it'll
+  // actually work.
+  useEffect(() => {
+    function onFullscreenChange() {
+      setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    };
+  }, []);
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } else {
+        const el = document.documentElement;
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }
+    } catch {
+      // best-effort — some browsers refuse without a direct user-gesture
+      // chain; nothing useful to show the student for this
+    }
+  }
 
   useEffect(() => {
     if (phase !== 'exam') return;
@@ -400,8 +469,28 @@ export default function StudentExamTool() {
   }
 
   // phase === 'exam'
+  const fullscreenSupported = typeof document !== 'undefined' && (document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const watermarkTime = new Date(now).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24 relative">
+      <div
+        className="fixed inset-0 z-40 pointer-events-none select-none"
+        style={{ backgroundImage: watermarkBackground(`${attempt.student_name} · ${studentCode}`, watermarkTime), backgroundRepeat: 'repeat' }}
+        aria-hidden="true"
+      />
+
+      {fullscreenSupported && (
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          aria-label={isFullscreen ? 'ออกจากโหมดเต็มจอ' : 'เข้าสู่โหมดเต็มจอ'}
+          className="fixed bottom-5 right-5 z-50 h-11 w-11 rounded-full bg-gray-900/80 text-white flex items-center justify-center shadow-lg hover:bg-gray-900"
+        >
+          {isFullscreen ? <CollapseIcon className="h-5 w-5" /> : <ExpandIcon className="h-5 w-5" />}
+        </button>
+      )}
+
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <div className="min-w-0">
           <div className="font-semibold text-gray-700 truncate">{attempt.exam_set_title}</div>

@@ -1,51 +1,53 @@
 'use client';
 // ConfirmDialog.jsx
 //
-// A styled stand-in for window.confirm() — a modal card matching the
-// app's own look instead of the browser's native (and jarringly
-// unstyled) confirm popup. Fully controlled: the caller owns the open
-// state and passes onConfirm/onCancel, so it fits the same
-// useState-per-component pattern already used throughout this app rather
-// than pulling in a global modal library for one use case.
+// A stand-in for window.confirm() backed by SweetAlert2 instead of the
+// browser's native (and jarringly unstyled) confirm popup. Fully
+// controlled, same external API as before this used SweetAlert2 (open,
+// title, message, confirmLabel, cancelLabel, danger, onConfirm, onCancel)
+// so no call site needs to change — this just fires Swal.fire() when
+// `open` flips true. `loading` is accepted but unused: Swal now owns its
+// own in-dialog loading state via showLoaderOnConfirm, since preConfirm
+// awaits onConfirm directly.
+
+import { useEffect, useRef } from 'react';
+import Swal from 'sweetalert2';
 
 export default function ConfirmDialog({
   open, title, message, confirmLabel = 'ยืนยัน', cancelLabel = 'ยกเลิก',
-  danger = false, loading = false, onConfirm, onCancel,
+  danger = false, onConfirm, onCancel,
 }) {
-  if (!open) return null;
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={loading ? undefined : onCancel}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5"
-        onClick={e => e.stopPropagation()}
-      >
-        {title && <div className="font-semibold text-gray-900 mb-2">{title}</div>}
-        {message && <div className="text-sm text-gray-600 whitespace-pre-line mb-5">{message}</div>}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            onClick={onCancel}
-            disabled={loading}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={
-              "px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed transition " +
-              (danger ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700')
-            }
-            onClick={onConfirm}
-            disabled={loading}
-          >
-            {loading ? 'กำลังดำเนินการ...' : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const isOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (open && !isOpenRef.current) {
+      isOpenRef.current = true;
+      Swal.fire({
+        title,
+        text: message,
+        icon: danger ? 'warning' : 'question',
+        showCancelButton: true,
+        confirmButtonText: confirmLabel,
+        cancelButtonText: cancelLabel,
+        confirmButtonColor: danger ? '#dc2626' : '#4f46e5',
+        cancelButtonColor: '#6b7280',
+        reverseButtons: true,
+        showLoaderOnConfirm: true,
+        allowOutsideClick: () => !Swal.isLoading(),
+        preConfirm: async () => {
+          if (onConfirm) await onConfirm();
+        },
+      }).then(result => {
+        isOpenRef.current = false;
+        if (!result.isConfirmed && onCancel) onCancel();
+      });
+    } else if (!open) {
+      isOpenRef.current = false;
+    }
+    // Fires once per open->true transition — title/message/etc are only
+    // read at that instant, matching the old modal's behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  return null;
 }

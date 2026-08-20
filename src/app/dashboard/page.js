@@ -6,6 +6,7 @@ import DashboardShell from '@/components/DashboardShell';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listMyQuizzes, listMyRecentScanActivity, getMyScanStats } from '@/lib/omr-db';
+import { listMyExamSets, listMyExamRounds } from '@/lib/exam-db';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5';
 
@@ -21,6 +22,14 @@ function formatThaiDate(d) {
 
 function formatThaiTime(d) {
   return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' น.';
+}
+
+function formatThaiDateTime(isoString) {
+  return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function SectionLabel({ children }) {
+  return <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">{children}</div>;
 }
 
 function GreetingBanner() {
@@ -100,6 +109,9 @@ function ShortcutsCard() {
         <ShortcutRow href="/omr/prepare" icon={SheetIcon} iconBg="bg-gradient-to-br from-indigo-600 to-blue-500" title="กระดาษคำตอบ" desc="สร้างชุดข้อสอบและคีย์เฉลย" />
         <ShortcutRow href="/omr/scan" icon={CameraIcon} iconBg="bg-gradient-to-br from-emerald-600 to-teal-500" title="สแกนตรวจข้อสอบ" desc="ใช้กล้องมือถือตรวจอัตโนมัติ" />
         <ShortcutRow href="/omr/report" icon={ReportIcon} iconBg="bg-gradient-to-br from-amber-500 to-orange-500" title="รายงานคะแนน" desc="ดูสถิติและส่งออก CSV" />
+        <ShortcutRow href="/exam/schedule" icon={ClipboardIcon} iconBg="bg-gradient-to-br from-fuchsia-600 to-purple-500" title="จัดสอบออนไลน์" desc="ตั้งรอบสอบและรหัส PIN" />
+        <ShortcutRow href="/exam/monitor" icon={MonitorIcon} iconBg="bg-gradient-to-br from-rose-600 to-red-500" title="คุมสอบ" desc="มอนิเตอร์สดขณะกำลังสอบ" />
+        <ShortcutRow href="/exam/report" icon={ReportIcon} iconBg="bg-gradient-to-br from-teal-600 to-cyan-500" title="รายงานสอบออนไลน์" desc="ผลสอบและเปิดเผยคะแนน" />
         {isAdmin && (
           <ShortcutRow href="/settings" icon={GearIcon} iconBg="bg-gradient-to-br from-slate-700 to-slate-500" title="ตั้งค่า" desc="การตั้งค่าระบบสำหรับผู้ดูแล" />
         )}
@@ -210,15 +222,128 @@ function RecentActivityCard({ data, loading }) {
   );
 }
 
+// Every รอบสอบ visible to this teacher (own or admin), tagged with whether
+// it's live right now vs. still ahead — for the "สอบออนไลน์" glance card.
+// listMyExamRounds already scopes to "my own" the same way listMyQuizzes
+// does above, so this reuses that convention rather than introducing a
+// separate admin-wide fetch here.
+function useExamDashboardData() {
+  const [data, setData] = useState(null); // { totalSets, totalRounds, activeCount, upcomingCount, feed }
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [sets, rounds] = await Promise.all([listMyExamSets(supabase), listMyExamRounds(supabase)]);
+        const now = Date.now();
+        const withStatus = rounds.map(r => {
+          const opens = new Date(r.opens_at).getTime();
+          const closes = new Date(r.closes_at).getTime();
+          return { ...r, isActive: now >= opens && now <= closes, isUpcoming: now < opens };
+        });
+        const active = withStatus.filter(r => r.isActive);
+        const upcoming = withStatus.filter(r => r.isUpcoming).sort((a, b) => new Date(a.opens_at) - new Date(b.opens_at));
+        setData({
+          totalSets: sets.length,
+          totalRounds: rounds.length,
+          activeCount: active.length,
+          upcomingCount: upcoming.length,
+          feed: [...active, ...upcoming].slice(0, 5),
+        });
+      } catch {
+        // best-effort — the rest of the dashboard still works
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  return { data, loading };
+}
+
+function ExamStatsGrid({ data, loading }) {
+  if (loading) {
+    return <div className="text-sm text-gray-500 mb-6">กำลังโหลดข้อมูล...</div>;
+  }
+  if (!data) return null;
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <StatCard icon={ClipboardIcon} iconBg="bg-gradient-to-br from-fuchsia-600 to-purple-500" value={data.totalSets} unit="ชุด" label="ชุดข้อสอบออนไลน์" />
+      <StatCard icon={CalendarIcon} iconBg="bg-gradient-to-br from-indigo-600 to-blue-500" value={data.totalRounds} unit="รอบ" label="รอบสอบทั้งหมด" />
+      <StatCard icon={MonitorIcon} iconBg="bg-gradient-to-br from-rose-600 to-red-500" value={data.activeCount} unit="รอบ" label="กำลังสอบอยู่ตอนนี้" />
+      <StatCard icon={ClockIcon} iconBg="bg-gradient-to-br from-amber-500 to-orange-500" value={data.upcomingCount} unit="รอบ" label="ยังไม่ถึงเวลาสอบ" />
+    </div>
+  );
+}
+
+const ROUND_STATUS = {
+  active: { label: 'กำลังสอบ', cls: 'bg-red-50 text-red-600' },
+  upcoming: { label: 'ยังไม่เริ่ม', cls: 'bg-gray-100 text-gray-500' },
+};
+
+function ExamActivityCard({ data, loading }) {
+  if (loading || !data) return null;
+
+  return (
+    <div className={card + ' mt-6'}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5 text-sm font-bold">
+          <MonitorIcon className="h-4 w-4 text-gray-400" /> รอบสอบออนไลน์กำลังสอบ / ใกล้ถึง
+        </div>
+        <Link href="/exam/schedule" className="text-xs font-semibold text-indigo-600 flex items-center gap-0.5">
+          ดูทั้งหมด <ChevronRightIcon className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      {data.feed.length === 0 ? (
+        <div className="flex flex-col items-center text-center py-6">
+          <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+            <InfoIcon className="h-5 w-5 text-gray-400" />
+          </div>
+          <div className="text-sm text-gray-500 mb-4">ยังไม่มีรอบสอบที่ตั้งไว้</div>
+          <Link
+            href="/exam/schedule"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-500 text-white text-sm font-semibold px-4 py-2.5 hover:opacity-90 transition"
+          >
+            <PlusIcon className="h-4 w-4" /> ตั้งรอบสอบแรก
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {data.feed.map(r => (
+            <Link
+              key={r.id}
+              href={r.isActive ? '/exam/monitor' : '/exam/schedule'}
+              className="flex items-center justify-between gap-3 -mx-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{r.online_exam_sets?.title}</div>
+                <div className="text-xs text-gray-500 truncate">
+                  {r.online_exam_sets?.subjects?.subject_name} (ชั้น {r.online_exam_sets?.subjects?.grade_level}/{r.online_exam_sets?.subjects?.room}) · {formatThaiDateTime(r.opens_at)}
+                </div>
+              </div>
+              <span className={'text-xs font-bold shrink-0 px-2 py-0.5 rounded-full ' + (r.isActive ? ROUND_STATUS.active.cls : ROUND_STATUS.upcoming.cls)}>
+                {r.isActive ? ROUND_STATUS.active.label : ROUND_STATUS.upcoming.label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardContent() {
   const { data, loading } = useDashboardData();
+  const { data: examData, loading: examLoading } = useExamDashboardData();
 
   return (
     <div className="max-w-5xl">
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">แดชบอร์ด</h1>
-          <p className="mt-1 text-sm text-gray-500">ภาพรวมการตรวจข้อสอบของคุณ</p>
+          <p className="mt-1 text-sm text-gray-500">ภาพรวมการตรวจข้อสอบและสอบออนไลน์ของคุณ</p>
         </div>
         <Link
           href="/omr/scan"
@@ -230,9 +355,16 @@ function DashboardContent() {
       </div>
 
       <GreetingBanner />
+
+      <SectionLabel>ตรวจข้อสอบ (OMR)</SectionLabel>
       <StatsGrid data={data} loading={loading} />
+
+      <SectionLabel>สอบออนไลน์</SectionLabel>
+      <ExamStatsGrid data={examData} loading={examLoading} />
+
       <ShortcutsCard />
       <RecentActivityCard data={data} loading={loading} />
+      <ExamActivityCard data={examData} loading={examLoading} />
     </div>
   );
 }
@@ -347,6 +479,34 @@ function PlusIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function ClipboardIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1Z" />
+      <path d="M9 12h6M9 16h4" />
+    </svg>
+  );
+}
+
+function CalendarIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M3 9h18M8 2v4M16 2v4" />
+    </svg>
+  );
+}
+
+function MonitorIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
     </svg>
   );
 }

@@ -150,12 +150,18 @@ export default function OMRReportTool() {
             <button
               key={q.id}
               onClick={() => handleSelectQuiz(q)}
-              className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition"
+              className="w-full flex items-center gap-3 text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition"
             >
-              <div className="font-semibold text-gray-900">{q.title}</div>
-              <div className="text-sm text-gray-500 mt-0.5">
-                {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shrink-0">
+                <ReportIcon className="h-5 w-5" />
               </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-gray-900 truncate">{q.title}</div>
+                <div className="text-sm text-gray-500 mt-0.5 truncate">
+                  {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                </div>
+              </div>
+              <ChevronRightIcon className="h-4 w-4 text-gray-300 shrink-0" />
             </button>
           ))}
         </div>
@@ -304,5 +310,21 @@ export default function OMRReportTool() {
         </>
       )}
     </div>
+  );
+}
+
+function ReportIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 20V10M12 20V4M20 20v-7" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </svg>
   );
 }

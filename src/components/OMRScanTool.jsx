@@ -397,9 +397,14 @@ export default function OMRScanTool() {
           onClick={() => setSaveScanPhotos(!saveScanPhotos)}
           className={card + ' w-full flex items-center justify-between gap-3 text-left cursor-pointer select-none'}
         >
-          <span>
-            <span className="block text-sm font-semibold text-gray-900">🖼️ เก็บรูปกระดาษคำตอบไว้ดูย้อนหลัง</span>
-            <span className="block text-xs text-gray-500 mt-0.5">บันทึกรูปที่ตรวจแล้ว (พร้อมทำเครื่องหมายถูก/ผิด) ไว้เปิดดูภายหลัง</span>
+          <span className="flex items-center gap-3 min-w-0">
+            <span className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0">
+              <PhotoIcon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-gray-900">เก็บรูปกระดาษคำตอบไว้ดูย้อนหลัง</span>
+              <span className="block text-xs text-gray-500 mt-0.5">บันทึกรูปที่ตรวจแล้ว (พร้อมทำเครื่องหมายถูก/ผิด) ไว้เปิดดูภายหลัง</span>
+            </span>
           </span>
           <span
             role="switch" aria-checked={saveScanPhotos}
@@ -414,9 +419,14 @@ export default function OMRScanTool() {
           onClick={() => setRapidMode(!rapidMode)}
           className={card + ' w-full flex items-center justify-between gap-3 text-left cursor-pointer select-none'}
         >
-          <span>
-            <span className="block text-sm font-semibold text-gray-900">⚡ ตรวจแบบรัว (ไม่ต้องเลือกชื่อก่อน)</span>
-            <span className="block text-xs text-gray-500 mt-0.5">อ่านชื่อนักเรียนจากรหัสประจำตัวที่ฝนไว้ในกระดาษคำตอบเองหลังถ่ายภาพ เหมาะกับการถ่ายทีละหลายแผ่นต่อเนื่อง</span>
+          <span className="flex items-center gap-3 min-w-0">
+            <span className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shrink-0">
+              <ZapIcon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-gray-900">ตรวจแบบรัว (ไม่ต้องเลือกชื่อก่อน)</span>
+              <span className="block text-xs text-gray-500 mt-0.5">อ่านชื่อนักเรียนจากรหัสประจำตัวที่ฝนไว้ในกระดาษคำตอบเองหลังถ่ายภาพ เหมาะกับการถ่ายทีละหลายแผ่นต่อเนื่อง</span>
+            </span>
           </span>
           <span
             role="switch" aria-checked={rapidMode}
@@ -463,12 +473,18 @@ export default function OMRScanTool() {
             <button
               key={q.id}
               onClick={() => handleSelectQuiz(q)}
-              className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition"
+              className="w-full flex items-center gap-3 text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition"
             >
-              <div className="font-semibold text-gray-900">{q.title}</div>
-              <div className="text-sm text-gray-500 mt-0.5">
-                {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-500 text-white flex items-center justify-center shrink-0">
+                <SheetIcon className="h-5 w-5" />
               </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-gray-900 truncate">{q.title}</div>
+                <div className="text-sm text-gray-500 mt-0.5 truncate">
+                  {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                </div>
+              </div>
+              <ChevronRightIcon className="h-4 w-4 text-gray-300 shrink-0" />
             </button>
           ))}
         </div>
@@ -651,5 +667,40 @@ function QuizHeader({ quiz, onChangeQuiz, scannedCount, totalCount }) {
       </div>
       <button className="text-xs font-semibold text-indigo-600 shrink-0" onClick={onChangeQuiz}>เปลี่ยนชุดข้อสอบ</button>
     </div>
+  );
+}
+
+function SheetIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
+    </svg>
+  );
+}
+
+function PhotoIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m21 15-5-5L5 20" />
+    </svg>
+  );
+}
+
+function ZapIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </svg>
   );
 }

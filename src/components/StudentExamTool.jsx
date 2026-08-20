@@ -82,7 +82,7 @@ export default function StudentExamTool() {
   const [loginError, setLoginError] = useState(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
-  const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, deadline, questions }
+  const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, student_name, deadline, questions }
   const [answers, setAnswers] = useState({}); // { [question_id]: selectedIndex|null }
   const [now, setNow] = useState(Date.now());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -231,13 +231,16 @@ export default function StudentExamTool() {
   // phase === 'exam'
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div className="min-w-0">
-          <div className="font-bold text-gray-900 truncate">{attempt.exam_set_title}</div>
-          <div className="text-xs text-gray-500">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
-        </div>
-        <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
-          <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+        <div className="text-center text-sm font-semibold text-gray-900 px-4 pt-2.5 truncate">{attempt.student_name}</div>
+        <div className="px-4 pb-3 pt-1 flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="font-bold text-gray-900 truncate">{attempt.exam_set_title}</div>
+            <div className="text-xs text-gray-500">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
+          </div>
+          <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
+            <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
+          </div>
         </div>
       </div>
 

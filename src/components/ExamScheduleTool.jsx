@@ -109,6 +109,7 @@ export default function ExamScheduleTool() {
   const [closesAt, setClosesAt] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(DEFAULT_DURATION);
   const [pin, setPin] = useState(() => generatePin());
+  const [unlockPin, setUnlockPin] = useState(() => generatePin());
   const [editingRoundId, setEditingRoundId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -147,6 +148,7 @@ export default function ExamScheduleTool() {
     setClosesAt('');
     setDurationMinutes(DEFAULT_DURATION);
     setPin(generatePin());
+    setUnlockPin(generatePin());
     setFormError(null);
   }
 
@@ -157,11 +159,12 @@ export default function ExamScheduleTool() {
     setClosesAt(toLocalInputValue(r.closes_at));
     setDurationMinutes(r.duration_minutes);
     setPin(r.pin);
+    setUnlockPin(r.unlock_pin);
     setFormError(null);
   }
 
   async function handleSave() {
-    if (!examSetId || !opensAt || !closesAt || !pin.trim() || !durationMinutes) return;
+    if (!examSetId || !opensAt || !closesAt || !pin.trim() || !unlockPin.trim() || !durationMinutes) return;
     if (new Date(closesAt).getTime() <= new Date(opensAt).getTime()) {
       setFormError('เวลาปิดรับสอบต้องอยู่หลังเวลาเปิดสอบ');
       return;
@@ -173,6 +176,7 @@ export default function ExamScheduleTool() {
         id: editingRoundId,
         examSetId,
         pin: pin.trim(),
+        unlockPin: unlockPin.trim(),
         opensAt: new Date(opensAt).toISOString(),
         closesAt: new Date(closesAt).toISOString(),
         durationMinutes: Number(durationMinutes),
@@ -207,7 +211,7 @@ export default function ExamScheduleTool() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">จัดสอบ</h1>
-          <p className="text-sm text-gray-500">กำหนดช่วงเวลาสอบ เวลาทำต่อคน และรหัส PIN สำหรับนักเรียนเข้าสอบ</p>
+          <p className="text-sm text-gray-500">กำหนดช่วงเวลาสอบ เวลาทำต่อคน รหัส PIN เข้าสอบ และรหัสปลดล็อกสำหรับครูคุมสอบ</p>
         </div>
       </div>
 
@@ -262,6 +266,19 @@ export default function ExamScheduleTool() {
                   </button>
                 </div>
               </div>
+              <div className={field}>
+                <label className={label}>รหัสปลดล็อก (ครูคุมสอบเท่านั้น — ห้ามบอกนักเรียน)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text" className={inputCls + ' w-32 font-mono tracking-widest text-amber-700'}
+                    value={unlockPin}
+                    onChange={e => setUnlockPin(e.target.value)}
+                  />
+                  <button type="button" className={btnTiny} onClick={() => setUnlockPin(generatePin())} aria-label="สุ่มรหัสปลดล็อกใหม่">
+                    <RefreshIcon className="h-3.5 w-3.5" /> สุ่มใหม่
+                  </button>
+                </div>
+              </div>
             </div>
 
             {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
@@ -269,7 +286,7 @@ export default function ExamScheduleTool() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button" className={btn}
-                disabled={!examSetId || !opensAt || !closesAt || !pin.trim() || !durationMinutes || saving}
+                disabled={!examSetId || !opensAt || !closesAt || !pin.trim() || !unlockPin.trim() || !durationMinutes || saving}
                 onClick={handleSave}
               >
                 <SaveIcon className="h-4 w-4" /> {saving ? 'กำลังบันทึก...' : (editingRoundId ? 'บันทึกการแก้ไข' : 'ตั้งรอบสอบ')}
@@ -300,6 +317,7 @@ export default function ExamScheduleTool() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={pill + ' ' + status.cls}>{status.label}</span>
                             <span className="font-mono font-bold tracking-widest text-gray-900">PIN: {r.pin}</span>
+                            <span className="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: {r.unlock_pin}</span>
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             {formatThai(r.opens_at)} – {formatThai(r.closes_at)} · ทำได้ {r.duration_minutes} นาที/คน

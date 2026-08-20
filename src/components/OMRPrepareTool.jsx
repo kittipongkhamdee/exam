@@ -467,8 +467,8 @@ export default function OMRPrepareTool() {
               <label className={label}>ชุดข้อสอบที่มีอยู่แล้ว</label>
               <select className={inputCls} value={quizId || ''} onChange={e => handleLoadQuiz(e.target.value)} disabled={loadingQuiz}>
                 <option value="">— สร้างชุดใหม่ —</option>
-                {existingQuizzes.map(q => (
-                  <option key={q.id} value={q.id}>{q.title} ({q.num_questions} ข้อ)</option>
+                {existingQuizzes.map((q, i) => (
+                  <option key={q.id} value={q.id}>{i + 1}. {q.title} ({q.num_questions} ข้อ)</option>
                 ))}
               </select>
             </div>

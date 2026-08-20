@@ -469,7 +469,7 @@ export default function OMRScanTool() {
           </div>
         )}
         <div className="space-y-2">
-          {filteredQuizzes.map(q => (
+          {filteredQuizzes.map((q, i) => (
             <button
               key={q.id}
               onClick={() => handleSelectQuiz(q)}
@@ -479,7 +479,7 @@ export default function OMRScanTool() {
                 <SheetIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-gray-900 truncate">{q.title}</div>
+                <div className="font-semibold text-gray-900 truncate">{i + 1}. {q.title}</div>
                 <div className="text-sm text-gray-500 mt-0.5 truncate">
                   {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
                 </div>

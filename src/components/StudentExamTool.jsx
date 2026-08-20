@@ -8,6 +8,15 @@
 // the browser never receives correct_choice/explanation, and a submit
 // never returns a score (results stay hidden until the teacher's own
 // report screen reveals them later).
+//
+// Anti-cheat: leaving the exam tab/app (document visibilitychange) records
+// a violation server-side (record_exam_violation) and locks the screen
+// until the proctoring teacher enters the round's own unlock PIN
+// (unlock_exam_attempt) — a separate code from the join PIN, never shown
+// to students. Exceeding the admin-configured max force-submits
+// immediately. Both the violation count and the locked state live on
+// online_exam_attempts, not just in this component's state, specifically
+// so a refresh can't be used to dodge a lock or reset the count.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
@@ -116,7 +125,7 @@ export default function StudentExamTool() {
   const [loginError, setLoginError] = useState(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
-  const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, student_name, deadline, questions }
+  const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, student_name, deadline, questions, violation_count, max_violations, locked }
   const [answers, setAnswers] = useState({}); // { [question_id]: selectedIndex|null }
   const [now, setNow] = useState(Date.now());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -140,6 +149,11 @@ export default function StudentExamTool() {
     if (!attempt || submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
+    // Defensively dismiss the lock prompt (or the exceeded-violation
+    // alert) if either is still open — e.g. the exam timer hitting zero
+    // while the student is mid-lock-prompt — so it never lingers on top of
+    // the submitted screen after this navigates away from phase 'exam'.
+    Swal.close();
     try {
       const payload = attempt.questions.map(q => ({
         question_id: q.id,
@@ -172,6 +186,91 @@ export default function StudentExamTool() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, secondsLeft]);
+
+  const handlingViolationRef = useRef(false);
+
+  // A non-dismissible prompt (no cancel, backdrop click ignored, Esc
+  // ignored) for the round's unlock PIN — stays open, re-showing an inline
+  // error, until unlock_exam_attempt actually succeeds.
+  async function showLockModal(attemptId, violationCount, maxViolations) {
+    await Swal.fire({
+      title: 'หน้าจอถูกล็อก',
+      html: `ตรวจพบว่าออกจากหน้าจอทำข้อสอบ (ครั้งที่ ${violationCount} จาก ${maxViolations} ครั้งที่อนุญาต)<br>กรุณาแจ้งครูคุมสอบเพื่อขอรหัสปลดล็อก`,
+      input: 'text',
+      inputAttributes: { autocapitalize: 'off', autocomplete: 'off' },
+      inputPlaceholder: 'รหัสปลดล็อกจากครูคุมสอบ',
+      confirmButtonText: 'ปลดล็อก',
+      confirmButtonColor: '#4f46e5',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showCancelButton: false,
+      showLoaderOnConfirm: true,
+      preConfirm: async (code) => {
+        try {
+          const { error } = await supabase.rpc('unlock_exam_attempt', {
+            p_attempt_id: attemptId,
+            p_unlock_pin: (code || '').trim(),
+          });
+          if (error) throw error;
+        } catch {
+          Swal.showValidationMessage('รหัสปลดล็อกไม่ถูกต้อง');
+          return false;
+        }
+      },
+    });
+    setAttempt(prev => (prev ? { ...prev, locked: false } : prev));
+  }
+
+  async function handleViolation() {
+    if (!attempt || handlingViolationRef.current || submittedRef.current) return;
+    handlingViolationRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc('record_exam_violation', { p_attempt_id: attempt.attempt_id });
+      if (error) throw error;
+      if (data.submitted) return;
+      setAttempt(prev => (prev ? { ...prev, violation_count: data.violation_count } : prev));
+      if (data.exceeded) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'ออกจากหน้าจอเกินจำนวนที่กำหนด',
+          text: 'ระบบจะส่งข้อสอบให้อัตโนมัติ',
+          timer: 3000,
+          showConfirmButton: false,
+          allowOutsideClick: false,
+        });
+        await handleSubmit(true);
+      } else {
+        setAttempt(prev => (prev ? { ...prev, locked: true } : prev));
+        await showLockModal(attempt.attempt_id, data.violation_count, data.max_violations);
+      }
+    } catch {
+      // best-effort — a failed violation write just means this one instance
+      // goes uncounted, not worth blocking the student over
+    } finally {
+      handlingViolationRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (phase !== 'exam') return;
+    function onVisibilityChange() {
+      if (document.hidden) handleViolation();
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, attempt?.attempt_id]);
+
+  // Locking survives a refresh (see the migration) — start_exam_attempt
+  // returns locked:true on resume if a prior violation was never cleared,
+  // so re-show the same prompt immediately rather than letting the student
+  // back into the exam.
+  useEffect(() => {
+    if (phase === 'exam' && attempt?.locked) {
+      showLockModal(attempt.attempt_id, attempt.violation_count, attempt.max_violations);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   async function login(pinVal, studentCodeVal) {
     setLoginError(null);

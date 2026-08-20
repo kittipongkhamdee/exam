@@ -5,8 +5,9 @@
 //
 //   online_exam_sets           (id, subject_id, title, created_by, created_at)
 //   online_exam_set_questions  (id, exam_set_id, bank_question_id, seq)
-//   online_exam_rounds         (id, exam_set_id, pin, opens_at, closes_at,
-//                                duration_minutes, created_by, created_at)
+//   online_exam_rounds         (id, exam_set_id, pin, unlock_pin, opens_at,
+//                                closes_at, duration_minutes, created_by,
+//                                created_at)
 //
 // Named online_exam_* rather than exam_* deliberately — this Supabase
 // project already has exam_teachers/exam_rounds/exam_round_slots/
@@ -17,7 +18,10 @@
 // from bank_questions. A รอบสอบ (online_exam_rounds) schedules one ชุดข้อสอบ
 // for students to actually take: a time window, a per-student duration
 // limit once started, and a single PIN shared by the whole round (per the
-// teacher's own scoping — one PIN per round, not per student).
+// teacher's own scoping — one PIN per round, not per student). unlock_pin
+// is a second, separate code — never shown to students — that the
+// proctoring teacher enters on a locked student's device after a screen-
+// switch violation (see record_exam_violation/unlock_exam_attempt).
 //
 // RLS on all three follows the same owner-or-admin pattern as
 // bank_questions/omr_quizzes: the owning teacher (subjects.user_id =
@@ -139,7 +143,7 @@ export async function listMyExamRounds(supabase, opts = {}) {
   const { data, error } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, exam_set_id, pin, opens_at, closes_at, duration_minutes, created_at,
+      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, created_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .in('exam_set_id', examSetIds)
@@ -151,13 +155,14 @@ export async function listMyExamRounds(supabase, opts = {}) {
 /**
  * Create or update a รอบสอบ.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, examSetId: string, pin: string, opensAt: string, closesAt: string, durationMinutes: number }} args
+ * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number }} args
  */
-export async function saveExamRound(supabase, { id, examSetId, pin, opensAt, closesAt, durationMinutes }) {
+export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes }) {
   const { data: { user } } = await supabase.auth.getUser();
   const row = {
     exam_set_id: examSetId,
     pin,
+    unlock_pin: unlockPin,
     opens_at: opensAt,
     closes_at: closesAt,
     duration_minutes: durationMinutes,

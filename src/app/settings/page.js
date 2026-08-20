@@ -368,6 +368,96 @@ function AISettingsPanel() {
   );
 }
 
+function ShieldIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 3 4 6v6c0 5 3.5 8.5 8 9 4.5-.5 8-4 8-9V6l-8-3Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+// Reads/writes public.config's max_exam_violations row — read server-side
+// by record_exam_violation (see the migration) whenever a student's screen
+// leaves the exam tab/app during /take, so this cap applies to every รอบสอบ
+// in the system rather than being set per round.
+const DEFAULT_MAX_VIOLATIONS = 3;
+
+function ExamSecurityPanel() {
+  const [value, setValue] = useState(String(DEFAULT_MAX_VIOLATIONS));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await getConfigValue(supabase, 'max_exam_violations');
+        setValue(stored || String(DEFAULT_MAX_VIOLATIONS));
+      } catch (err) {
+        setError(err.message || 'โหลดค่าไม่สำเร็จ');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function handleSave() {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1) {
+      setError('กรอกจำนวนเต็มตั้งแต่ 1 ขึ้นไป');
+      return;
+    }
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await setConfigValue(supabase, 'max_exam_violations', String(n));
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shrink-0">
+          <ShieldIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">ป้องกันการทุจริตในการสอบออนไลน์</div>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        เมื่อนักเรียนสลับหน้าจอ/ย่อแอประหว่างทำข้อสอบ หน้าจอนักเรียนจะล็อกและต้องรอครูคุมสอบกรอกรหัสปลดล็อกของรอบสอบนั้นให้ ถ้าสลับหน้าจอเกินจำนวนครั้งที่กำหนดไว้นี้ ระบบจะแจ้งเตือนแล้วส่งข้อสอบให้อัตโนมัติทันที แม้ยังไม่หมดเวลาสอบ
+      </p>
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">อนุญาตให้สลับหน้าจอได้สูงสุด</label>
+            <input
+              type="number" min={1} step={1}
+              className="w-20 px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={value}
+              onChange={e => { setValue(e.target.value); setSaved(false); }}
+            />
+            <span className="text-sm text-gray-700">ครั้ง</span>
+            <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+          {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+          {saved && <div className="text-sm text-green-600 mt-2">บันทึกแล้ว</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function SettingsContent() {
   const { isAdmin } = useAuth();
 
@@ -393,6 +483,7 @@ function SettingsContent() {
       <QuizzesPanel />
       <ScanPhotosPanel />
       <AISettingsPanel />
+      <ExamSecurityPanel />
     </div>
   );
 }

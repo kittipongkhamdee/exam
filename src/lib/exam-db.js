@@ -45,6 +45,7 @@
 // pre-existing subjects.user_id-based policy, untouched by any of this.
 
 import { createQuiz, deleteQuiz } from './omr-db';
+import { analyzeItems } from './item-analysis';
 
 /**
  * List this teacher's ชุดข้อสอบ, each with its subject and question count.
@@ -608,4 +609,63 @@ export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title
   if (error) throw error;
 
   return quizId;
+}
+
+/**
+ * Classroom item-analysis (ค่าความยาก/อำนาจจำแนก/KR-20) for a รอบสอบ's
+ * submitted attempts — one row per question in the ชุดข้อสอบ's own order
+ * (not per on-screen position, since each student saw them in a different
+ * shuffled order). online_exam_answers already carries is_correct and the
+ * un-shuffled bank_question_id per answer, so no shuffle-unwinding is
+ * needed here — just aggregate by bank_question_id.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} roundId
+ */
+export async function getItemAnalysisForRound(supabase, roundId) {
+  const { data: round, error: roundError } = await supabase
+    .from('online_exam_rounds')
+    .select('exam_set_id')
+    .eq('id', roundId)
+    .single();
+  if (roundError) throw roundError;
+
+  const { data: setQuestions, error: sqError } = await supabase
+    .from('online_exam_set_questions')
+    .select('seq, bank_question_id, bank_questions ( question_text )')
+    .eq('exam_set_id', round.exam_set_id)
+    .order('seq', { ascending: true });
+  if (sqError) throw sqError;
+
+  const questionIds = (setQuestions || []).map(sq => sq.bank_question_id);
+  const questionTexts = (setQuestions || []).map(sq => sq.bank_questions?.question_text || '');
+
+  const { data: attempts, error: attemptsError } = await supabase
+    .from('online_exam_attempts')
+    .select('id')
+    .eq('round_id', roundId)
+    .not('submitted_at', 'is', null);
+  if (attemptsError) throw attemptsError;
+  const attemptIds = (attempts || []).map(a => a.id);
+
+  if (attemptIds.length === 0) {
+    return { questionIds, questionTexts, ...analyzeItems(questionIds.map(() => [])) };
+  }
+
+  const { data: answers, error: answersError } = await supabase
+    .from('online_exam_answers')
+    .select('attempt_id, bank_question_id, is_correct')
+    .in('attempt_id', attemptIds);
+  if (answersError) throw answersError;
+
+  const byAttemptThenQuestion = new Map();
+  for (const a of answers || []) {
+    if (!byAttemptThenQuestion.has(a.attempt_id)) byAttemptThenQuestion.set(a.attempt_id, new Map());
+    byAttemptThenQuestion.get(a.attempt_id).set(a.bank_question_id, a.is_correct);
+  }
+
+  const itemMatrix = questionIds.map(qid =>
+    attemptIds.map(aid => (byAttemptThenQuestion.get(aid)?.get(qid) ? 1 : 0))
+  );
+
+  return { questionIds, questionTexts, ...analyzeItems(itemMatrix) };
 }

@@ -1,5 +1,10 @@
 // omr-db.js
 //
+// getItemAnalysisForQuiz (bottom of this file) is the one function here
+// with a top-level import — it hands scored responses to the shared
+// analyzeItems() in item-analysis.js rather than duplicating the
+// difficulty/discrimination/KR-20 math.
+//
 // Supabase data-access helpers for the OMR feature, matching the schema
 // created in the PP5 project:
 //
@@ -24,6 +29,8 @@
 // created with your project URL + anon key) into each function. This file
 // does not create its own client, so it fits into a project that already
 // has one (e.g. a `lib/supabaseClient.js`).
+
+import { analyzeItems } from './item-analysis';
 
 /**
  * Create a new quiz and its answer key in one call.
@@ -417,4 +424,57 @@ export async function deleteScanPhoto(supabase, resultId, photoPath) {
   if (storageErr) throw storageErr;
   const { error } = await supabase.from('omr_scan_results').update({ photo_path: null }).eq('id', resultId);
   if (error) throw error;
+}
+
+/**
+ * Classroom item-analysis (ค่าความยาก/อำนาจจำแนก/KR-20) for a quiz's
+ * scanned results — one row per question_number, built by matching each
+ * scan's responses against omr_answer_keys.correct_choices (a response
+ * counts as correct if its choice is any one of a question's accepted
+ * answers — same rule scoring itself already uses; blank/ambiguous marks
+ * always count as incorrect).
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} quizId
+ */
+export async function getItemAnalysisForQuiz(supabase, quizId) {
+  const { data: quiz, error: quizErr } = await supabase
+    .from('omr_quizzes')
+    .select('num_questions')
+    .eq('id', quizId)
+    .single();
+  if (quizErr) throw quizErr;
+
+  const { data: keyRows, error: keyErr } = await supabase
+    .from('omr_answer_keys')
+    .select('question_number, correct_choices')
+    .eq('quiz_id', quizId);
+  if (keyErr) throw keyErr;
+  // question_number is stored 1-based in this column, but a scan result's
+  // responses[].question is 0-based (the omr-core/UI convention — see
+  // OMRReportTool's own qIndex-vs-resp.question comparison) — reindex the
+  // key to 0-based here so both sides line up on the same axis below.
+  const correctByIndex = new Map((keyRows || []).map(k => [k.question_number - 1, new Set(k.correct_choices || [])]));
+
+  const { data: results, error: resErr } = await supabase
+    .from('omr_scan_results')
+    .select('responses')
+    .eq('quiz_id', quizId);
+  if (resErr) throw resErr;
+
+  const numItems = quiz.num_questions;
+  const itemMatrix = Array.from({ length: numItems }, () => []);
+
+  for (const result of results || []) {
+    const byIndex = new Map((result.responses || []).map(r => [r.question, r]));
+    for (let qi = 0; qi < numItems; qi++) {
+      const resp = byIndex.get(qi);
+      const correctSet = correctByIndex.get(qi);
+      const correct = resp && !resp.blank && !resp.ambiguous && correctSet?.has(resp.choice) ? 1 : 0;
+      itemMatrix[qi].push(correct);
+    }
+  }
+
+  const questionNumbers = Array.from({ length: numItems }, (_, i) => i + 1);
+
+  return { questionNumbers, ...analyzeItems(itemMatrix) };
 }

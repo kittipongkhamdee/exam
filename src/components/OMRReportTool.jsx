@@ -13,7 +13,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { choiceLetters } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz } from '../lib/omr-db';
+import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz, getItemAnalysisForQuiz } from '../lib/omr-db';
+import ItemAnalysisTable from './ItemAnalysisTable';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -42,6 +43,8 @@ export default function OMRReportTool() {
   const [selectedQuiz, setSelectedQuiz] = useState(null); // full quiz + answerKey + subject name
   const [results, setResults] = useState([]);
   const [loadingResults, setLoadingResults] = useState(false);
+  const [itemAnalysis, setItemAnalysis] = useState(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -79,12 +82,24 @@ export default function OMRReportTool() {
     }
   }, []);
 
+  const loadItemAnalysis = useCallback(async (quizId) => {
+    setLoadingAnalysis(true);
+    try {
+      setItemAnalysis(await getItemAnalysisForQuiz(supabase, quizId));
+    } catch {
+      setItemAnalysis(null);
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  }, []);
+
   async function handleSelectQuiz(row) {
     setQuizLoadError(null);
     try {
       const quiz = await getQuizWithAnswerKey(supabase, row.id);
       setSelectedQuiz({ ...quiz, subjectName: row.subjects?.subject_name, gradeLevel: row.subjects?.grade_level, room: row.subjects?.room });
       loadResults(quiz.id);
+      loadItemAnalysis(quiz.id);
     } catch (err) {
       setQuizLoadError(err.message || 'โหลดชุดข้อสอบไม่สำเร็จ');
     }
@@ -93,6 +108,7 @@ export default function OMRReportTool() {
   function handleBack() {
     setSelectedQuiz(null);
     setResults([]);
+    setItemAnalysis(null);
   }
 
   const gradeLevels = [...new Set(quizzes.map(q => q.subjects?.grade_level).filter(Boolean))];
@@ -272,6 +288,19 @@ export default function OMRReportTool() {
               </div>
             </div>
           )}
+
+          <div className={card}>
+            <div className="text-sm font-bold mb-3 flex items-center gap-1.5">
+              <TargetIcon className="h-4 w-4 text-gray-400" /> ผลการวิเคราะห์คุณภาพข้อสอบ
+            </div>
+            {loadingAnalysis && <div className="text-sm text-gray-500">กำลังวิเคราะห์...</div>}
+            {!loadingAnalysis && (
+              <ItemAnalysisTable
+                analysis={itemAnalysis}
+                rowLabels={Array.from({ length: selectedQuiz.numQuestions }, (_, i) => `ข้อ ${i + 1}`)}
+              />
+            )}
+          </div>
 
           <div className={card + ' p-0 overflow-hidden'}>
             <div className="overflow-x-auto">

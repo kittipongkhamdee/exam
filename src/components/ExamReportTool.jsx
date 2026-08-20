@@ -10,7 +10,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { listMyExamRounds, getRoundReport, setRoundResultsVisible } from '../lib/exam-db';
+import { useAuth } from '../lib/AuthContext';
+import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible } from '../lib/exam-db';
 
 function ReportIcon(props) {
   return (
@@ -58,6 +59,9 @@ export default function ExamReportTool() {
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
   const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
 
+  const { isAdmin } = useAuth();
+  const [viewAllTeachers, setViewAllTeachers] = useState(false);
+
   const [rounds, setRounds] = useState([]);
   const [roundId, setRoundId] = useState('');
   const [report, setReport] = useState(null);
@@ -68,12 +72,13 @@ export default function ExamReportTool() {
   useEffect(() => {
     (async () => {
       try {
-        setRounds(await listMyExamRounds(supabase));
+        setRounds(viewAllTeachers ? await listAllExamRoundsWithTeacher(supabase) : await listMyExamRounds(supabase));
       } catch {
         // best-effort
       }
+      setRoundId('');
     })();
-  }, []);
+  }, [viewAllTeachers]);
 
   const refreshReport = useCallback(async (id) => {
     if (!id) {
@@ -122,6 +127,12 @@ export default function ExamReportTool() {
       </div>
 
       <div className={card + ' mt-5'}>
+        {isAdmin && (
+          <label className="flex items-center gap-2 text-sm text-gray-700 mb-3 cursor-pointer select-none">
+            <input type="checkbox" checked={viewAllTeachers} onChange={e => setViewAllTeachers(e.target.checked)} />
+            ดูรายงานของครูทุกคน (ไม่ใช่แค่ของฉัน)
+          </label>
+        )}
         <div className={field}>
           <label className={label}>เลือกรอบสอบ</label>
           {rounds.length === 0 ? (
@@ -132,6 +143,7 @@ export default function ExamReportTool() {
               {rounds.map(r => (
                 <option key={r.id} value={r.id}>
                   {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {r.online_exam_sets?.subjects?.grade_level}/{r.online_exam_sets?.subjects?.room}) · {formatThai(r.opens_at)}
+                  {viewAllTeachers && ` · ครู ${r.teacherName || '(ไม่ระบุชื่อ)'}`}
                 </option>
               ))}
             </select>

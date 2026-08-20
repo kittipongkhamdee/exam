@@ -506,3 +506,32 @@ export async function listAllTeachers(supabase) {
   if (error) throw error;
   return data;
 }
+
+/**
+ * Every รอบสอบ in the system, each tagged with its owning teacher's name —
+ * for the "รายงาน" page's admin-only "ทุกคน" view. Unlike listMyExamRounds,
+ * this doesn't add an ownership filter on top of RLS; a non-admin caller
+ * would just get back what RLS already lets them see (their own rounds),
+ * so this is only meaningfully "every round" for an admin session
+ * (admin_all_online_exam_rounds). Two-step fetch + batched profiles lookup,
+ * same pattern as omr-db.js's listAllQuizzes.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ */
+export async function listAllExamRoundsWithTeacher(supabase) {
+  const { data, error } = await supabase
+    .from('online_exam_rounds')
+    .select(`
+      id, opens_at,
+      online_exam_sets ( title, subjects ( subject_name, grade_level, room, user_id ) )
+    `)
+    .order('opens_at', { ascending: false });
+  if (error) throw error;
+
+  const userIds = [...new Set((data || []).map(r => r.online_exam_sets?.subjects?.user_id).filter(Boolean))];
+  let nameByUserId = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+    nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.full_name]));
+  }
+  return (data || []).map(r => ({ ...r, teacherName: nameByUserId[r.online_exam_sets?.subjects?.user_id] || null }));
+}

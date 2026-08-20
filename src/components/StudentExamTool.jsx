@@ -21,6 +21,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
+import { getBankQuestionImageUrl } from '../lib/bank-db';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
@@ -166,6 +167,34 @@ export default function StudentExamTool() {
   const [submitting, setSubmitting] = useState(false);
   const submittedRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imageUrls, setImageUrls] = useState({});
+  const fetchedImagePaths = useRef(new Set());
+
+  // Resolve signed URLs for any question that carries an illustration
+  // image, once each — the anon-scoped storage policy that allows this
+  // (bank-question-images, see the migration) only holds while this exact
+  // รอบสอบ is open, which is exactly the window this component is mounted
+  // for, so there's never a case where the fetch should be denied here.
+  useEffect(() => {
+    const paths = (attempt?.questions || [])
+      .filter(q => q.image_path && !fetchedImagePaths.current.has(q.image_path))
+      .map(q => q.image_path);
+    if (paths.length === 0) return;
+    paths.forEach(p => fetchedImagePaths.current.add(p));
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(paths.map(async p => {
+        try { return [p, await getBankQuestionImageUrl(supabase, p, 6 * 60 * 60)]; } catch { return null; }
+      }));
+      if (cancelled) return;
+      setImageUrls(prev => {
+        const next = { ...prev };
+        for (const e of entries) if (e && !next[e[0]]) next[e[0]] = e[1];
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [attempt?.questions]);
 
   // The Fullscreen API is a display preference the student toggles
   // themselves, not an anti-cheat signal — leaving it doesn't count as a
@@ -387,6 +416,14 @@ export default function StudentExamTool() {
 
   async function handleLogin(e) {
     e.preventDefault();
+    // Fullscreen requires an un-lapsed user gesture, so it must be
+    // requested synchronously right here — before the first await below —
+    // or the browser silently ignores it. Best-effort: a refusal (declined
+    // permission, unsupported browser like iPhone Safari) just leaves the
+    // student in normal view, same as if they never had the toggle button.
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
     await login(pin, studentCode);
   }
 
@@ -540,6 +577,14 @@ export default function StudentExamTool() {
           <div key={q.id} className={card}>
             <div className="text-xs font-semibold text-gray-400 mb-1">ข้อ {i + 1}</div>
             <div className="text-sm font-medium text-gray-900 mb-3">{q.question_text}</div>
+            {q.image_path && imageUrls[q.image_path] && (
+              <img
+                src={imageUrls[q.image_path]}
+                alt=""
+                className="max-w-full max-h-80 rounded-lg border border-gray-200 mb-3 select-none"
+                draggable={false}
+              />
+            )}
             <div className="space-y-2">
               {q.choices.map((c, ci) => (
                 <label

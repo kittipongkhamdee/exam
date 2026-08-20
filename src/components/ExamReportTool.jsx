@@ -11,7 +11,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
-import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible } from '../lib/exam-db';
+import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound } from '../lib/exam-db';
+import ItemAnalysisTable from './ItemAnalysisTable';
 
 function ReportIcon(props) {
   return (
@@ -36,6 +37,16 @@ function EyeOffIcon(props) {
       <path d="M3 3l18 18" />
       <path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17.7 17.7 0 0 1-3.1 4M6.3 6.3C3.6 8 2 12 2 12s3.5 7 10 7a10 10 0 0 0 3.9-.8" />
       <path d="M9.5 9.5a3 3 0 0 0 4.2 4.2" />
+    </svg>
+  );
+}
+
+function TargetIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" />
     </svg>
   );
 }
@@ -68,6 +79,8 @@ export default function ExamReportTool() {
   const [loading, setLoading] = useState(false);
   const [togglingVisible, setTogglingVisible] = useState(false);
   const [error, setError] = useState(null);
+  const [itemAnalysis, setItemAnalysis] = useState(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -97,6 +110,23 @@ export default function ExamReportTool() {
   }, []);
 
   useEffect(() => { refreshReport(roundId); }, [roundId, refreshReport]);
+
+  const refreshItemAnalysis = useCallback(async (id) => {
+    if (!id) {
+      setItemAnalysis(null);
+      return;
+    }
+    setLoadingAnalysis(true);
+    try {
+      setItemAnalysis(await getItemAnalysisForRound(supabase, id));
+    } catch {
+      setItemAnalysis(null);
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  }, []);
+
+  useEffect(() => { refreshItemAnalysis(roundId); }, [roundId, refreshItemAnalysis]);
 
   async function handleToggleVisible() {
     if (!report) return;
@@ -213,6 +243,24 @@ export default function ExamReportTool() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className={card}>
+            <div className="text-sm font-bold mb-3 flex items-center gap-1.5">
+              <TargetIcon className="h-4 w-4 text-gray-400" /> ผลการวิเคราะห์คุณภาพข้อสอบ
+            </div>
+            {loadingAnalysis && <div className="text-sm text-gray-500">กำลังวิเคราะห์...</div>}
+            {!loadingAnalysis && (
+              <ItemAnalysisTable
+                analysis={itemAnalysis}
+                rowLabels={(itemAnalysis?.questionTexts || []).map((text, i) => (
+                  <div key={i}>
+                    <div>ข้อ {i + 1}</div>
+                    {text && <div className="text-xs text-gray-400 truncate max-w-xs">{text}</div>}
+                  </div>
+                ))}
+              />
+            )}
           </div>
         </>
       )}

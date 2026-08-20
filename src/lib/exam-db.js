@@ -37,12 +37,25 @@
 // physically proctor a ชั้น/ห้อง on a given date. A รอบสอบ's schedule_type
 // ('scheduled' = ในตาราง, set by admin-assigned proctor duty | 'adhoc' =
 // นอกตาราง, the creating teacher proctors themself) is informational on the
-// round, not itself an access gate — is_assigned_proctor() (see the
-// add_proctor_monitor_read_access migration) grants a matching assignment
-// read access to *every* round in that room/date regardless of type, since
-// a room's proctor needs to see everything happening in their room that
-// day. The owning teacher's own access is unaffected either way — it's the
-// pre-existing subjects.user_id-based policy, untouched by any of this.
+// round only — it is NOT currently an access gate. An earlier attempt at
+// this (is_assigned_proctor() + additive SELECT policies on
+// online_exam_rounds/online_exam_sets/online_exam_attempts, from the
+// add_proctor_monitor_read_access migration) was reverted live
+// (drop_recursive_proctor_read_policies) after it broke ALL reads/writes
+// on those three tables for every teacher with "infinite recursion
+// detected in policy" — online_exam_rounds's policy read
+// online_exam_sets/subjects, whose policy read online_exam_rounds back,
+// and is_assigned_proctor's own body read online_exam_rounds from within
+// online_exam_rounds's own policy. Neither converting the helper to
+// plpgsql nor `SET row_security = off` inside it cleared the recursion
+// guard when tested live — this is a hard Postgres structural limit, not
+// a language/role-bypass issue. A non-owning assigned proctor's
+// "ชั้น/ห้อง" มอนิเตอร์ view (ExamMonitorTool.jsx room mode) currently
+// only shows what RLS already grants (their own rounds, or everything if
+// admin) — reimplementing "see a room's rounds you don't own" needs a
+// SECURITY DEFINER RPC (matching start_exam_attempt/is_admin's proven
+// pattern: a top-level function call, never invoked from inside one of
+// these tables' own policies), not raw table RLS.
 
 import { createQuiz, deleteQuiz } from './omr-db';
 import { analyzeItems } from './item-analysis';
@@ -308,15 +321,15 @@ export async function getRoundReport(supabase, roundId) {
 // Live proctor monitor ("คุมสอบ") — real-time view of who's taking an
 // online exam right now, for a teacher physically watching a room. Two
 // entry points: by รอบสอบ (a teacher watching their own exam, typically
-// นอกตาราง/ad-hoc) or by ชั้น/ห้อง + date (a teacher assigned by the admin
-// to proctor a room, watching every online exam happening there that day
-// regardless of which teacher set it up). Read access for both is enforced
-// server-side by RLS: the round/set/attempt owner, any admin, or a teacher
-// with a matching online_exam_proctor_assignments row for that round's
-// grade/room/date (see is_assigned_proctor() — migration
-// add_proctor_monitor_read_access). Realtime subscriptions on
-// online_exam_attempts respect the same RLS, so a live channel only ever
-// delivers rows the viewer is already allowed to read.
+// นอกตาราง/ad-hoc) or by ชั้น/ห้อง + date (intended for a teacher assigned
+// by the admin to proctor a room, watching every online exam happening
+// there that day regardless of which teacher set it up — see the note at
+// the top of this file: the RLS grant for a non-owning assigned proctor
+// was reverted after it caused RLS recursion, so room mode currently only
+// surfaces rounds the caller already owns, or everything for an admin).
+// Realtime subscriptions on online_exam_attempts respect the same RLS, so
+// a live channel only ever delivers rows the viewer is already allowed to
+// read.
 
 /**
  * A รอบสอบ's live monitor data — same shape as getRoundReport, plus
@@ -397,10 +410,13 @@ function bangkokDayRange(dateStr) {
 /**
  * Every รอบสอบ opening on a given date for a given ชั้น/ห้อง, with each
  * round's live monitor data — for a teacher assigned to proctor a physical
- * room rather than one specific exam. RLS (is_assigned_proctor) is what
- * actually scopes which rounds a non-owning caller can see here; this just
- * asks for "all rounds in this room on this day" and lets the database
- * answer with only what the caller is authorized to read.
+ * room rather than one specific exam. Plain RLS (owner-or-admin) scopes
+ * which rounds a caller can see here — see the note at the top of this
+ * file: a non-owning assigned proctor doesn't currently get anything
+ * beyond that, since the RLS grant for that case caused recursion and was
+ * reverted. This just asks for "all rounds in this room on this day" and
+ * lets the database answer with only what the caller is authorized to
+ * read.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ date: string, gradeLevel: string, room: string }} args
  */

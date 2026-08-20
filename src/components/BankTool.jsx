@@ -11,9 +11,9 @@
 // Below the generator sits a browse/delete list of everything already
 // saved to the bank, grouped by subject.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion } from '../lib/bank-db';
+import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion, uploadBankQuestionImage, getBankQuestionImageUrl, deleteBankQuestionImage } from '../lib/bank-db';
 import ConfirmDialog from './ConfirmDialog';
 
 const DIFFICULTIES = [
@@ -80,6 +80,24 @@ function PencilIcon(props) {
   );
 }
 
+function ImageIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="m21 15-5-5L5 21" />
+    </svg>
+  );
+}
+
+function XIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
 const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
 
 function useExpandedGroups() {
@@ -102,6 +120,59 @@ function groupBySubject(items) {
   return [...groups.entries()].map(([name, rows]) => ({ name, rows }));
 }
 
+// Image upload/preview/remove control shown only on manual (source:
+// 'manual') questions — AI can't draw an accurate diagram, so AI-generated
+// drafts and saved rows never render this. Uploads straight into the
+// private bank-question-images bucket as soon as a file is picked, so the
+// draft/edit state only ever holds the storage path plus a signed preview
+// URL, never a raw blob waiting to be saved. This control itself never
+// deletes the *previous* path from storage — the caller decides that via
+// onChange, since for an already-saved question the previous path is still
+// what the DB row points to until a save (or cancel) actually resolves it.
+function ImagePicker({ userId, path, url, onChange, uploading, setUploading }) {
+  const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1';
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      const newPath = await uploadBankQuestionImage(supabase, { userId, blob: file, contentType: file.type || 'image/jpeg' });
+      const newUrl = await getBankQuestionImageUrl(supabase, newPath);
+      onChange({ path: newPath, url: newUrl });
+    } catch {
+      // best-effort — leave prior image (if any) untouched on failure
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleRemove() {
+    onChange({ path: null, url: null });
+  }
+
+  return (
+    <div className="mb-3">
+      <label className="text-xs font-semibold text-gray-500 block mb-1.5">รูปประกอบคำถาม (ไม่บังคับ)</label>
+      {url ? (
+        <div className="flex items-start gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt="รูปประกอบคำถาม" className="h-24 w-24 object-cover rounded-lg border border-gray-200" />
+          <button type="button" className={btnTiny} disabled={uploading} onClick={handleRemove}>
+            <XIcon className="h-3.5 w-3.5" /> ลบรูป
+          </button>
+        </div>
+      ) : (
+        <label className={btnTiny + ' cursor-pointer w-fit ' + (uploading ? 'opacity-50 pointer-events-none' : '')}>
+          <ImageIcon className="h-3.5 w-3.5" /> {uploading ? 'กำลังอัปโหลด...' : 'แนบรูปภาพ'}
+          <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+        </label>
+      )}
+    </div>
+  );
+}
+
 export default function BankTool() {
   const card = 'bg-white border border-gray-200 rounded-xl p-5 mb-5';
   const row = 'flex flex-wrap gap-3';
@@ -115,6 +186,11 @@ export default function BankTool() {
   const chip = 'px-3 py-1.5 rounded-full text-xs font-semibold border transition';
   const chipActive = chip + ' bg-indigo-600 border-indigo-600 text-white';
   const chipInactive = chip + ' bg-white border-gray-300 text-gray-600 hover:border-indigo-300';
+
+  const [userId, setUserId] = useState(null);
+  const [uploadingKeys, setUploadingKeys] = useState(new Set());
+  const [imageUrls, setImageUrls] = useState({});
+  const fetchedImagePaths = useRef(new Set());
 
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
@@ -140,6 +216,7 @@ export default function BankTool() {
   const [expandedGroups, toggleGroup] = useExpandedGroups();
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
+  const [editOriginalImagePath, setEditOriginalImagePath] = useState(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState(null);
 
@@ -159,6 +236,8 @@ export default function BankTool() {
   useEffect(() => {
     (async () => {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUserId(user?.id ?? null);
         setSubjects(await listMySubjects(supabase));
       } catch {
         // best-effort
@@ -166,6 +245,39 @@ export default function BankTool() {
     })();
     refreshBank();
   }, [refreshBank]);
+
+  // Resolve signed preview URLs for every saved manual question that has an
+  // image, one time each — fetchedImagePaths tracks what's already been
+  // requested so a refreshBank() after an unrelated edit doesn't re-fetch
+  // every thumbnail's signed URL again.
+  useEffect(() => {
+    const paths = bankQuestions
+      .filter(q => q.source === 'manual' && q.image_path && !fetchedImagePaths.current.has(q.image_path))
+      .map(q => q.image_path);
+    if (paths.length === 0) return;
+    paths.forEach(p => fetchedImagePaths.current.add(p));
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(paths.map(async p => {
+        try { return [p, await getBankQuestionImageUrl(supabase, p)]; } catch { return null; }
+      }));
+      if (cancelled) return;
+      setImageUrls(prev => {
+        const next = { ...prev };
+        for (const e of entries) if (e && !next[e[0]]) next[e[0]] = e[1];
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [bankQuestions]);
+
+  function setKeyUploading(key, val) {
+    setUploadingKeys(prev => {
+      const next = new Set(prev);
+      if (val) next.add(key); else next.delete(key);
+      return next;
+    });
+  }
 
   useEffect(() => {
     setIndicatorIds([]);
@@ -257,6 +369,8 @@ export default function BankTool() {
       correct_choice: 0,
       explanation: '',
       source: 'manual',
+      image_path: null,
+      image_url: null,
       _key: `manual-${Date.now()}`,
     }]);
   }
@@ -275,7 +389,9 @@ export default function BankTool() {
   }
 
   function removeDraft(key) {
+    const target = draftQuestions.find(q => q._key === key);
     setDraftQuestions(prev => prev.filter(q => q._key !== key));
+    if (target?.image_path) deleteBankQuestionImage(supabase, target.image_path).catch(() => {});
   }
 
   const hasIncompleteDraft = draftQuestions.some(q => !q.question_text.trim() || q.choices.some(c => !c.trim()));
@@ -299,6 +415,7 @@ export default function BankTool() {
     setDeleting(true);
     try {
       await deleteBankQuestion(supabase, deleteTarget.id);
+      if (deleteTarget.image_path) await deleteBankQuestionImage(supabase, deleteTarget.image_path).catch(() => {});
       setDeleteTarget(null);
       refreshBank();
     } finally {
@@ -314,13 +431,27 @@ export default function BankTool() {
       choices: [...q.choices],
       correct_choice: q.correct_choice,
       explanation: q.explanation || '',
+      image_path: q.image_path || null,
+      image_url: q.image_path ? (imageUrls[q.image_path] || null) : null,
     });
+    setEditOriginalImagePath(q.image_path || null);
+  }
+
+  function closeEdit() {
+    setEditingId(null);
+    setEditDraft(null);
+    setEditOriginalImagePath(null);
+    setEditError(null);
   }
 
   function cancelEdit() {
-    setEditingId(null);
-    setEditDraft(null);
-    setEditError(null);
+    // Only ever clean up a NEW image uploaded during this edit session —
+    // never the row's original persisted image, which the DB still points
+    // to since the edit is being discarded, not saved.
+    if (editDraft?.image_path && editDraft.image_path !== editOriginalImagePath) {
+      deleteBankQuestionImage(supabase, editDraft.image_path).catch(() => {});
+    }
+    closeEdit();
   }
 
   function updateEditChoice(idx, value) {
@@ -340,7 +471,13 @@ export default function BankTool() {
     setEditError(null);
     try {
       await updateBankQuestion(supabase, editingId, editDraft);
-      cancelEdit();
+      // The save succeeded, so the DB row now points at editDraft's image
+      // (or none) — the row's old persisted image, if replaced or removed,
+      // is safe to delete now that nothing references it any more.
+      if (editOriginalImagePath && editOriginalImagePath !== editDraft.image_path) {
+        deleteBankQuestionImage(supabase, editOriginalImagePath).catch(() => {});
+      }
+      closeEdit();
       refreshBank();
     } catch (err) {
       setEditError(err.message || 'บันทึกไม่สำเร็จ');
@@ -523,6 +660,22 @@ export default function BankTool() {
                   value={q.question_text}
                   onChange={e => updateDraft(q._key, { question_text: e.target.value })}
                 />
+                {q.source === 'manual' && (
+                  <ImagePicker
+                    userId={userId}
+                    path={q.image_path}
+                    url={q.image_url}
+                    uploading={uploadingKeys.has(q._key)}
+                    setUploading={v => setKeyUploading(q._key, v)}
+                    onChange={({ path, url }) => {
+                      // A draft was never persisted, so its previous image
+                      // (if any) is never referenced anywhere else and can
+                      // be cleaned up immediately.
+                      if (q.image_path && q.image_path !== path) deleteBankQuestionImage(supabase, q.image_path).catch(() => {});
+                      updateDraft(q._key, { image_path: path, image_url: url });
+                    }}
+                  />
+                )}
                 <div className="space-y-1.5 mb-3">
                   {q.choices.map((c, ci) => (
                     <label key={ci} className="flex items-center gap-2">
@@ -579,6 +732,28 @@ export default function BankTool() {
                           value={editDraft.question_text}
                           onChange={e => setEditDraft(prev => ({ ...prev, question_text: e.target.value }))}
                         />
+                        {q.source === 'manual' && (
+                          <ImagePicker
+                            userId={userId}
+                            path={editDraft.image_path}
+                            url={editDraft.image_url}
+                            uploading={uploadingKeys.has('edit')}
+                            setUploading={v => setKeyUploading('edit', v)}
+                            onChange={({ path, url }) => {
+                              // Never delete the row's original persisted
+                              // image here — only an intermediate upload
+                              // made earlier in this same edit session
+                              // (a replace-of-a-replace before saving),
+                              // since the edit could still be cancelled.
+                              setEditDraft(prev => {
+                                if (prev.image_path && prev.image_path !== editOriginalImagePath && prev.image_path !== path) {
+                                  deleteBankQuestionImage(supabase, prev.image_path).catch(() => {});
+                                }
+                                return { ...prev, image_path: path, image_url: url };
+                              });
+                            }}
+                          />
+                        )}
                         <div className="space-y-1.5 mb-3">
                           {editDraft.choices.map((c, ci) => (
                             <label key={ci} className="flex items-center gap-2">
@@ -611,15 +786,21 @@ export default function BankTool() {
                       </div>
                     ) : (
                       <div key={q.id} className="flex justify-between items-start gap-3 text-sm py-2.5 border-b border-gray-100 last:border-b-0">
-                        <div className="min-w-0">
-                          <div className="font-medium text-gray-900">{q.question_text}</div>
-                          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                            <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
-                              {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
-                            </span>
-                            <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTIES.find(d => d.value === q.difficulty)?.label || q.difficulty}</span>
-                            {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
-                            <span>{q.num_choices} ตัวเลือก</span>
+                        <div className="min-w-0 flex items-start gap-3">
+                          {q.source === 'manual' && q.image_path && imageUrls[q.image_path] && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={imageUrls[q.image_path]} alt="" className="h-12 w-12 object-cover rounded-md border border-gray-200 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900">{q.question_text}</div>
+                            <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
+                                {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
+                              </span>
+                              <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTIES.find(d => d.value === q.difficulty)?.label || q.difficulty}</span>
+                              {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
+                              <span>{q.num_choices} ตัวเลือก</span>
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

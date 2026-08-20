@@ -63,17 +63,17 @@ function ChevronDownIcon(props) {
   );
 }
 
-// Tracks which teacher groups are collapsed, by name. Groups start expanded
-// (empty set) since most teachers only have a couple of rows — collapsing
-// only matters for the few with a long list.
-function useCollapsedGroups() {
-  const [collapsed, setCollapsed] = useState(new Set());
-  const toggle = (name) => setCollapsed(prev => {
+// Tracks which teacher groups are expanded, by name. Groups start collapsed
+// (empty set) so the panel opens as a compact list of teacher names —
+// admins expand only the teacher they're looking for.
+function useExpandedGroups() {
+  const [expanded, setExpanded] = useState(new Set());
+  const toggle = (name) => setExpanded(prev => {
     const next = new Set(prev);
     if (next.has(name)) next.delete(name); else next.add(name);
     return next;
   });
-  return [collapsed, toggle];
+  return [expanded, toggle];
 }
 
 // Groups a list of admin-wide rows by teacher name, sorted alphabetically
@@ -111,7 +111,7 @@ function ScanPhotosPanel() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [collapsedGroups, toggleGroup] = useCollapsedGroups();
+  const [expandedGroups, toggleGroup] = useExpandedGroups();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -158,7 +158,7 @@ function ScanPhotosPanel() {
       {photos.length > 0 && (
         <div className="max-h-96 overflow-y-auto -mx-5 px-5">
           {groupByTeacher(photos, p => p.profiles?.full_name).map(group => {
-            const expanded = !collapsedGroups.has(group.name);
+            const expanded = expandedGroups.has(group.name);
             return (
               <div key={group.name}>
                 <TeacherGroupHeader name={group.name} count={group.rows.length} expanded={expanded} onToggle={() => toggleGroup(group.name)} />
@@ -198,7 +198,7 @@ function QuizzesPanel() {
   const [error, setError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null); // { id, title } | null
-  const [collapsedGroups, toggleGroup] = useCollapsedGroups();
+  const [expandedGroups, toggleGroup] = useExpandedGroups();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -245,7 +245,7 @@ function QuizzesPanel() {
       {quizzes.length > 0 && (
         <div className="max-h-96 overflow-y-auto -mx-5 px-5">
           {groupByTeacher(quizzes, q => q.teacherName).map(group => {
-            const expanded = !collapsedGroups.has(group.name);
+            const expanded = expandedGroups.has(group.name);
             return (
               <div key={group.name}>
                 <TeacherGroupHeader name={group.name} count={group.rows.length} expanded={expanded} onToggle={() => toggleGroup(group.name)} />

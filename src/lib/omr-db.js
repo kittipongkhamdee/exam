@@ -136,17 +136,24 @@ export async function listQuizzesForSubject(supabase, subjectId) {
  * List every quiz across all of the teacher's subjects, most recent first,
  * each with its subject's name/grade/room attached — for a scanning UI
  * where the teacher picks a previously-prepared quiz directly, without
- * choosing a subject first. Relies on the same RLS as listQuizzesForSubject
- * (omr_quizzes_own) to scope this to the caller's own quizzes.
+ * choosing a subject first. Explicitly filtered to subjects.user_id, not
+ * left to RLS alone: omr_quizzes' RLS also carries an admin_all_omr_quizzes
+ * policy (any is_admin() session can read every row) so an admin account
+ * would otherwise see every teacher's quizzes here too, when this "my
+ * quizzes" list is meant to mean literally the caller's own — the
+ * everyone's-quizzes view is listAllQuizzes, for the dedicated admin
+ * settings panel.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  */
 export async function listMyQuizzes(supabase) {
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('omr_quizzes')
     .select(`
       id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, created_at,
-      subjects ( subject_name, subject_code, grade_level, room )
+      subjects!inner ( subject_name, subject_code, grade_level, room )
     `)
+    .eq('subjects.user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
@@ -282,21 +289,26 @@ export async function listScanResultsForQuiz(supabase, quizId) {
 
 /**
  * List this teacher's most recent scans across every quiz, newest first —
- * for the dashboard's "recent activity" panel. Same RLS scoping as
- * listAllScanPhotos (own scans only, or every scan for an admin), just
- * without the photo_path filter and capped to `limit` rows instead of
- * scoped to one quiz.
+ * for the dashboard's "recent activity" panel. Explicitly filtered to
+ * subjects.user_id, not left to RLS alone: omr_scan_results' RLS also
+ * carries an admin_all_omr_scan_results policy (any is_admin() session can
+ * read every row) so an admin account would otherwise see every teacher's
+ * scans here too, when this "my activity" list is meant to mean literally
+ * the caller's own — the everyone's-photos view is listAllScanPhotos, for
+ * the dedicated admin settings panel.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {number} [limit]
  */
 export async function listMyRecentScanActivity(supabase, limit = 5) {
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('omr_scan_results')
     .select(`
       id, score, scanned_at,
       students ( student_code, student_name, prefix ),
-      omr_quizzes ( id, title, subjects ( subject_name, grade_level, room ) )
+      omr_quizzes!inner ( id, title, subjects!inner ( subject_name, grade_level, room, user_id ) )
     `)
+    .eq('omr_quizzes.subjects.user_id', user?.id ?? '')
     .order('scanned_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -309,11 +321,17 @@ export async function listMyRecentScanActivity(supabase, limit = 5) {
  * average score across them, and which quizzes have at least one scan (so
  * the dashboard can flag prepared quizzes nobody's scanned yet). One query
  * instead of several separate counts, since it needs every row's quiz_id
- * and score anyway. Same RLS scoping as listMyRecentScanActivity.
+ * and score anyway. Same explicit subjects.user_id filtering as
+ * listMyRecentScanActivity, for the same reason (an admin session must not
+ * see every teacher's totals folded into their own here).
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  */
 export async function getMyScanStats(supabase) {
-  const { data, error } = await supabase.from('omr_scan_results').select('quiz_id, score');
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('omr_scan_results')
+    .select('quiz_id, score, omr_quizzes!inner(subjects!inner(user_id))')
+    .eq('omr_quizzes.subjects.user_id', user?.id ?? '');
   if (error) throw error;
   const rows = data || [];
   const scores = rows.map(r => Number(r.score) || 0);

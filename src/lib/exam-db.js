@@ -31,6 +31,18 @@
 // top of RLS — same reasoning as bank-db.js's listMyBankQuestions: an admin
 // session must not see every teacher's data in what's meant to be "my own"
 // here.
+//
+// online_exam_proctor_assignments (assign_date, grade_level, room,
+// teacher_id) is a separate, admin-managed table: who's assigned to
+// physically proctor a ชั้น/ห้อง on a given date. A รอบสอบ's schedule_type
+// ('scheduled' = ในตาราง, set by admin-assigned proctor duty | 'adhoc' =
+// นอกตาราง, the creating teacher proctors themself) is informational on the
+// round, not itself an access gate — is_assigned_proctor() (see the
+// add_proctor_monitor_read_access migration) grants a matching assignment
+// read access to *every* round in that room/date regardless of type, since
+// a room's proctor needs to see everything happening in their room that
+// day. The owning teacher's own access is unaffected either way — it's the
+// pre-existing subjects.user_id-based policy, untouched by any of this.
 
 /**
  * List this teacher's ชุดข้อสอบ, each with its subject and question count.
@@ -143,7 +155,7 @@ export async function listMyExamRounds(supabase, opts = {}) {
   const { data, error } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, created_at,
+      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, schedule_type, created_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .in('exam_set_id', examSetIds)
@@ -155,9 +167,9 @@ export async function listMyExamRounds(supabase, opts = {}) {
 /**
  * Create or update a รอบสอบ.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number }} args
+ * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc' }} args
  */
-export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes }) {
+export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType }) {
   const { data: { user } } = await supabase.auth.getUser();
   const row = {
     exam_set_id: examSetId,
@@ -166,6 +178,7 @@ export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, o
     opens_at: opensAt,
     closes_at: closesAt,
     duration_minutes: durationMinutes,
+    schedule_type: scheduleType || 'adhoc',
   };
   if (id) {
     const { error } = await supabase.from('online_exam_rounds').update(row).eq('id', id);
@@ -276,4 +289,220 @@ export async function getRoundReport(supabase, roundId) {
     room: subject?.room,
     rows,
   };
+}
+
+// ---------------------------------------------------------------------
+// Live proctor monitor ("คุมสอบ") — real-time view of who's taking an
+// online exam right now, for a teacher physically watching a room. Two
+// entry points: by รอบสอบ (a teacher watching their own exam, typically
+// นอกตาราง/ad-hoc) or by ชั้น/ห้อง + date (a teacher assigned by the admin
+// to proctor a room, watching every online exam happening there that day
+// regardless of which teacher set it up). Read access for both is enforced
+// server-side by RLS: the round/set/attempt owner, any admin, or a teacher
+// with a matching online_exam_proctor_assignments row for that round's
+// grade/room/date (see is_assigned_proctor() — migration
+// add_proctor_monitor_read_access). Realtime subscriptions on
+// online_exam_attempts respect the same RLS, so a live channel only ever
+// delivers rows the viewer is already allowed to read.
+
+/**
+ * A รอบสอบ's live monitor data — same shape as getRoundReport, plus
+ * `locked` per row (needed to render/act on a lock from the monitor) and
+ * the round's schedule_type.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} roundId
+ */
+export async function getRoundMonitor(supabase, roundId) {
+  const { data: round, error: roundError } = await supabase
+    .from('online_exam_rounds')
+    .select(`
+      id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, schedule_type,
+      online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
+    `)
+    .eq('id', roundId)
+    .single();
+  if (roundError) throw roundError;
+
+  const subject = round.online_exam_sets?.subjects;
+
+  const { data: roster, error: rosterError } = await supabase
+    .from('students')
+    .select('id, student_code, student_name, prefix')
+    .eq('grade_level', subject?.grade_level ?? '')
+    .eq('room', subject?.room ?? '')
+    .order('student_code', { ascending: true });
+  if (rosterError) throw rosterError;
+
+  const { data: attempts, error: attemptsError } = await supabase
+    .from('online_exam_attempts')
+    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, score, violation_count, locked')
+    .eq('round_id', roundId);
+  if (attemptsError) throw attemptsError;
+
+  const attemptByStudent = new Map((attempts || []).map(a => [a.student_id, a]));
+
+  const rows = (roster || []).map(s => {
+    const attempt = attemptByStudent.get(s.id);
+    const status = attempt?.submitted_at ? 'submitted' : (attempt ? 'in_progress' : 'not_started');
+    return {
+      student_id: s.id,
+      student_code: s.student_code,
+      student_name: `${s.prefix || ''}${s.student_name}`,
+      status,
+      attempt_id: attempt?.id ?? null,
+      started_at: attempt?.started_at ?? null,
+      submitted_at: attempt?.submitted_at ?? null,
+      total_correct: attempt?.total_correct ?? null,
+      total_questions: attempt?.total_questions ?? null,
+      score: attempt?.score ?? null,
+      violation_count: attempt?.violation_count ?? 0,
+      locked: attempt?.locked ?? false,
+    };
+  });
+
+  return {
+    id: round.id,
+    opens_at: round.opens_at,
+    closes_at: round.closes_at,
+    duration_minutes: round.duration_minutes,
+    schedule_type: round.schedule_type,
+    exam_set_title: round.online_exam_sets?.title,
+    subject_name: subject?.subject_name,
+    grade_level: subject?.grade_level,
+    room: subject?.room,
+    rows,
+  };
+}
+
+/** [startOfDayISO, startOfNextDayISO) for a 'YYYY-MM-DD' date, fixed at the school's Asia/Bangkok offset (+07:00, no DST). */
+function bangkokDayRange(dateStr) {
+  const start = new Date(`${dateStr}T00:00:00+07:00`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+/**
+ * Every รอบสอบ opening on a given date for a given ชั้น/ห้อง, with each
+ * round's live monitor data — for a teacher assigned to proctor a physical
+ * room rather than one specific exam. RLS (is_assigned_proctor) is what
+ * actually scopes which rounds a non-owning caller can see here; this just
+ * asks for "all rounds in this room on this day" and lets the database
+ * answer with only what the caller is authorized to read.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ date: string, gradeLevel: string, room: string }} args
+ */
+export async function getRoomMonitor(supabase, { date, gradeLevel, room }) {
+  const { start, end } = bangkokDayRange(date);
+  const { data: rounds, error } = await supabase
+    .from('online_exam_rounds')
+    .select(`
+      id, opens_at,
+      online_exam_sets!inner ( subjects!inner ( grade_level, room ) )
+    `)
+    .eq('online_exam_sets.subjects.grade_level', gradeLevel)
+    .eq('online_exam_sets.subjects.room', room)
+    .gte('opens_at', start)
+    .lt('opens_at', end)
+    .order('opens_at', { ascending: true });
+  if (error) throw error;
+
+  return Promise.all((rounds || []).map(r => getRoundMonitor(supabase, r.id)));
+}
+
+/**
+ * Every รอบสอบ the current user is allowed to watch live: their own
+ * (created via subjects ownership) plus any they're an admin-assigned
+ * proctor for, plus everything if they're an admin — RLS decides which
+ * rows come back, deliberately unlike listMyExamRounds's "my own only"
+ * scoping.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ */
+export async function listMonitorableRounds(supabase) {
+  const { data, error } = await supabase
+    .from('online_exam_rounds')
+    .select(`
+      id, opens_at, closes_at, schedule_type,
+      online_exam_sets ( title, subjects ( subject_name, grade_level, room ) )
+    `)
+    .order('opens_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Unlock a locked attempt from the live monitor, using the caller's own
+ * identity (owner teacher / admin / assigned proctor) instead of the
+ * round's unlock_pin.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} attemptId
+ */
+export async function proctorUnlockAttempt(supabase, attemptId) {
+  const { error } = await supabase.rpc('proctor_unlock_exam_attempt', { p_attempt_id: attemptId });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
+// Admin-managed proctor duty roster (who watches which ชั้น/ห้อง on which
+// date). Write access is admin-only (RLS); a non-admin caller can still
+// read their own assignments via listProctorAssignmentsForDate to know
+// what they're covering.
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} date 'YYYY-MM-DD'
+ */
+export async function listProctorAssignmentsForDate(supabase, date) {
+  const { data, error } = await supabase
+    .from('online_exam_proctor_assignments')
+    .select('id, assign_date, grade_level, room, teacher_id, profiles ( full_name )')
+    .eq('assign_date', date)
+    .order('grade_level', { ascending: true })
+    .order('room', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ date: string, gradeLevel: string, room: string, teacherId: string }} args
+ */
+export async function saveProctorAssignment(supabase, { date, gradeLevel, room, teacherId }) {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase.from('online_exam_proctor_assignments').insert({
+    assign_date: date,
+    grade_level: gradeLevel,
+    room,
+    teacher_id: teacherId,
+    created_by: user.id,
+  });
+  if (error) throw error;
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} id
+ */
+export async function deleteProctorAssignment(supabase, id) {
+  const { error } = await supabase.from('online_exam_proctor_assignments').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Distinct ชั้น/ห้อง pairs across every subject, for the admin's assignment picker. */
+export async function listGradeRoomOptions(supabase) {
+  const { data, error } = await supabase.from('subjects').select('grade_level, room');
+  if (error) throw error;
+  const seen = new Map();
+  for (const s of data || []) {
+    const key = `${s.grade_level}|${s.room}`;
+    if (!seen.has(key)) seen.set(key, { grade_level: s.grade_level, room: s.room });
+  }
+  return [...seen.values()].sort((a, b) =>
+    a.grade_level.localeCompare(b.grade_level, 'th') || a.room.localeCompare(b.room, 'th'));
+}
+
+/** Every teacher account, for the admin's proctor picker. */
+export async function listAllTeachers(supabase) {
+  const { data, error } = await supabase.from('profiles').select('id, full_name').order('full_name', { ascending: true });
+  if (error) throw error;
+  return data;
 }

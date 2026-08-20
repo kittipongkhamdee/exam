@@ -110,6 +110,7 @@ export default function ExamScheduleTool() {
   const [durationMinutes, setDurationMinutes] = useState(DEFAULT_DURATION);
   const [pin, setPin] = useState(() => generatePin());
   const [unlockPin, setUnlockPin] = useState(() => generatePin());
+  const [scheduleType, setScheduleType] = useState('adhoc');
   const [editingRoundId, setEditingRoundId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -149,6 +150,7 @@ export default function ExamScheduleTool() {
     setDurationMinutes(DEFAULT_DURATION);
     setPin(generatePin());
     setUnlockPin(generatePin());
+    setScheduleType('adhoc');
     setFormError(null);
   }
 
@@ -160,6 +162,7 @@ export default function ExamScheduleTool() {
     setDurationMinutes(r.duration_minutes);
     setPin(r.pin);
     setUnlockPin(r.unlock_pin);
+    setScheduleType(r.schedule_type || 'adhoc');
     setFormError(null);
   }
 
@@ -180,6 +183,7 @@ export default function ExamScheduleTool() {
         opensAt: new Date(opensAt).toISOString(),
         closesAt: new Date(closesAt).toISOString(),
         durationMinutes: Number(durationMinutes),
+        scheduleType,
       });
       resetForm();
       refreshRounds();
@@ -281,6 +285,23 @@ export default function ExamScheduleTool() {
               </div>
             </div>
 
+            <div className={field + ' mt-3'}>
+              <label className={label}>ประเภทการสอบ</label>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="scheduleType" value="adhoc" checked={scheduleType === 'adhoc'} onChange={() => setScheduleType('adhoc')} />
+                  นอกตาราง (คุณคุมสอบเอง)
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="scheduleType" value="scheduled" checked={scheduleType === 'scheduled'} onChange={() => setScheduleType('scheduled')} />
+                  ในตาราง (แอดมินกำหนดครูคุมสอบ)
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                นอกตาราง: คุณดูมอนิเตอร์คุมสอบรอบนี้ได้เอง — ในตาราง: ครูที่แอดมินมอบหมายคุมสอบชั้น/ห้องนี้ในวันสอบจะดูมอนิเตอร์ได้ (ดูได้ทั้งรอบในตารางและนอกตารางที่จัดในห้องเดียวกันวันนั้น)
+              </p>
+            </div>
+
             {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -316,6 +337,9 @@ export default function ExamScheduleTool() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={pill + ' ' + status.cls}>{status.label}</span>
+                            <span className={pill + ' ' + (r.schedule_type === 'scheduled' ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500')}>
+                              {r.schedule_type === 'scheduled' ? 'ในตาราง' : 'นอกตาราง'}
+                            </span>
                             <span className="font-mono font-bold tracking-widest text-gray-900">PIN: {r.pin}</span>
                             <span className="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: {r.unlock_pin}</span>
                           </div>

@@ -427,7 +427,7 @@ export default function OMRPrepareTool() {
   const imgwrap = 'border border-gray-200 rounded-lg overflow-hidden max-w-full [&_img]:block [&_img]:w-full';
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-1">เตรียมข้อสอบ — สร้างกระดาษคำตอบและกำหนดเฉลย</h1>
       <div className="text-sm text-gray-500 mb-5">
         เลือกวิชา → ออกแบบฟอร์ม → กำหนดเฉลย แล้วพิมพ์กระดาษคำตอบไว้ล่วงหน้า — เมื่อสอบเสร็จให้ไปที่หน้า

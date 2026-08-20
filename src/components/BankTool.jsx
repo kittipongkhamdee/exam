@@ -13,13 +13,19 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { listMySubjects, listIndicatorsForSubject, listMyBankQuestions, saveBankQuestions, deleteBankQuestion } from '../lib/bank-db';
+import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, deleteBankQuestion } from '../lib/bank-db';
 import ConfirmDialog from './ConfirmDialog';
 
 const DIFFICULTIES = [
   { value: 'easy', label: 'ง่าย' },
   { value: 'medium', label: 'ปานกลาง' },
   { value: 'hard', label: 'ยาก' },
+];
+
+const KINDS = [
+  { value: '', label: 'ทั้งหมด' },
+  { value: 'ระหว่างทาง', label: 'ระหว่างทาง' },
+  { value: 'ปลายทาง', label: 'ปลายทาง' },
 ];
 
 function SparkleIcon(props) {
@@ -94,11 +100,18 @@ export default function BankTool() {
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-90 inline-flex items-center justify-center gap-2';
   const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1';
   const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
+  const chip = 'px-3 py-1.5 rounded-full text-xs font-semibold border transition';
+  const chipActive = chip + ' bg-indigo-600 border-indigo-600 text-white';
+  const chipInactive = chip + ' bg-white border-gray-300 text-gray-600 hover:border-indigo-300';
 
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
   const [indicators, setIndicators] = useState([]);
   const [indicatorIds, setIndicatorIds] = useState([]);
+  const [units, setUnits] = useState([]);
+  const [selectedUnitId, setSelectedUnitId] = useState('');
+  const [sourceMode, setSourceMode] = useState('indicators'); // 'indicators' | 'units' | 'custom'
+  const [kindFilter, setKindFilter] = useState('');
   const [customTopic, setCustomTopic] = useState('');
   const [difficulty, setDifficulty] = useState('medium');
   const [numChoices, setNumChoices] = useState(4);
@@ -141,18 +154,53 @@ export default function BankTool() {
   useEffect(() => {
     setIndicatorIds([]);
     setIndicators([]);
+    setUnits([]);
+    setSelectedUnitId('');
+    setCustomTopic('');
+    setKindFilter('');
     if (!selectedSubject) return;
     (async () => {
       try {
-        setIndicators(await listIndicatorsForSubject(supabase, selectedSubject));
+        const [inds, us] = await Promise.all([
+          listIndicatorsForSubject(supabase, selectedSubject),
+          listEvalPlanUnitsForSubject(supabase, selectedSubject.id),
+        ]);
+        setIndicators(inds);
+        setUnits(us);
+        setSourceMode(inds.length > 0 ? 'indicators' : (us.length > 0 ? 'units' : 'custom'));
       } catch {
         // best-effort — falls back to the custom-topic field
+        setSourceMode('custom');
       }
     })();
   }, [selectedSubject]);
 
   function toggleIndicator(id) {
     setIndicatorIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  const filteredIndicators = kindFilter ? indicators.filter(i => i.kind === kindFilter) : indicators;
+
+  function selectUnit(unit) {
+    setSelectedUnitId(unit.id);
+    if (unit.indicators.length > 0) {
+      setIndicatorIds(unit.indicators.map(i => i.id));
+      setCustomTopic('');
+    } else {
+      setIndicatorIds([]);
+      setCustomTopic(unit.unit_name);
+    }
+  }
+
+  // Switching source clears whatever the other two modes had picked, so the
+  // request sent to /api/generate-questions always reflects only the
+  // currently-visible picker, never a stale mix of indicatorIds from one
+  // mode plus customTopic typed in another.
+  function switchSource(mode) {
+    setSourceMode(mode);
+    setIndicatorIds([]);
+    setSelectedUnitId('');
+    setCustomTopic('');
   }
 
   async function handleGenerate() {
@@ -263,11 +311,35 @@ export default function BankTool() {
 
         {selectedSubject && (
           <div className="mt-4">
-            {indicators.length > 0 ? (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {indicators.length > 0 && (
+                <button type="button" className={sourceMode === 'indicators' ? chipActive : chipInactive} onClick={() => switchSource('indicators')}>
+                  ตัวชี้วัดมาตรฐาน ({indicators.length})
+                </button>
+              )}
+              {units.length > 0 && (
+                <button type="button" className={sourceMode === 'units' ? chipActive : chipInactive} onClick={() => switchSource('units')}>
+                  หน่วยการเรียนรู้ (แผนการวัดผล) ({units.length})
+                </button>
+              )}
+              <button type="button" className={sourceMode === 'custom' ? chipActive : chipInactive} onClick={() => switchSource('custom')}>
+                พิมพ์หัวข้อเอง
+              </button>
+            </div>
+
+            {sourceMode === 'indicators' && (
               <>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className={label}>ประเภทตัวชี้วัด</label>
+                  {KINDS.map(k => (
+                    <button key={k.value} type="button" className={kindFilter === k.value ? chipActive : chipInactive} onClick={() => setKindFilter(k.value)}>
+                      {k.label}
+                    </button>
+                  ))}
+                </div>
                 <label className={label}>ตัวชี้วัด (เลือกได้หลายข้อ)</label>
                 <div className="mt-1.5 max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {indicators.map(ind => (
+                  {filteredIndicators.map(ind => (
                     <label key={ind.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
                       <input
                         type="checkbox"
@@ -277,15 +349,46 @@ export default function BankTool() {
                       />
                       <span>
                         <span className="font-semibold text-gray-700">{ind.indicator_code}</span>{' '}
+                        <span className="text-[10px] text-gray-400">({ind.kind})</span>{' '}
                         <span className="text-gray-600">{ind.indicator_text}</span>
                       </span>
                     </label>
                   ))}
                 </div>
               </>
-            ) : (
+            )}
+
+            {sourceMode === 'units' && (
+              <>
+                <label className={label}>หน่วยการเรียนรู้ (เลือก 1 หน่วย — ใช้ตัวชี้วัดที่ผูกไว้กับหน่วยนั้น)</label>
+                <div className="mt-1.5 max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {units.map(u => (
+                    <label key={u.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="radio" name="unit" className="mt-0.5"
+                        checked={selectedUnitId === u.id}
+                        onChange={() => selectUnit(u)}
+                      />
+                      <span className="min-w-0">
+                        <span className="font-semibold text-gray-700">หน่วยที่ {u.seq}: {u.unit_name}</span>{' '}
+                        <span className="text-[10px] text-gray-400">({u.weight}% · {u.hours} ชม.)</span>
+                        {u.indicators.length > 0 ? (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {u.indicators.map(i => i.indicator_code).join(', ')}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400 mt-0.5">ไม่มีตัวชี้วัดผูกไว้ — ใช้ชื่อหน่วยเป็นหัวข้อแทน</div>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {sourceMode === 'custom' && (
               <div className={field}>
-                <label className={label}>หัวข้อ (วิชานี้ไม่มีตัวชี้วัดมาตรฐานในระบบ พิมพ์หัวข้อที่ต้องการเอง)</label>
+                <label className={label}>หัวข้อ</label>
                 <input
                   type="text" className={inputCls} value={customTopic}
                   onChange={e => setCustomTopic(e.target.value)}
@@ -301,7 +404,7 @@ export default function BankTool() {
         <div className="mt-4">
           <button
             type="button" className={btn}
-            disabled={!subjectId || generating || (indicators.length > 0 && indicatorIds.length === 0 && !customTopic.trim())}
+            disabled={!subjectId || generating || (indicatorIds.length === 0 && !customTopic.trim())}
             onClick={handleGenerate}
           >
             <SparkleIcon className="h-4 w-4" /> {generating ? 'กำลังสร้างข้อสอบ...' : 'สร้างข้อสอบด้วย AI'}

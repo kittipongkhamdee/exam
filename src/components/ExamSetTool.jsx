@@ -6,9 +6,11 @@
 // schedules one or more รอบสอบ against a set built here.
 
 import { useCallback, useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
-import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet } from '../lib/exam-db';
+import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz } from '../lib/exam-db';
+import { generateExamQuestionPaperPdf } from '../lib/exam-print';
 import ConfirmDialog from './ConfirmDialog';
 
 const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
@@ -74,6 +76,16 @@ function XIcon(props) {
   );
 }
 
+function PrinterIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 9V3h12v6" />
+      <rect x="4" y="9" width="16" height="8" rx="1.5" />
+      <path d="M6 14h12v7H6z" />
+    </svg>
+  );
+}
+
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
@@ -110,6 +122,7 @@ export default function ExamSetTool() {
   const [setsLoading, setSetsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [printingId, setPrintingId] = useState(null);
 
   const refreshSets = useCallback(async () => {
     setSetsLoading(true);
@@ -207,6 +220,45 @@ export default function ExamSetTool() {
       setFormError(err.message || 'บันทึกไม่สำเร็จ');
     } finally {
       setSaving(false);
+    }
+  }
+
+  // "พิมพ์ข้อสอบ (A4)": generates the question-paper PDF and, in the same
+  // action, creates/updates the matching OMR quiz + answer key (pulled
+  // straight from these questions' correct_choice) so the teacher never
+  // types the answer key by hand for a paper exam — see exam-print.js and
+  // syncPrintedOmrQuiz.
+  async function handlePrint(set) {
+    setPrintingId(set.id);
+    try {
+      const full = await getExamSetWithQuestions(supabase, set.id);
+      if (full.questions.length === 0) {
+        Swal.fire({ icon: 'warning', title: 'ชุดข้อสอบนี้ยังไม่มีข้อสอบ', text: 'เพิ่มข้อสอบเข้าชุดก่อนพิมพ์' });
+        return;
+      }
+      await syncPrintedOmrQuiz(supabase, {
+        examSetId: full.id,
+        subjectId: full.subject_id,
+        title: full.title,
+        questions: full.questions,
+        existingQuizId: full.printed_quiz_id,
+      });
+      await generateExamQuestionPaperPdf(supabase, {
+        title: full.title,
+        subjectName: full.subject_name,
+        gradeLevel: full.grade_level,
+        room: full.room,
+        questions: full.questions,
+      });
+      refreshSets();
+      Swal.fire({
+        icon: 'success', title: 'พิมพ์ข้อสอบแล้ว',
+        text: 'ดาวน์โหลด PDF ข้อสอบแล้ว และตั้งเฉลยให้ในระบบตรวจข้อสอบ (OMR) ให้แล้ว — ไปที่ "กระดาษคำตอบ" เพื่อพิมพ์กระดาษคำตอบต่อได้เลย',
+      });
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'พิมพ์ข้อสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+      setPrintingId(null);
     }
   }
 
@@ -350,6 +402,9 @@ export default function ExamSetTool() {
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        <button className={btnTiny} disabled={printingId === s.id} onClick={() => handlePrint(s)}>
+                          <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังพิมพ์...' : 'พิมพ์ข้อสอบ (A4)'}
+                        </button>
                         <button className={btnTiny} onClick={() => startEdit(s)}>
                           <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
                         </button>

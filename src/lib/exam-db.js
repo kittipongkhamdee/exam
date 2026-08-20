@@ -44,6 +44,8 @@
 // day. The owning teacher's own access is unaffected either way — it's the
 // pre-existing subjects.user_id-based policy, untouched by any of this.
 
+import { createQuiz, deleteQuiz } from './omr-db';
+
 /**
  * List this teacher's ชุดข้อสอบ, each with its subject and question count.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
@@ -78,8 +80,9 @@ export async function getExamSetWithQuestions(supabase, id) {
   const { data, error } = await supabase
     .from('online_exam_sets')
     .select(`
-      id, subject_id, title,
-      online_exam_set_questions ( seq, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source ) )
+      id, subject_id, title, printed_quiz_id,
+      subjects ( subject_name, grade_level, room ),
+      online_exam_set_questions ( seq, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path ) )
     `)
     .eq('id', id)
     .single();
@@ -88,7 +91,16 @@ export async function getExamSetWithQuestions(supabase, id) {
     .sort((a, b) => a.seq - b.seq)
     .map(x => x.bank_questions)
     .filter(Boolean);
-  return { id: data.id, subject_id: data.subject_id, title: data.title, questions };
+  return {
+    id: data.id,
+    subject_id: data.subject_id,
+    title: data.title,
+    printed_quiz_id: data.printed_quiz_id,
+    subject_name: data.subjects?.subject_name,
+    grade_level: data.subjects?.grade_level,
+    room: data.subjects?.room,
+    questions,
+  };
 }
 
 /**
@@ -534,4 +546,66 @@ export async function listAllExamRoundsWithTeacher(supabase) {
     nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.full_name]));
   }
   return (data || []).map(r => ({ ...r, teacherName: nameByUserId[r.online_exam_sets?.subjects?.user_id] || null }));
+}
+
+// ---------------------------------------------------------------------
+// Printing a ชุดข้อสอบ to paper — for a teacher running the exam offline
+// (see exam-print.js for the actual question-paper PDF). The matching OMR
+// answer key is auto-filled here from the same questions' correct_choice,
+// instead of the teacher re-typing it into "กำหนดเฉลย" by hand.
+
+/**
+ * Creates (or, if safe, replaces) the omr_quizzes + omr_answer_keys pulled
+ * from a ชุดข้อสอบ's questions, and links it back via
+ * online_exam_sets.printed_quiz_id.
+ *
+ * A re-print reuses the same underlying quiz (deleting and recreating it)
+ * ONLY if it has no omr_scan_results yet — once a teacher has actually
+ * scanned a student's paper against it, that graded data must never be
+ * silently destroyed by a later re-print, so a fresh quiz is created
+ * instead and the link just moves to it, leaving the old one (and its real
+ * scan results) alone.
+ *
+ * num_choices is uniform for the whole OMR sheet (a fixed bubble grid, not
+ * per-question) — same constraint an OMR quiz built by hand already has —
+ * so this takes the max across the set's questions.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ examSetId: string, subjectId: string, title: string, questions: Array<{ correct_choice: number, num_choices: number }>, existingQuizId?: string|null }} args
+ * @returns {Promise<string>} the omr_quizzes id
+ */
+export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title, questions, existingQuizId }) {
+  if (existingQuizId) {
+    const { count, error: countError } = await supabase
+      .from('omr_scan_results')
+      .select('id', { count: 'exact', head: true })
+      .eq('quiz_id', existingQuizId);
+    if (countError) throw countError;
+    if (!count) {
+      await deleteQuiz(supabase, existingQuizId);
+    }
+  }
+
+  const numChoices = Math.max(...questions.map(q => q.num_choices || 4));
+  const answerKey = {};
+  questions.forEach((q, i) => {
+    answerKey[i] = { choices: [q.correct_choice], points: 1 };
+  });
+
+  const { quizId } = await createQuiz(supabase, {
+    subjectId,
+    title,
+    numQuestions: questions.length,
+    numChoices,
+    idDigits: 5,
+    choiceScheme: 'thai',
+    paperLayout: 'halfLandscape',
+    cols: null,
+    answerKey,
+  });
+
+  const { error } = await supabase.from('online_exam_sets').update({ printed_quiz_id: quizId }).eq('id', examSetId);
+  if (error) throw error;
+
+  return quizId;
 }

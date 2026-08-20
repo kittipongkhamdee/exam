@@ -1198,6 +1198,8 @@ export {
   buildLayout,
   drawFiducials,
   choiceLetters,
+  wrapText,
+  fillTextClipped,
   drawSheet,
   toGray,
   findFiducials,

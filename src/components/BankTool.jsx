@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, deleteBankQuestion } from '../lib/bank-db';
+import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion } from '../lib/bank-db';
 import ConfirmDialog from './ConfirmDialog';
 
 const DIFFICULTIES = [
@@ -138,6 +138,10 @@ export default function BankTool() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, toggleGroup] = useExpandedGroups();
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState(null);
 
   const selectedSubject = subjects.find(s => s.id === subjectId) || null;
 
@@ -299,6 +303,49 @@ export default function BankTool() {
       refreshBank();
     } finally {
       setDeleting(false);
+    }
+  }
+
+  function startEdit(q) {
+    setEditingId(q.id);
+    setEditError(null);
+    setEditDraft({
+      question_text: q.question_text,
+      choices: [...q.choices],
+      correct_choice: q.correct_choice,
+      explanation: q.explanation || '',
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  function updateEditChoice(idx, value) {
+    setEditDraft(prev => {
+      const choices = [...prev.choices];
+      choices[idx] = value;
+      return { ...prev, choices };
+    });
+  }
+
+  async function handleSaveEdit() {
+    if (!editDraft.question_text.trim() || editDraft.choices.some(c => !c.trim())) {
+      setEditError('กรอกคำถามและตัวเลือกให้ครบก่อนบันทึก');
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await updateBankQuestion(supabase, editingId, editDraft);
+      cancelEdit();
+      refreshBank();
+    } catch (err) {
+      setEditError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -525,22 +572,66 @@ export default function BankTool() {
                     <div className="h-px flex-1 bg-gray-100" />
                   </button>
                   {expanded && group.rows.map(q => (
-                    <div key={q.id} className="flex justify-between items-start gap-3 text-sm py-2.5 border-b border-gray-100 last:border-b-0">
-                      <div className="min-w-0">
-                        <div className="font-medium text-gray-900">{q.question_text}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
-                            {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
-                          </span>
-                          <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTIES.find(d => d.value === q.difficulty)?.label || q.difficulty}</span>
-                          {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
-                          <span>{q.num_choices} ตัวเลือก</span>
+                    editingId === q.id ? (
+                      <div key={q.id} className="border border-indigo-200 rounded-lg p-4 my-2">
+                        <textarea
+                          className={inputCls + ' w-full mb-3'} rows={2}
+                          value={editDraft.question_text}
+                          onChange={e => setEditDraft(prev => ({ ...prev, question_text: e.target.value }))}
+                        />
+                        <div className="space-y-1.5 mb-3">
+                          {editDraft.choices.map((c, ci) => (
+                            <label key={ci} className="flex items-center gap-2">
+                              <input
+                                type="radio" name={`edit-${q.id}`}
+                                checked={editDraft.correct_choice === ci}
+                                onChange={() => setEditDraft(prev => ({ ...prev, correct_choice: ci }))}
+                              />
+                              <input
+                                type="text" className={inputCls + ' flex-1'}
+                                value={c}
+                                onChange={e => updateEditChoice(ci, e.target.value)}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <label className={label}>คำอธิบายเฉลย</label>
+                        <textarea
+                          className={inputCls + ' w-full mt-1 mb-3'} rows={2}
+                          value={editDraft.explanation}
+                          onChange={e => setEditDraft(prev => ({ ...prev, explanation: e.target.value }))}
+                        />
+                        {editError && <div className="text-xs text-red-600 mb-2">{editError}</div>}
+                        <div className="flex gap-2">
+                          <button type="button" className={btn} disabled={editSaving} onClick={handleSaveEdit}>
+                            <SaveIcon className="h-4 w-4" /> {editSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+                          </button>
+                          <button type="button" className={btnSecondary} disabled={editSaving} onClick={cancelEdit}>ยกเลิก</button>
                         </div>
                       </div>
-                      <button className={btnTiny + ' shrink-0'} onClick={() => setDeleteTarget(q)}>
-                        <TrashIcon className="h-3.5 w-3.5" /> ลบ
-                      </button>
-                    </div>
+                    ) : (
+                      <div key={q.id} className="flex justify-between items-start gap-3 text-sm py-2.5 border-b border-gray-100 last:border-b-0">
+                        <div className="min-w-0">
+                          <div className="font-medium text-gray-900">{q.question_text}</div>
+                          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
+                              {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
+                            </span>
+                            <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTIES.find(d => d.value === q.difficulty)?.label || q.difficulty}</span>
+                            {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
+                            <span>{q.num_choices} ตัวเลือก</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button className={btnTiny} onClick={() => startEdit(q)}>
+                            <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
+                          </button>
+                          <button className={btnTiny} onClick={() => setDeleteTarget(q)}>
+                            <TrashIcon className="h-3.5 w-3.5" /> ลบ
+                          </button>
+                        </div>
+                      </div>
+                    )
                   ))}
                 </div>
               );

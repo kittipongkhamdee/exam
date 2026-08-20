@@ -55,6 +55,32 @@ function LockIcon(props) {
   );
 }
 
+// Groups a list of admin-wide rows by teacher name, sorted alphabetically
+// (Thai collation) by teacher, preserving each row's original order within
+// its group — used so the settings panels read as "per teacher" instead of
+// one long list mixing every teacher's items together.
+function groupByTeacher(items, getTeacherName) {
+  const groups = new Map();
+  for (const item of items) {
+    const name = getTeacherName(item) || 'ไม่ทราบ';
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(item);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], 'th'))
+    .map(([name, rows]) => ({ name, rows }));
+}
+
+function TeacherGroupHeader({ name, count }) {
+  return (
+    <div className="flex items-center gap-2 pt-3 pb-1.5 first:pt-0">
+      <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{name}</span>
+      <span className="text-[11px] text-gray-400">({count})</span>
+      <div className="h-px flex-1 bg-gray-100" />
+    </div>
+  );
+}
+
 function ScanPhotosPanel() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,26 +130,30 @@ function ScanPhotosPanel() {
       {!loading && photos.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีรูปที่เก็บไว้</div>}
       {photos.length > 0 && (
         <div className="max-h-96 overflow-y-auto -mx-5 px-5">
-          {photos.map(p => (
-            <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
-              <div className="min-w-0">
-                <div className="font-medium text-gray-900 truncate">
-                  {p.students?.student_code} {p.students?.prefix}{p.students?.student_name}
+          {groupByTeacher(photos, p => p.profiles?.full_name).map(group => (
+            <div key={group.name}>
+              <TeacherGroupHeader name={group.name} count={group.rows.length} />
+              {group.rows.map(p => (
+                <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">
+                      {p.students?.student_code} {p.students?.prefix}{p.students?.student_name}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} ({p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <span className="text-xs text-gray-500">{p.total_correct} ({p.score}%)</span>
+                    <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleView(p.photo_path)}>
+                      <EyeIcon className="h-3.5 w-3.5" /> ดูรูป
+                    </button>
+                    <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleDelete(p.id, p.photo_path)}>
+                      <TrashIcon className="h-3.5 w-3.5" /> ลบรูป
+                    </button>
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 truncate">
-                  {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} ({p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
-                  {' · ครู: '}{p.profiles?.full_name || 'ไม่ทราบ'}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 ml-3">
-                <span className="text-xs text-gray-500">{p.total_correct} ({p.score}%)</span>
-                <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleView(p.photo_path)}>
-                  <EyeIcon className="h-3.5 w-3.5" /> ดูรูป
-                </button>
-                <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleDelete(p.id, p.photo_path)}>
-                  <TrashIcon className="h-3.5 w-3.5" /> ลบรูป
-                </button>
-              </div>
+              ))}
             </div>
           ))}
         </div>
@@ -183,20 +213,24 @@ function QuizzesPanel() {
       {!loading && quizzes.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบในระบบ</div>}
       {quizzes.length > 0 && (
         <div className="max-h-96 overflow-y-auto -mx-5 px-5">
-          {quizzes.map(q => (
-            <div key={q.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
-              <div className="min-w-0">
-                <div className="font-medium text-gray-900 truncate">{q.title}</div>
-                <div className="text-xs text-gray-500 truncate">
-                  {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
-                  {' · ครู: '}{q.teacherName || 'ไม่ทราบ'}
+          {groupByTeacher(quizzes, q => q.teacherName).map(group => (
+            <div key={group.name}>
+              <TeacherGroupHeader name={group.name} count={group.rows.length} />
+              {group.rows.map(q => (
+                <div key={q.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{q.title}</div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
+                      {deletingId === q.id ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบ</>)}
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 ml-3">
-                <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
-                  {deletingId === q.id ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบ</>)}
-                </button>
-              </div>
+              ))}
             </div>
           ))}
         </div>

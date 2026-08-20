@@ -49,19 +49,57 @@ function indicatorGradeLevels(subjectGradeLevel) {
  * and grade level, for the "เลือกตัวชี้วัด" step of AI question generation.
  * Only covers รายวิชาพื้นฐาน (core subjects) — the reference table has no
  * rows for วิชาเพิ่มเติม (electives), so this returns empty for those and
- * the generation flow falls back to a free-text topic instead.
+ * the generation flow falls back to listEvalPlanUnitsForSubject or a
+ * free-text topic instead. `kind` optionally narrows to ตัวชี้วัดระหว่างทาง
+ * or ปลายทาง — indicators.kind's only two allowed values.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ subject_group: string, grade_level: string }} subject
+ * @param {{ kind?: 'ระหว่างทาง'|'ปลายทาง' }} [opts]
  */
-export async function listIndicatorsForSubject(supabase, subject) {
-  const { data, error } = await supabase
+export async function listIndicatorsForSubject(supabase, subject, opts = {}) {
+  let query = supabase
     .from('indicators')
     .select('id, standard_code, indicator_code, indicator_text, kind')
     .eq('subject_group', subject.subject_group)
-    .in('grade_level', indicatorGradeLevels(subject.grade_level))
-    .order('indicator_code', { ascending: true });
+    .in('grade_level', indicatorGradeLevels(subject.grade_level));
+  if (opts.kind) query = query.eq('kind', opts.kind);
+  const { data, error } = await query.order('indicator_code', { ascending: true });
   if (error) throw error;
   return data;
+}
+
+/**
+ * List a subject's learning units from the teacher's own assessment plan
+ * (หน่วยการเรียนรู้ในแผนการวัดและประเมินผล — the same eval_plan_units data
+ * the ปพ.5 system's unit-planning screen writes), each with whatever
+ * core-curriculum indicator(s) the teacher already linked to it via
+ * eval_plan_unit_indicators. For a วิชาเพิ่มเติม unit — which can't link
+ * to `indicators` at all, since that table only holds รายวิชาพื้นฐาน rows
+ * — the unit simply comes back with an empty indicators array, and the
+ * caller falls back to the unit's own name as a free-text topic (in
+ * practice this is where a school's own ผลการเรียนรู้ for an elective
+ * ends up, since there's nowhere else to record it).
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} subjectId
+ */
+export async function listEvalPlanUnitsForSubject(supabase, subjectId) {
+  const { data, error } = await supabase
+    .from('eval_plan_units')
+    .select(`
+      id, seq, unit_name, hours, weight,
+      eval_plan_unit_indicators ( indicators ( id, indicator_code, indicator_text, kind ) )
+    `)
+    .eq('subject_id', subjectId)
+    .order('seq', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(u => ({
+    id: u.id,
+    seq: u.seq,
+    unit_name: u.unit_name,
+    hours: u.hours,
+    weight: u.weight,
+    indicators: (u.eval_plan_unit_indicators || []).map(x => x.indicators).filter(Boolean),
+  }));
 }
 
 /**

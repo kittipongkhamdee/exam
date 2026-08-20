@@ -444,7 +444,7 @@ export default function OMRPrepareTool() {
             }
             onClick={() => setActiveStep(s.key)}
           >
-            {s.done && <span className="text-green-600 mr-1">✓</span>}{s.label}
+            {s.done && <CheckCircleIcon className="h-3.5 w-3.5 text-green-600 mr-1 inline-block align-[-2px]" />}{s.label}
           </button>
         ))}
       </div>
@@ -481,8 +481,8 @@ export default function OMRPrepareTool() {
         {quizId && (
           <div className="mt-2.5 flex items-center gap-2.5 flex-wrap">
             <span className={pillOk}>โหลด/บันทึกชุดข้อสอบแล้ว ({quizId.slice(0, 8)}…)</span>
-            <button className={btnTiny} onClick={() => setConfirmDeleteQuizOpen(true)} disabled={deletingQuiz}>
-              {deletingQuiz ? 'กำลังลบ...' : '🗑 ลบชุดข้อสอบนี้'}
+            <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setConfirmDeleteQuizOpen(true)} disabled={deletingQuiz}>
+              {deletingQuiz ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบชุดข้อสอบนี้</>)}
             </button>
             {deleteQuizError && <span className="text-xs text-red-600">{deleteQuizError}</span>}
           </div>
@@ -540,15 +540,24 @@ export default function OMRPrepareTool() {
               <canvas ref={sheetCanvasRef} className="w-full"/>
             </div>
             <div className="flex gap-2 mt-2.5 flex-wrap">
-              <button className={btn} onClick={downloadSheetHalfA4}>📄 ดาวน์โหลด PDF (A4 แนวนอน ซ้าย-ขวา = 2 ชุด)</button>
-              <button className={btnSecondary} onClick={downloadSheetPNG}>ดาวน์โหลด PNG</button>
+              <button className={btn + ' inline-flex items-center gap-2'} onClick={downloadSheetHalfA4}>
+                <DownloadIcon className="h-4 w-4" /> ดาวน์โหลด PDF (A4 แนวนอน ซ้าย-ขวา = 2 ชุด)
+              </button>
+              <button className={btnSecondary + ' inline-flex items-center gap-2'} onClick={downloadSheetPNG}>
+                <DownloadIcon className="h-4 w-4" /> ดาวน์โหลด PNG
+              </button>
             </div>
             <div className="text-[11px] text-amber-700 mt-1.5">⚠ ใช้ไฟล์ PDF สำหรับสั่งพิมพ์ (ไฟล์ PNG อาจพิมพ์ออกมาขนาดผิดเพี้ยน)</div>
           </div>
         </div>
 
         <div className="mt-5 pt-4 border-t border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-900 mb-1">สร้างกระดาษคำตอบทั้งห้อง (ใส่ชื่อ/เลขประจำตัวให้อัตโนมัติ)</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0">
+              <UsersIcon className="h-4 w-4" />
+            </span>
+            สร้างกระดาษคำตอบทั้งห้อง (ใส่ชื่อ/เลขประจำตัวให้อัตโนมัติ)
+          </h3>
           {!subjectId ? (
             <div className="text-xs text-gray-500">เลือกวิชาในขั้นตอนที่ 0 ก่อน เพื่อดึงรายชื่อนักเรียนของห้องนั้น</div>
           ) : loadingClassStudents ? (
@@ -560,8 +569,8 @@ export default function OMRPrepareTool() {
               <div className="text-xs text-gray-500 mb-2">
                 พบนักเรียน {classStudents.length} คน — แต่ละคนจะได้กระดาษคำตอบของตัวเอง พร้อมชื่อ-สกุล, ชั้น, เลขที่ และฝนวงกลมเลขประจำตัวนักเรียนให้อัตโนมัติจากรหัสนักเรียนในระบบ รวมเป็น PDF เดียว ({Math.ceil(classStudents.length / 2)} แผ่น A4)
               </div>
-              <button className={btn} onClick={handleGenerateClassPDF} disabled={generatingBatch}>
-                {generatingBatch ? `กำลังสร้าง... (${batchProgress}/${classStudents.length})` : `📚 สร้าง PDF ทั้งห้อง (${classStudents.length} คน)`}
+              <button className={btn + ' inline-flex items-center gap-2'} onClick={handleGenerateClassPDF} disabled={generatingBatch}>
+                {generatingBatch ? `กำลังสร้าง... (${batchProgress}/${classStudents.length})` : (<><UsersIcon className="h-4 w-4" /> สร้าง PDF ทั้งห้อง ({classStudents.length} คน)</>)}
               </button>
               {batchError && <div className="text-xs text-red-600 mt-2">{batchError}</div>}
               <div className="text-[11px] text-gray-500 mt-1.5">เลขที่ในกระดาษคำตอบเรียงตามรหัสนักเรียนจากน้อยไปมาก — นักเรียนยังต้องเขียนชื่อ-สกุลด้วยลายมือตามที่พิมพ์ไว้เพื่อยืนยัน และตรวจสอบวงกลมเลขประจำตัวที่ฝนไว้ให้ก่อนเริ่มทำข้อสอบ</div>
@@ -632,12 +641,12 @@ export default function OMRPrepareTool() {
             <span className={pillOk}>บันทึกเฉลยแล้ว — หากต้องการแก้ไข ให้เลือก &ldquo;สร้างชุดใหม่&rdquo; แล้วบันทึกเป็นชุดข้อสอบใหม่แทน</span>
           ) : (
             <button
-              className={btn}
+              className={btn + ' inline-flex items-center gap-2'}
               onClick={handleSaveAnswerKey}
               disabled={!subjectId || !keyComplete || savingQuiz}
               title={!subjectId ? 'เลือกวิชาก่อน' : (!keyComplete ? 'กำหนดเฉลยให้ครบก่อน' : '')}
             >
-              {savingQuiz ? 'กำลังบันทึก...' : '💾 บันทึกเฉลยไปยังฐานข้อมูล'}
+              {savingQuiz ? 'กำลังบันทึก...' : (<><SaveIcon className="h-4 w-4" /> บันทึกเฉลยไปยังฐานข้อมูล</>)}
             </button>
           )}
           {saveQuizError && <span className="text-xs text-red-600">{saveQuizError}</span>}
@@ -645,7 +654,9 @@ export default function OMRPrepareTool() {
         {quizId && (
           <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-4 flex items-center justify-between flex-wrap gap-3">
             <div className="text-sm text-indigo-900">พร้อมสอบแล้ว — ให้นักเรียนทำข้อสอบ แล้วมาสแกนตรวจด้วยมือถือหลังสอบเสร็จ</div>
-            <a href="/omr/scan" className={btn}>📷 ไปที่หน้าสแกนตรวจ →</a>
+            <a href="/omr/scan" className={btn + ' inline-flex items-center gap-2'}>
+              <CameraIcon className="h-4 w-4" /> ไปที่หน้าสแกนตรวจ <ArrowRightIcon className="h-4 w-4" />
+            </a>
           </div>
         )}
         <div className="flex justify-between mt-4">
@@ -656,7 +667,8 @@ export default function OMRPrepareTool() {
 
       {quizId && (
         <div className={card}>
-          <h2 className="text-base font-semibold mb-3">
+          <h2 className="text-base font-semibold mb-3 flex items-center gap-1.5">
+            <ClipboardListIcon className="h-4 w-4 text-gray-400" />
             ผลที่สแกนแล้วของชุดข้อสอบนี้ {loadingRoster && <span className="font-normal text-gray-500">(กำลังโหลด...)</span>}
           </h2>
           {roster.length === 0 ? (
@@ -689,5 +701,79 @@ export default function OMRPrepareTool() {
         onCancel={() => setConfirmDeleteQuizOpen(false)}
       />
     </div>
+  );
+}
+
+function CheckCircleIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8.5 12.5 2.5 2.5 4.5-5" />
+    </svg>
+  );
+}
+
+function TrashIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function DownloadIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 4v12M7 11l5 5 5-5" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
+function UsersIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M2 20c0-3.3 3.1-6 7-6s7 2.7 7 6" />
+      <circle cx="17" cy="8" r="2.5" />
+      <path d="M16 14.2c2.7.5 5 2.4 5 5.8" />
+    </svg>
+  );
+}
+
+function SaveIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
+      <path d="M8 4v5h7V4M8 20v-6h8v6" />
+    </svg>
+  );
+}
+
+function CameraIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function ClipboardListIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1Z" />
+      <path d="M9 12h6M9 16h4" />
+    </svg>
   );
 }

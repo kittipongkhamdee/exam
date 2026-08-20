@@ -400,42 +400,38 @@ export async function getRoundMonitor(supabase, roundId) {
   };
 }
 
-/** [startOfDayISO, startOfNextDayISO) for a 'YYYY-MM-DD' date, fixed at the school's Asia/Bangkok offset (+07:00, no DST). */
-function bangkokDayRange(dateStr) {
-  const start = new Date(`${dateStr}T00:00:00+07:00`);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  return { start: start.toISOString(), end: end.toISOString() };
-}
-
 /**
  * Every รอบสอบ opening on a given date for a given ชั้น/ห้อง, with each
  * round's live monitor data — for a teacher assigned to proctor a physical
- * room rather than one specific exam. Plain RLS (owner-or-admin) scopes
- * which rounds a caller can see here — see the note at the top of this
- * file: a non-owning assigned proctor doesn't currently get anything
- * beyond that, since the RLS grant for that case caused recursion and was
- * reverted. This just asks for "all rounds in this room on this day" and
- * lets the database answer with only what the caller is authorized to
- * read.
+ * room rather than one specific exam, watching every online exam
+ * happening there that day regardless of which teacher set it up.
+ *
+ * Goes through the get_room_monitor_for_proctor RPC rather than plain
+ * table reads: that's the replacement for the online_exam_rounds/sets/
+ * attempts proctor-read RLS policies reverted in
+ * drop_recursive_proctor_read_policies (they caused infinite RLS
+ * recursion — a table's own policy can't safely call back into itself,
+ * even indirectly through another table). A SECURITY DEFINER RPC that's
+ * never invoked from inside one of those tables' own policies doesn't hit
+ * that recursion guard, matching the proven pattern of
+ * start_exam_attempt/is_admin/proctor_unlock_exam_attempt. The RPC
+ * authorizes via is_admin() or a matching online_exam_proctor_assignments
+ * row for auth.uid(), and deliberately never returns score/total_correct
+ * — this is the operational "who's stuck/locked right now" lens for a
+ * room proctor who may not be the subject's own teacher, not a grading
+ * view. Owners/admins watching their own exam still see real scores via
+ * getRoundMonitor ("รายรอบ" mode) or the "รายงาน" report page.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ date: string, gradeLevel: string, room: string }} args
  */
 export async function getRoomMonitor(supabase, { date, gradeLevel, room }) {
-  const { start, end } = bangkokDayRange(date);
-  const { data: rounds, error } = await supabase
-    .from('online_exam_rounds')
-    .select(`
-      id, opens_at,
-      online_exam_sets!inner ( subjects!inner ( grade_level, room ) )
-    `)
-    .eq('online_exam_sets.subjects.grade_level', gradeLevel)
-    .eq('online_exam_sets.subjects.room', room)
-    .gte('opens_at', start)
-    .lt('opens_at', end)
-    .order('opens_at', { ascending: true });
+  const { data, error } = await supabase.rpc('get_room_monitor_for_proctor', {
+    p_date: date,
+    p_grade_level: gradeLevel,
+    p_room: room,
+  });
   if (error) throw error;
-
-  return Promise.all((rounds || []).map(r => getRoundMonitor(supabase, r.id)));
+  return (data || []).map(round => ({ ...round, id: round.round_id }));
 }
 
 /**

@@ -388,7 +388,7 @@ export default function OMRScanTool() {
   // --- Screen 1: pick a prepared quiz ---
   if (!selectedQuiz) {
     return (
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">สแกนตรวจ</h1>
         <div className="text-sm text-gray-500 mb-4">เลือกชุดข้อสอบที่เตรียมไว้แล้วเพื่อเริ่มสแกน</div>
 
@@ -497,7 +497,7 @@ export default function OMRScanTool() {
   // it (forcePicker) — e.g. after a decode that didn't match anyone.
   if (!studentId && (!rapidMode || forcePicker)) {
     return (
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-5xl mx-auto">
         <QuizHeader quiz={selectedQuiz} onChangeQuiz={handleChangeQuiz} scannedCount={roster.length} totalCount={students.length} />
         {rapidMode && (
           <button type="button" className="text-xs font-semibold text-indigo-600 mt-3" onClick={() => setForcePicker(false)}>
@@ -533,7 +533,7 @@ export default function OMRScanTool() {
 
   // --- Screen 3: capture + grade + save ---
   return (
-    <div className="max-w-lg mx-auto">
+    <div className="max-w-5xl mx-auto">
       <QuizHeader quiz={selectedQuiz} onChangeQuiz={handleChangeQuiz} scannedCount={roster.length} totalCount={students.length} />
 
       <div className={card + ' mt-4'}>

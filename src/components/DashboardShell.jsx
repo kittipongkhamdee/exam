@@ -20,7 +20,7 @@ const NAV_GROUPS = [
   {
     label: 'กระดาษคำตอบ',
     items: [
-      { href: '/omr/prepare', label: 'เตรียมข้อสอบ', icon: SheetIcon, adminOnly: false },
+      { href: '/omr/prepare', label: 'กระดาษคำตอบ', icon: SheetIcon, adminOnly: false },
       { href: '/omr/scan', label: 'สแกนตรวจ', icon: CameraIcon, adminOnly: false },
       { href: '/omr/report', label: 'รายงาน', icon: ReportIcon, adminOnly: false },
     ],

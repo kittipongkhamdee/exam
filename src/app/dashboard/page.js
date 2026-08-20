@@ -198,7 +198,7 @@ function RecentActivityCard({ data, loading }) {
                   {r.students?.prefix}{r.students?.student_name}
                 </div>
                 <div className="text-xs text-gray-500 truncate">
-                  {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} ({r.omr_quizzes?.subjects?.grade_level}/{r.omr_quizzes?.subjects?.room})
+                  {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} (ชั้น {r.omr_quizzes?.subjects?.grade_level}/{r.omr_quizzes?.subjects?.room})
                 </div>
               </div>
               <div className={"text-sm font-bold shrink-0 " + scoreColor(r.score)}>{r.score}%</div>

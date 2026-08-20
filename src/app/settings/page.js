@@ -169,7 +169,7 @@ function ScanPhotosPanel() {
                         {p.students?.student_code} {p.students?.prefix}{p.students?.student_name}
                       </div>
                       <div className="text-xs text-gray-500 truncate">
-                        {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} ({p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
+                        {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} (ชั้น {p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -254,7 +254,7 @@ function QuizzesPanel() {
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 truncate">{q.title}</div>
                       <div className="text-xs text-gray-500 truncate">
-                        {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                        {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-3">

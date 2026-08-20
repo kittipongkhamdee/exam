@@ -28,7 +28,7 @@ const NAV_GROUPS = [
   {
     label: 'สอบออนไลน์',
     items: [
-      { label: 'คลังข้อสอบ', icon: BankIcon, adminOnly: false, comingSoon: true },
+      { href: '/bank', label: 'คลังข้อสอบ', icon: BankIcon, adminOnly: false },
       { label: 'ข้อสอบ', icon: SheetIcon, adminOnly: false, comingSoon: true },
       { label: 'จัดสอบ', icon: ClipboardIcon, adminOnly: false, comingSoon: true },
       { label: 'รายงาน', icon: ReportIcon, adminOnly: false, comingSoon: true },

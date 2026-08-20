@@ -1,0 +1,381 @@
+'use client';
+// ExamSetTool.jsx — "ข้อสอบ": teacher assembles a reusable ชุดข้อสอบ (exam
+// set) by picking a subject, then checking which of that subject's saved
+// bank questions to include and in what order. A ชุดข้อสอบ holds no
+// schedule/PIN of its own — that's "จัดสอบ" (ExamScheduleTool), which
+// schedules one or more รอบสอบ against a set built here.
+
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
+import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet } from '../lib/exam-db';
+import ConfirmDialog from './ConfirmDialog';
+
+const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
+const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
+
+function SheetIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
+    </svg>
+  );
+}
+
+function TrashIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function SaveIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
+      <path d="M8 4v5h8V4M8 14h8v6H8z" />
+    </svg>
+  );
+}
+
+function PencilIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function ArrowUpIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 19V5M5 12l7-7 7 7" />
+    </svg>
+  );
+}
+
+function ArrowDownIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 5v14M19 12l-7 7-7-7" />
+    </svg>
+  );
+}
+
+function XIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function groupBySubject(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = `${item.subjects?.subject_name} (ชั้น ${item.subjects?.grade_level}/${item.subjects?.room})`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return [...groups.entries()].map(([name, rows]) => ({ name, rows }));
+}
+
+export default function ExamSetTool() {
+  const card = 'bg-white border border-gray-200 rounded-xl p-5 mb-5';
+  const row = 'flex flex-wrap gap-3';
+  const field = 'flex flex-col gap-1';
+  const label = 'text-xs font-semibold text-gray-500';
+  const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50';
+  const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-90 inline-flex items-center justify-center gap-2';
+  const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
+  const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
+  const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
+
+  const [subjects, setSubjects] = useState([]);
+  const [subjectId, setSubjectId] = useState('');
+  const [title, setTitle] = useState('');
+  const [availableQuestions, setAvailableQuestions] = useState([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [editingSetId, setEditingSetId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+
+  const [examSets, setExamSets] = useState([]);
+  const [setsLoading, setSetsLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const refreshSets = useCallback(async () => {
+    setSetsLoading(true);
+    try {
+      setExamSets(await listMyExamSets(supabase));
+    } catch {
+      // best-effort
+    } finally {
+      setSetsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setSubjects(await listMySubjects(supabase));
+      } catch {
+        // best-effort
+      }
+    })();
+    refreshSets();
+  }, [refreshSets]);
+
+  useEffect(() => {
+    if (!subjectId) {
+      setAvailableQuestions([]);
+      return;
+    }
+    setQuestionsLoading(true);
+    (async () => {
+      try {
+        setAvailableQuestions(await listMyBankQuestions(supabase, { subjectId }));
+      } catch {
+        setAvailableQuestions([]);
+      } finally {
+        setQuestionsLoading(false);
+      }
+    })();
+  }, [subjectId]);
+
+  function resetForm() {
+    setEditingSetId(null);
+    setSubjectId('');
+    setTitle('');
+    setSelectedIds([]);
+    setFormError(null);
+  }
+
+  async function startEdit(set) {
+    setLoadingEdit(true);
+    setFormError(null);
+    try {
+      const full = await getExamSetWithQuestions(supabase, set.id);
+      setEditingSetId(full.id);
+      setSubjectId(full.subject_id);
+      setTitle(full.title);
+      setSelectedIds(full.questions.map(q => q.id));
+    } catch (err) {
+      setFormError(err.message || 'โหลดชุดข้อสอบไม่สำเร็จ');
+    } finally {
+      setLoadingEdit(false);
+    }
+  }
+
+  function toggleQuestion(id) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function removeSelected(id) {
+    setSelectedIds(prev => prev.filter(x => x !== id));
+  }
+
+  function moveSelected(index, dir) {
+    setSelectedIds(prev => {
+      const next = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  const questionsById = new Map(availableQuestions.map(q => [q.id, q]));
+  const selectedQuestions = selectedIds.map(id => questionsById.get(id)).filter(Boolean);
+
+  async function handleSave() {
+    if (!subjectId || !title.trim() || selectedIds.length === 0) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      await saveExamSet(supabase, { id: editingSetId, subjectId, title: title.trim(), questionIds: selectedIds });
+      resetForm();
+      refreshSets();
+    } catch (err) {
+      setFormError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteExamSet(supabase, deleteTarget.id);
+      if (editingSetId === deleteTarget.id) resetForm();
+      setDeleteTarget(null);
+      refreshSets();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="max-w-5xl">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-600 to-purple-500 text-white flex items-center justify-center shrink-0">
+          <SheetIcon className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">ข้อสอบ</h1>
+          <p className="text-sm text-gray-500">สร้างชุดข้อสอบจากคลังข้อสอบ เลือกและจัดลำดับข้อที่จะใช้สอบ</p>
+        </div>
+      </div>
+
+      <div className={card + ' mt-5'}>
+        <div className="font-semibold text-gray-900 mb-3">{editingSetId ? 'แก้ไขชุดข้อสอบ' : 'สร้างชุดข้อสอบใหม่'}</div>
+        {loadingEdit && <div className="text-sm text-gray-500 mb-3">กำลังโหลด...</div>}
+        <div className={row}>
+          <div className={field}>
+            <label className={label}>วิชา</label>
+            <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSelectedIds([]); }}>
+              <option value="">— เลือกวิชา —</option>
+              {subjects.map(s => (
+                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
+              ))}
+            </select>
+          </div>
+          <div className={field + ' flex-1 min-w-[200px]'}>
+            <label className={label}>ชื่อชุดข้อสอบ</label>
+            <input
+              type="text" className={inputCls} value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="เช่น สอบกลางภาค บทที่ 1-3"
+            />
+          </div>
+        </div>
+
+        {subjectId && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className={label}>ข้อสอบในคลัง (ติ๊กเพื่อเพิ่มเข้าชุด)</label>
+              {questionsLoading && <div className="text-sm text-gray-500 mt-2">กำลังโหลด...</div>}
+              {!questionsLoading && availableQuestions.length === 0 && (
+                <div className="text-sm text-gray-500 mt-2">วิชานี้ยังไม่มีข้อสอบในคลัง — ไปสร้างที่ &quot;คลังข้อสอบ&quot; ก่อน</div>
+              )}
+              {availableQuestions.length > 0 && (
+                <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {availableQuestions.map(q => (
+                    <label key={q.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox" className="mt-0.5"
+                        checked={selectedIds.includes(q.id)}
+                        onChange={() => toggleQuestion(q.id)}
+                      />
+                      <span className="min-w-0">
+                        <span className="text-gray-700">{q.question_text}</span>{' '}
+                        <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
+                          {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
+                        </span>{' '}
+                        <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTY_LABEL[q.difficulty] || q.difficulty}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ)</label>
+              {selectedQuestions.length === 0 ? (
+                <div className="text-sm text-gray-500 mt-2">ยังไม่ได้เลือกข้อสอบ</div>
+              ) : (
+                <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {selectedQuestions.map((q, i) => (
+                    <div key={q.id} className="flex items-start gap-2 px-3 py-2 text-sm">
+                      <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
+                      <span className="min-w-0 flex-1 text-gray-700">{q.question_text}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" className={btnTiny} disabled={i === 0} onClick={() => moveSelected(i, -1)} aria-label="เลื่อนขึ้น">
+                          <ArrowUpIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" className={btnTiny} disabled={i === selectedQuestions.length - 1} onClick={() => moveSelected(i, 1)} aria-label="เลื่อนลง">
+                          <ArrowDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" className={btnTiny} onClick={() => removeSelected(q.id)} aria-label="เอาออก">
+                          <XIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button" className={btn}
+            disabled={!subjectId || !title.trim() || selectedIds.length === 0 || saving}
+            onClick={handleSave}
+          >
+            <SaveIcon className="h-4 w-4" /> {saving ? 'กำลังบันทึก...' : (editingSetId ? 'บันทึกการแก้ไข' : 'สร้างชุดข้อสอบ')}
+          </button>
+          {editingSetId && (
+            <button type="button" className={btnSecondary} disabled={saving} onClick={resetForm}>ยกเลิก</button>
+          )}
+        </div>
+      </div>
+
+      <div className={card}>
+        <div className="font-semibold text-gray-900 mb-3">ชุดข้อสอบที่สร้างไว้แล้ว</div>
+        {setsLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
+        {!setsLoading && examSets.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบ</div>}
+        {examSets.length > 0 && (
+          <div className="space-y-4">
+            {groupBySubject(examSets).map(group => (
+              <div key={group.name}>
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{group.name}</div>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {group.rows.map(s => (
+                    <div key={s.id} className="flex justify-between items-center gap-3 text-sm px-3 py-2.5">
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900">{s.title}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button className={btnTiny} onClick={() => startEdit(s)}>
+                          <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
+                        </button>
+                        <button className={btnTiny} onClick={() => setDeleteTarget(s)}>
+                          <TrashIcon className="h-3.5 w-3.5" /> ลบ
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="ยืนยันลบชุดข้อสอบ"
+        message={deleteTarget ? `ลบชุดข้อสอบ "${deleteTarget.title}"?\n\nรอบสอบที่ตั้งไว้จากชุดนี้จะถูกลบไปด้วย` : ''}
+        confirmLabel="ลบชุดข้อสอบ"
+        danger
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+}

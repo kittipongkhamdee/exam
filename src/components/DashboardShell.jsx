@@ -31,6 +31,7 @@ const NAV_GROUPS = [
       { href: '/bank', label: 'คลังข้อสอบ', icon: BankIcon, adminOnly: false },
       { href: '/exam', label: 'ข้อสอบ', icon: SheetIcon, adminOnly: false },
       { href: '/exam/schedule', label: 'จัดสอบ', icon: ClipboardIcon, adminOnly: false },
+      { href: '/exam/monitor', label: 'คุมสอบ', icon: MonitorIcon, adminOnly: false },
       { href: '/exam/report', label: 'รายงาน', icon: ReportIcon, adminOnly: false },
     ],
   },
@@ -331,6 +332,15 @@ function ReportIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M4 20V10M12 20V4M20 20v-7" />
+    </svg>
+  );
+}
+
+function MonitorIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
     </svg>
   );
 }

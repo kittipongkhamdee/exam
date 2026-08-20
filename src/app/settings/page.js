@@ -249,10 +249,10 @@ function QuizzesPanel() {
             return (
               <div key={group.name}>
                 <TeacherGroupHeader name={group.name} count={group.rows.length} expanded={expanded} onToggle={() => toggleGroup(group.name)} />
-                {expanded && group.rows.map(q => (
+                {expanded && group.rows.map((q, i) => (
                   <div key={q.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
                     <div className="min-w-0">
-                      <div className="font-medium text-gray-900 truncate">{q.title}</div>
+                      <div className="font-medium text-gray-900 truncate">{i + 1}. {q.title}</div>
                       <div className="text-xs text-gray-500 truncate">
                         {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
                       </div>

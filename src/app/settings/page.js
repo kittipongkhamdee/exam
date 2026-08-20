@@ -9,6 +9,52 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
 
+function SheetIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
+    </svg>
+  );
+}
+
+function PhotoIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m21 15-5-5L5 20" />
+    </svg>
+  );
+}
+
+function EyeIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function TrashIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function LockIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
 function ScanPhotosPanel() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +90,12 @@ function ScanPhotosPanel() {
 
   return (
     <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
-      <div className="font-semibold text-gray-900">รูปกระดาษคำตอบที่ครูเก็บไว้ทั้งหมด</div>
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0">
+          <PhotoIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">รูปกระดาษคำตอบที่ครูเก็บไว้ทั้งหมด</div>
+      </div>
       <p className="mt-1 text-sm text-gray-500 mb-4">
         เฉพาะครูที่เปิด &ldquo;เก็บรูปกระดาษคำตอบไว้ดูย้อนหลัง&rdquo; ในหน้าสแกนตรวจเท่านั้นที่จะมีรูปที่นี่ แอดมินลบรูปของครูคนใดก็ได้ (ข้อมูลคะแนน/เฉลยไม่หาย ลบแค่รูป)
       </p>
@@ -66,8 +117,12 @@ function ScanPhotosPanel() {
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3">
                 <span className="text-xs text-gray-500">{p.total_correct} ({p.score}%)</span>
-                <button className={btnTiny} onClick={() => handleView(p.photo_path)}>ดูรูป</button>
-                <button className={btnTiny} onClick={() => handleDelete(p.id, p.photo_path)}>ลบรูป</button>
+                <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleView(p.photo_path)}>
+                  <EyeIcon className="h-3.5 w-3.5" /> ดูรูป
+                </button>
+                <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleDelete(p.id, p.photo_path)}>
+                  <TrashIcon className="h-3.5 w-3.5" /> ลบรูป
+                </button>
               </div>
             </div>
           ))}
@@ -114,7 +169,12 @@ function QuizzesPanel() {
 
   return (
     <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
-      <div className="font-semibold text-gray-900">ชุดข้อสอบทั้งหมดในระบบ</div>
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-600 to-blue-500 text-white flex items-center justify-center shrink-0">
+          <SheetIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">ชุดข้อสอบทั้งหมดในระบบ</div>
+      </div>
       <p className="mt-1 text-sm text-gray-500 mb-4">
         รายการชุดข้อสอบของครูทุกคน แอดมินลบชุดข้อสอบของครูคนใดก็ได้ (ลบแล้วเฉลย ผลตรวจ และรูปที่เก็บไว้ของชุดนั้นจะหายไปทั้งหมด กู้คืนไม่ได้)
       </p>
@@ -133,8 +193,8 @@ function QuizzesPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3">
-                <button className={btnTiny} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
-                  {deletingId === q.id ? 'กำลังลบ...' : 'ลบ'}
+                <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
+                  {deletingId === q.id ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบ</>)}
                 </button>
               </div>
             </div>
@@ -161,9 +221,14 @@ function SettingsContent() {
 
   if (!isAdmin) {
     return (
-      <div className="max-w-lg rounded-xl border border-red-200 bg-red-50 p-5">
-        <div className="font-semibold text-red-700">ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-        <div className="mt-1 text-sm text-red-600">เมนูตั้งค่าใช้ได้เฉพาะผู้ดูแลระบบ (แอดมิน) เท่านั้น</div>
+      <div className="max-w-lg rounded-xl border border-red-200 bg-red-50 p-5 flex items-start gap-3">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 text-white flex items-center justify-center shrink-0">
+          <LockIcon className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="font-semibold text-red-700">ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
+          <div className="mt-1 text-sm text-red-600">เมนูตั้งค่าใช้ได้เฉพาะผู้ดูแลระบบ (แอดมิน) เท่านั้น</div>
+        </div>
       </div>
     );
   }

@@ -152,13 +152,14 @@ function watermarkBackground(line1, line2) {
 
 export default function StudentExamTool() {
   const [savedSession] = useState(() => (typeof window !== 'undefined' ? loadSession() : null));
-  const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted'
+  const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted' | 'result'
   const [pin, setPin] = useState(savedSession?.pin || '');
   const [studentCode, setStudentCode] = useState(savedSession?.studentCode || '');
   const [loginError, setLoginError] = useState(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
   const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, student_name, deadline, questions, violation_count, max_violations, locked }
+  const [result, setResult] = useState(null); // { exam_set_title, student_name, submitted_at, total_correct, total_questions, score } — once the teacher reveals results
   const [answers, setAnswers] = useState({}); // { [question_id]: selectedIndex|null }
   const [now, setNow] = useState(Date.now());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -351,6 +352,16 @@ export default function StudentExamTool() {
       });
       if (error) throw error;
       submittedRef.current = false;
+      if (data.submitted) {
+        // The attempt was already submitted and the teacher has since
+        // revealed results (see the migration) — same PIN + code doubles
+        // as "check my result" once that's true, instead of the usual
+        // already_submitted error.
+        clearSession();
+        setResult(data);
+        setPhase('result');
+        return;
+      }
       saveSession(pinVal.trim(), studentCodeVal.trim());
       setAttempt(data);
       setAnswers(loadDraft(data.attempt_id));
@@ -463,6 +474,23 @@ export default function StudentExamTool() {
           </div>
           <h1 className="text-lg font-bold text-gray-900">ส่งข้อสอบเรียบร้อยแล้ว</h1>
           <p className="mt-2 text-sm text-gray-500">รอให้ครูผู้สอนประกาศผลคะแนน</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'result') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
+        <div className={card + ' w-full max-w-sm text-center'}>
+          <div className="h-14 w-14 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
+            <CheckCircleIcon className="h-8 w-8" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900">{result.exam_set_title}</h1>
+          <p className="mt-1 text-sm text-gray-500">{result.student_name}</p>
+          <div className="mt-4 text-4xl font-bold text-indigo-700">{result.score}%</div>
+          <p className="mt-1 text-sm text-gray-500">ตอบถูก {result.total_correct} จาก {result.total_questions} ข้อ</p>
+          <p className="mt-3 text-xs text-gray-400">ส่งเมื่อ {new Date(result.submitted_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</p>
         </div>
       </div>
     );

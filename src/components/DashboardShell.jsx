@@ -31,7 +31,7 @@ const NAV_GROUPS = [
       { href: '/bank', label: 'คลังข้อสอบ', icon: BankIcon, adminOnly: false },
       { href: '/exam', label: 'ข้อสอบ', icon: SheetIcon, adminOnly: false },
       { href: '/exam/schedule', label: 'จัดสอบ', icon: ClipboardIcon, adminOnly: false },
-      { label: 'รายงาน', icon: ReportIcon, adminOnly: false, comingSoon: true },
+      { href: '/exam/report', label: 'รายงาน', icon: ReportIcon, adminOnly: false },
     ],
   },
   {

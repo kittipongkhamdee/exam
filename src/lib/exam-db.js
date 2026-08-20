@@ -143,7 +143,7 @@ export async function listMyExamRounds(supabase, opts = {}) {
   const { data, error } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, created_at,
+      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, created_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .in('exam_set_id', examSetIds)
@@ -189,4 +189,91 @@ export async function deleteExamRound(supabase, id) {
 /** Generate a random 6-digit numeric PIN (leading zeros preserved as text). */
 export function generatePin() {
   return String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+}
+
+/**
+ * Set whether this รอบสอบ's results are revealed to students. Once true, a
+ * student re-entering their PIN + student code on an already-submitted
+ * attempt gets their score back (see start_exam_attempt) instead of an
+ * already_submitted error.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} roundId
+ * @param {boolean} visible
+ */
+export async function setRoundResultsVisible(supabase, roundId, visible) {
+  const { error } = await supabase.from('online_exam_rounds').update({ results_visible: visible }).eq('id', roundId);
+  if (error) throw error;
+}
+
+/**
+ * A รอบสอบ's full roster — every student in the exam set's subject's
+ * grade_level/room — merged against whatever online_exam_attempts row (if
+ * any) each of them has for this round, for the "รายงาน" page. Two
+ * separate queries (roster, then attempts) merged client-side rather than
+ * one join, since a student with no attempt at all still needs to show up
+ * as "ยังไม่ได้เข้าสอบ" — an outer join PostgREST can't express from the
+ * attempts side.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} roundId
+ */
+export async function getRoundReport(supabase, roundId) {
+  const { data: round, error: roundError } = await supabase
+    .from('online_exam_rounds')
+    .select(`
+      id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible,
+      online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
+    `)
+    .eq('id', roundId)
+    .single();
+  if (roundError) throw roundError;
+
+  const subject = round.online_exam_sets?.subjects;
+
+  const { data: roster, error: rosterError } = await supabase
+    .from('students')
+    .select('id, student_code, student_name, prefix')
+    .eq('grade_level', subject?.grade_level ?? '')
+    .eq('room', subject?.room ?? '')
+    .order('student_code', { ascending: true });
+  if (rosterError) throw rosterError;
+
+  const { data: attempts, error: attemptsError } = await supabase
+    .from('online_exam_attempts')
+    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, score, violation_count')
+    .eq('round_id', roundId);
+  if (attemptsError) throw attemptsError;
+
+  const attemptByStudent = new Map((attempts || []).map(a => [a.student_id, a]));
+
+  const rows = (roster || []).map(s => {
+    const attempt = attemptByStudent.get(s.id);
+    const status = attempt?.submitted_at ? 'submitted' : (attempt ? 'in_progress' : 'not_started');
+    return {
+      student_id: s.id,
+      student_code: s.student_code,
+      student_name: `${s.prefix || ''}${s.student_name}`,
+      status,
+      started_at: attempt?.started_at ?? null,
+      submitted_at: attempt?.submitted_at ?? null,
+      total_correct: attempt?.total_correct ?? null,
+      total_questions: attempt?.total_questions ?? null,
+      score: attempt?.score ?? null,
+      violation_count: attempt?.violation_count ?? 0,
+    };
+  });
+
+  return {
+    id: round.id,
+    pin: round.pin,
+    unlock_pin: round.unlock_pin,
+    opens_at: round.opens_at,
+    closes_at: round.closes_at,
+    duration_minutes: round.duration_minutes,
+    results_visible: round.results_visible,
+    exam_set_title: round.online_exam_sets?.title,
+    subject_name: subject?.subject_name,
+    grade_level: subject?.grade_level,
+    room: subject?.room,
+    rows,
+  };
 }

@@ -106,7 +106,7 @@ export default function OMRReportTool() {
   // --- Screen 1: pick a quiz ---
   if (!selectedQuiz) {
     return (
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">รายงานคะแนน</h1>
         <div className="text-sm text-gray-500 mb-4">เลือกชุดข้อสอบเพื่อดูคะแนนและสถิติของนักเรียนที่สแกนแล้ว</div>
 
@@ -218,7 +218,7 @@ export default function OMRReportTool() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl">
       <button type="button" onClick={handleBack} className="text-sm font-semibold text-indigo-600 mb-3 inline-flex items-center gap-1">
         <ChevronLeftIcon className="h-4 w-4" /> กลับไปเลือกชุดข้อสอบ
       </button>

@@ -214,7 +214,7 @@ function DashboardContent() {
   const { data, loading } = useDashboardData();
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl">
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">แดชบอร์ด</h1>

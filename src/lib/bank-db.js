@@ -19,6 +19,53 @@
 // subject_id — a subject's matching indicators are looked up by that text
 // pair rather than a foreign key, since the same indicator applies to every
 // teacher's "ม.1" subject in that learning area.
+//
+// bank_questions.image_path optionally points at an object in the private
+// bank-question-images bucket ({teacherUid}/...), mirroring omr-scan-photos.
+// Only questions with source = 'manual' may carry an image — AI can't draw
+// an accurate diagram, so the picker UI hides the upload control for
+// source = 'ai' rows entirely rather than relying on this module to enforce
+// it.
+
+const BANK_IMAGE_BUCKET = 'bank-question-images';
+
+/**
+ * Upload an image for a manually-created bank question and return the
+ * storage path to save on the row's image_path column.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ userId: string, blob: Blob, contentType: string }} args
+ */
+export async function uploadBankQuestionImage(supabase, { userId, blob, contentType }) {
+  const ext = contentType === 'image/png' ? 'png' : 'jpg';
+  const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(BANK_IMAGE_BUCKET).upload(path, blob, { contentType });
+  if (error) throw error;
+  return path;
+}
+
+/**
+ * Get a temporary signed URL for a bank question's image.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} path
+ * @param {number} [expiresIn]
+ */
+export async function getBankQuestionImageUrl(supabase, path, expiresIn = 3600) {
+  const { data, error } = await supabase.storage.from(BANK_IMAGE_BUCKET).createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+/**
+ * Delete a bank question's image from storage (e.g. when it's replaced or
+ * removed from an edit form).
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} path
+ */
+export async function deleteBankQuestionImage(supabase, path) {
+  if (!path) return;
+  const { error } = await supabase.storage.from(BANK_IMAGE_BUCKET).remove([path]);
+  if (error) throw error;
+}
 
 /**
  * List every subject the caller teaches, for the bank's subject picker.
@@ -113,7 +160,7 @@ export async function listMyBankQuestions(supabase, opts = {}) {
   let query = supabase
     .from('bank_questions')
     .select(`
-      id, subject_id, indicator_id, difficulty, num_choices, question_text, choices, correct_choice, explanation, source, created_at,
+      id, subject_id, indicator_id, difficulty, num_choices, question_text, choices, correct_choice, explanation, source, image_path, created_at,
       subjects!inner ( subject_name, subject_code, grade_level, room, user_id ),
       indicators ( indicator_code, indicator_text )
     `)
@@ -133,7 +180,7 @@ export async function listMyBankQuestions(supabase, opts = {}) {
  * @param {Array<{
  *   subject_id: string, indicator_id?: number|null, difficulty: string,
  *   question_text: string, choices: string[], correct_choice: number,
- *   explanation?: string, source?: 'ai'|'manual',
+ *   explanation?: string, source?: 'ai'|'manual', image_path?: string|null,
  * }>} questions
  */
 export async function saveBankQuestions(supabase, questions) {
@@ -148,6 +195,7 @@ export async function saveBankQuestions(supabase, questions) {
     correct_choice: q.correct_choice,
     explanation: q.explanation || '',
     source: q.source || 'ai',
+    image_path: q.source === 'manual' ? (q.image_path || null) : null,
     created_by: user.id,
   }));
   const { error } = await supabase.from('bank_questions').insert(rows);
@@ -158,7 +206,7 @@ export async function saveBankQuestions(supabase, questions) {
  * Update one saved bank question's editable fields.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} id
- * @param {{ question_text: string, choices: string[], correct_choice: number, explanation?: string }} patch
+ * @param {{ question_text: string, choices: string[], correct_choice: number, explanation?: string, image_path?: string|null }} patch
  */
 export async function updateBankQuestion(supabase, id, patch) {
   const { error } = await supabase.from('bank_questions').update({
@@ -167,6 +215,7 @@ export async function updateBankQuestion(supabase, id, patch) {
     num_choices: patch.choices.length,
     correct_choice: patch.correct_choice,
     explanation: patch.explanation || '',
+    image_path: patch.image_path || null,
   }).eq('id', id);
   if (error) throw error;
 }

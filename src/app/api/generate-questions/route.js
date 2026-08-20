@@ -12,16 +12,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publish
 const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
 const MAX_QUESTIONS = 15;
 
-// GEMINI_API_KEY lives only in server-side env vars (Vercel project
-// settings), never shipped to the client — this route is the only place
-// that touches it, so the key can't leak through client bundles or network
-// tab inspection the way a client-side Gemini call would.
 export async function POST(request) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return Response.json({ error: 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY บนเซิร์ฟเวอร์' }, { status: 500 });
-  }
-
   const authHeader = request.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   if (!token) {
@@ -38,6 +29,18 @@ export async function POST(request) {
   const { data: { user }, error: userError } = await supabase.auth.getUser(token);
   if (userError || !user) {
     return Response.json({ error: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
+  }
+
+  // Shared config: public.config (key/value, readable by any authenticated
+  // session per its own RLS) is the same table the ปพ.5 system already uses
+  // to store this exact key, set from that system's settings page — reusing
+  // it here means the exam app never needs its own Vercel-side secret for
+  // this. GEMINI_API_KEY (a plain env var) is kept only as a fallback for
+  // local dev, where .env.local is the natural place to put it.
+  const { data: configRow } = await supabase.from('config').select('value').eq('key', 'gemini_api_key').maybeSingle();
+  const apiKey = configRow?.value || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return Response.json({ error: 'ยังไม่ได้ตั้งค่า Gemini API Key ในเมนูตั้งค่า' }, { status: 500 });
   }
 
   let body;

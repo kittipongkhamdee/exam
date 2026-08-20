@@ -231,16 +231,17 @@ export default function StudentExamTool() {
   // phase === 'exam'
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
-        <div className="text-center text-sm font-semibold text-gray-900 px-4 pt-2.5 truncate">{attempt.student_name}</div>
-        <div className="px-4 pb-3 pt-1 flex items-center justify-between">
-          <div className="min-w-0">
-            <div className="font-bold text-gray-900 truncate">{attempt.exam_set_title}</div>
-            <div className="text-xs text-gray-500">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="font-bold text-gray-900 truncate">{attempt.student_name}</span>
+            <span className="text-gray-300">·</span>
+            <span className="font-semibold text-gray-700 truncate">{attempt.exam_set_title}</span>
           </div>
-          <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
-            <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
-          </div>
+          <div className="text-xs text-gray-500">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
+        </div>
+        <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
+          <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import DashboardShell from '@/components/DashboardShell';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, deleteQuiz } from '@/lib/omr-db';
+import { getConfigValue, setConfigValue } from '@/lib/config-db';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
@@ -284,6 +285,89 @@ function QuizzesPanel() {
   );
 }
 
+function SparkleIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
+    </svg>
+  );
+}
+
+// Reads/writes public.config's gemini_api_key row — the same shared
+// key/value table and key name the ปพ.5 system already uses from its own
+// settings page, so a key entered there or here works for both.
+function AISettingsPanel() {
+  const [value, setValue] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [revealed, setRevealed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setValue(await getConfigValue(supabase, 'gemini_api_key'));
+      } catch (err) {
+        setError(err.message || 'โหลดค่าไม่สำเร็จ');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await setConfigValue(supabase, 'gemini_api_key', value.trim());
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-fuchsia-600 to-purple-500 text-white flex items-center justify-center shrink-0">
+          <SparkleIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">Gemini API Key (สำหรับคลังข้อสอบ)</div>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        ใช้สร้างข้อสอบด้วย AI ในหน้าคลังข้อสอบ — ค่านี้ใช้ร่วมกับระบบ ปพ.5 (ตั้งค่าที่ไหนก็ได้ ใช้ได้ทั้งสองระบบ) รับฟรีได้ที่ aistudio.google.com → Get API Key
+      </p>
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <input
+              type={revealed ? 'text' : 'password'}
+              className="flex-1 px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={value}
+              onChange={e => { setValue(e.target.value); setSaved(false); }}
+              placeholder="AIza..."
+            />
+            <button type="button" className={btnTiny} onClick={() => setRevealed(v => !v)}>
+              <EyeIcon className="h-3.5 w-3.5" /> {revealed ? 'ซ่อน' : 'แสดง'}
+            </button>
+            <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+          {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+          {saved && <div className="text-sm text-green-600 mt-2">บันทึกแล้ว</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function SettingsContent() {
   const { isAdmin } = useAuth();
 
@@ -308,6 +392,7 @@ function SettingsContent() {
 
       <QuizzesPanel />
       <ScanPhotosPanel />
+      <AISettingsPanel />
     </div>
   );
 }

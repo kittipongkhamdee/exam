@@ -108,7 +108,11 @@ function ShortcutsCard() {
   );
 }
 
-function ActivityPanel() {
+// Fetched once by DashboardContent and handed down to StatsGrid and
+// RecentActivityCard, which the user wants rendered on either side of
+// ShortcutsCard rather than back-to-back — a single hook keeps that
+// reordering from requiring two separate fetches of the same data.
+function useDashboardData() {
   const [data, setData] = useState(null); // { totalQuizzes, totalScanned, avgScore, notYetScanned, recent }
   const [loading, setLoading] = useState(true);
 
@@ -128,77 +132,87 @@ function ActivityPanel() {
           recent,
         });
       } catch {
-        // best-effort — the greeting banner and shortcuts above still work
+        // best-effort — the greeting banner and shortcuts still work
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
+  return { data, loading };
+}
+
+function StatsGrid({ data, loading }) {
   if (loading) {
     return <div className="text-sm text-gray-500 mb-6">กำลังโหลดข้อมูล...</div>;
   }
   if (!data) return null;
 
   return (
-    <>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={SheetIcon} iconBg="bg-gradient-to-br from-indigo-600 to-blue-500" value={data.totalQuizzes} unit="ชุด" label="กระดาษคำตอบ" />
-        <StatCard icon={CheckSheetIcon} iconBg="bg-gradient-to-br from-emerald-600 to-teal-500" value={data.totalScanned} unit="ใบ" label="ตรวจแล้ว" />
-        <StatCard icon={PercentIcon} iconBg="bg-gradient-to-br from-amber-500 to-orange-500" value={data.avgScore} unit="%" label="คะแนนเฉลี่ย" />
-        <StatCard icon={AlertIcon} iconBg="bg-gradient-to-br from-cyan-600 to-sky-500" value={data.notYetScanned} unit="ชุด" label="ยังไม่ได้ตรวจ" />
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <StatCard icon={SheetIcon} iconBg="bg-gradient-to-br from-indigo-600 to-blue-500" value={data.totalQuizzes} unit="ชุด" label="กระดาษคำตอบ" />
+      <StatCard icon={CheckSheetIcon} iconBg="bg-gradient-to-br from-emerald-600 to-teal-500" value={data.totalScanned} unit="ใบ" label="ตรวจแล้ว" />
+      <StatCard icon={PercentIcon} iconBg="bg-gradient-to-br from-amber-500 to-orange-500" value={data.avgScore} unit="%" label="คะแนนเฉลี่ย" />
+      <StatCard icon={AlertIcon} iconBg="bg-gradient-to-br from-cyan-600 to-sky-500" value={data.notYetScanned} unit="ชุด" label="ยังไม่ได้ตรวจ" />
+    </div>
+  );
+}
+
+function RecentActivityCard({ data, loading }) {
+  if (loading || !data) return null;
+
+  return (
+    <div className={card}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5 text-sm font-bold">
+          <ClockIcon className="h-4 w-4 text-gray-400" /> ผลการตรวจล่าสุด
+        </div>
+        <Link href="/omr/report" className="text-xs font-semibold text-indigo-600 flex items-center gap-0.5">
+          ดูทั้งหมด <ChevronRightIcon className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
-      <div className={card}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 text-sm font-bold">
-            <ClockIcon className="h-4 w-4 text-gray-400" /> ผลการตรวจล่าสุด
+      {data.recent.length === 0 ? (
+        <div className="flex flex-col items-center text-center py-6">
+          <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+            <InfoIcon className="h-5 w-5 text-gray-400" />
           </div>
-          <Link href="/omr/report" className="text-xs font-semibold text-indigo-600 flex items-center gap-0.5">
-            ดูทั้งหมด <ChevronRightIcon className="h-3.5 w-3.5" />
+          <div className="text-sm text-gray-500 mb-4">ยังไม่มีการตรวจข้อสอบ</div>
+          <Link
+            href="/omr/prepare"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-500 text-white text-sm font-semibold px-4 py-2.5 hover:opacity-90 transition"
+          >
+            <PlusIcon className="h-4 w-4" /> สร้างกระดาษคำตอบชุดแรก
           </Link>
         </div>
-
-        {data.recent.length === 0 ? (
-          <div className="flex flex-col items-center text-center py-6">
-            <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-              <InfoIcon className="h-5 w-5 text-gray-400" />
-            </div>
-            <div className="text-sm text-gray-500 mb-4">ยังไม่มีการตรวจข้อสอบ</div>
+      ) : (
+        <div className="space-y-1">
+          {data.recent.map(r => (
             <Link
-              href="/omr/prepare"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-500 text-white text-sm font-semibold px-4 py-2.5 hover:opacity-90 transition"
+              key={r.id}
+              href={`/omr/report?quizId=${r.omr_quizzes?.id}`}
+              className="flex items-center justify-between gap-3 -mx-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition"
             >
-              <PlusIcon className="h-4 w-4" /> สร้างกระดาษคำตอบชุดแรก
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {data.recent.map(r => (
-              <Link
-                key={r.id}
-                href={`/omr/report?quizId=${r.omr_quizzes?.id}`}
-                className="flex items-center justify-between gap-3 -mx-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
-                    {r.students?.prefix}{r.students?.student_name}
-                  </div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} ({r.omr_quizzes?.subjects?.grade_level}/{r.omr_quizzes?.subjects?.room})
-                  </div>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">
+                  {r.students?.prefix}{r.students?.student_name}
                 </div>
-                <div className={"text-sm font-bold shrink-0 " + scoreColor(r.score)}>{r.score}%</div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
+                <div className="text-xs text-gray-500 truncate">
+                  {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} ({r.omr_quizzes?.subjects?.grade_level}/{r.omr_quizzes?.subjects?.room})
+                </div>
+              </div>
+              <div className={"text-sm font-bold shrink-0 " + scoreColor(r.score)}>{r.score}%</div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
 function DashboardContent() {
+  const { data, loading } = useDashboardData();
+
   return (
     <div className="max-w-4xl">
       <div className="flex items-center justify-between gap-3 mb-6">
@@ -216,8 +230,9 @@ function DashboardContent() {
       </div>
 
       <GreetingBanner />
+      <StatsGrid data={data} loading={loading} />
       <ShortcutsCard />
-      <ActivityPanel />
+      <RecentActivityCard data={data} loading={loading} />
     </div>
   );
 }

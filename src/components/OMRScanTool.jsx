@@ -554,7 +554,9 @@ export default function OMRScanTool() {
               ไม่พบนักเรียนที่มีรหัสตรงกับ &ldquo;{scanResult.decodedId}&rdquo; ในห้องนี้ — เลือกนักเรียนเอง
             </div>
           ) : (
-            <div className="text-sm text-gray-400 mb-4">⚡ โหมดตรวจรัว — ถ่ายภาพเพื่ออ่านชื่อนักเรียนจากรหัสอัตโนมัติ</div>
+            <div className="text-sm text-gray-400 mb-4 flex items-center gap-1.5">
+              <ZapIcon className="h-4 w-4" /> โหมดตรวจรัว — ถ่ายภาพเพื่ออ่านชื่อนักเรียนจากรหัสอัตโนมัติ
+            </div>
           )
         ) : (
           <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {selectedStudent?.prefix}{selectedStudent?.student_name}</div>
@@ -562,8 +564,12 @@ export default function OMRScanTool() {
 
         {!scanImage && (
           <div className="flex flex-col gap-2">
-            <button className={btn + ' py-4 text-base'} onClick={openCamera}>📷 ถ่ายภาพกระดาษคำตอบ</button>
-            <button className={btnSecondary} onClick={() => fileInputRef.current.click()}>📤 อัปโหลดรูปถ่าย</button>
+            <button className={btn + ' py-4 text-base inline-flex items-center justify-center gap-2'} onClick={openCamera}>
+              <CameraIcon className="h-5 w-5" /> ถ่ายภาพกระดาษคำตอบ
+            </button>
+            <button className={btnSecondary + ' inline-flex items-center justify-center gap-2'} onClick={() => fileInputRef.current.click()}>
+              <UploadIcon className="h-4 w-4" /> อัปโหลดรูปถ่าย
+            </button>
             <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           </div>
         )}
@@ -575,7 +581,9 @@ export default function OMRScanTool() {
               <video ref={videoRef} playsInline muted className="w-full block" />
             </div>
             <div className="flex gap-2 mt-2.5">
-              <button className={btn + ' flex-1'} onClick={capturePhoto}>📸 ถ่ายภาพ</button>
+              <button className={btn + ' flex-1 inline-flex items-center justify-center gap-2'} onClick={capturePhoto}>
+                <CameraIcon className="h-5 w-5" /> ถ่ายภาพ
+              </button>
               <button className={btnSecondary} onClick={closeCamera}>ยกเลิก</button>
             </div>
             <div className="text-[11px] text-gray-500 mt-1.5">จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ</div>
@@ -593,7 +601,9 @@ export default function OMRScanTool() {
             {scanResult && scanResult.error && (
               <div>
                 <div className={pillBad + ' px-3 py-2 text-sm block mb-3'}>{scanResult.error}</div>
-                <button className={btnSecondary} onClick={resetScan}>↺ ถ่ายใหม่</button>
+                <button className={btnSecondary + ' inline-flex items-center justify-center gap-2'} onClick={resetScan}>
+                  <RefreshIcon className="h-4 w-4" /> ถ่ายใหม่
+                </button>
               </div>
             )}
 
@@ -618,14 +628,18 @@ export default function OMRScanTool() {
                 {savedResultId ? (
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className={pillOk}>บันทึกแล้ว</span>
-                    <button className={btn} onClick={handleNextStudent}>➡ ถ่ายคนถัดไป</button>
+                    <button className={btn + ' inline-flex items-center justify-center gap-2'} onClick={handleNextStudent}>
+                      ถ่ายคนถัดไป <ArrowRightIcon className="h-4 w-4" />
+                    </button>
                   </div>
                 ) : (
                   <div className="flex gap-2 flex-wrap">
-                    <button className={btn} onClick={handleSaveScanResult} disabled={savingResult || !effectiveStudent}>
-                      {savingResult ? 'กำลังบันทึก...' : '💾 บันทึกผล'}
+                    <button className={btn + ' inline-flex items-center justify-center gap-2'} onClick={handleSaveScanResult} disabled={savingResult || !effectiveStudent}>
+                      {savingResult ? 'กำลังบันทึก...' : (<><SaveIcon className="h-4 w-4" /> บันทึกผล</>)}
                     </button>
-                    <button className={btnSecondary} onClick={resetScan}>↺ ถ่ายใหม่</button>
+                    <button className={btnSecondary + ' inline-flex items-center justify-center gap-2'} onClick={resetScan}>
+                      <RefreshIcon className="h-4 w-4" /> ถ่ายใหม่
+                    </button>
                   </div>
                 )}
                 {saveResultError && <div className="text-xs text-red-600 mt-2">{saveResultError}</div>}
@@ -636,7 +650,8 @@ export default function OMRScanTool() {
       </div>
 
       <div className={card}>
-        <div className="text-sm font-bold mb-2">
+        <div className="text-sm font-bold mb-2 flex items-center gap-1.5">
+          <ClipboardListIcon className="h-4 w-4 text-gray-400" />
           สแกนแล้ว {roster.length}/{students.length} คน {loadingRoster && <span className="font-normal text-gray-500">(กำลังโหลด...)</span>}
         </div>
         {roster.length > 0 && (
@@ -661,9 +676,14 @@ export default function OMRScanTool() {
 function QuizHeader({ quiz, onChangeQuiz, scannedCount, totalCount }) {
   return (
     <div className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3">
-      <div className="min-w-0">
-        <div className="font-semibold text-gray-900 truncate">{quiz.title}</div>
-        <div className="text-xs text-gray-500">{quiz.subjectName} ({quiz.gradeLevel}/{quiz.room}) · สแกนแล้ว {scannedCount}/{totalCount}</div>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-600 to-blue-500 text-white flex items-center justify-center shrink-0">
+          <SheetIcon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-900 truncate">{quiz.title}</div>
+          <div className="text-xs text-gray-500">{quiz.subjectName} ({quiz.gradeLevel}/{quiz.room}) · สแกนแล้ว {scannedCount}/{totalCount}</div>
+        </div>
       </div>
       <button className="text-xs font-semibold text-indigo-600 shrink-0" onClick={onChangeQuiz}>เปลี่ยนชุดข้อสอบ</button>
     </div>
@@ -701,6 +721,60 @@ function ChevronRightIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function CameraIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}
+
+function UploadIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 16V4M7 9l5-5 5 5" />
+      <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+    </svg>
+  );
+}
+
+function SaveIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
+      <path d="M8 4v5h7V4M8 20v-6h8v6" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function RefreshIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" />
+    </svg>
+  );
+}
+
+function ClipboardListIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1Z" />
+      <path d="M9 12h6M9 16h4" />
     </svg>
   );
 }

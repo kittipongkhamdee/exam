@@ -55,6 +55,27 @@ function LockIcon(props) {
   );
 }
 
+function ChevronDownIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+// Tracks which teacher groups are collapsed, by name. Groups start expanded
+// (empty set) since most teachers only have a couple of rows — collapsing
+// only matters for the few with a long list.
+function useCollapsedGroups() {
+  const [collapsed, setCollapsed] = useState(new Set());
+  const toggle = (name) => setCollapsed(prev => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+  return [collapsed, toggle];
+}
+
 // Groups a list of admin-wide rows by teacher name, sorted alphabetically
 // (Thai collation) by teacher, preserving each row's original order within
 // its group — used so the settings panels read as "per teacher" instead of
@@ -71,13 +92,18 @@ function groupByTeacher(items, getTeacherName) {
     .map(([name, rows]) => ({ name, rows }));
 }
 
-function TeacherGroupHeader({ name, count }) {
+function TeacherGroupHeader({ name, count, expanded, onToggle }) {
   return (
-    <div className="flex items-center gap-2 pt-3 pb-1.5 first:pt-0">
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 pt-3 pb-1.5 first:pt-0 text-left"
+    >
+      <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
       <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{name}</span>
       <span className="text-[11px] text-gray-400">({count})</span>
       <div className="h-px flex-1 bg-gray-100" />
-    </div>
+    </button>
   );
 }
 
@@ -85,6 +111,7 @@ function ScanPhotosPanel() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [collapsedGroups, toggleGroup] = useCollapsedGroups();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -130,32 +157,35 @@ function ScanPhotosPanel() {
       {!loading && photos.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีรูปที่เก็บไว้</div>}
       {photos.length > 0 && (
         <div className="max-h-96 overflow-y-auto -mx-5 px-5">
-          {groupByTeacher(photos, p => p.profiles?.full_name).map(group => (
-            <div key={group.name}>
-              <TeacherGroupHeader name={group.name} count={group.rows.length} />
-              {group.rows.map(p => (
-                <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
-                  <div className="min-w-0">
-                    <div className="font-medium text-gray-900 truncate">
-                      {p.students?.student_code} {p.students?.prefix}{p.students?.student_name}
+          {groupByTeacher(photos, p => p.profiles?.full_name).map(group => {
+            const expanded = !collapsedGroups.has(group.name);
+            return (
+              <div key={group.name}>
+                <TeacherGroupHeader name={group.name} count={group.rows.length} expanded={expanded} onToggle={() => toggleGroup(group.name)} />
+                {expanded && group.rows.map(p => (
+                  <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 truncate">
+                        {p.students?.student_code} {p.students?.prefix}{p.students?.student_name}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} ({p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} ({p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
+                    <div className="flex items-center gap-2 shrink-0 ml-3">
+                      <span className="text-xs text-gray-500">{p.total_correct} ({p.score}%)</span>
+                      <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleView(p.photo_path)}>
+                        <EyeIcon className="h-3.5 w-3.5" /> ดูรูป
+                      </button>
+                      <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleDelete(p.id, p.photo_path)}>
+                        <TrashIcon className="h-3.5 w-3.5" /> ลบรูป
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-3">
-                    <span className="text-xs text-gray-500">{p.total_correct} ({p.score}%)</span>
-                    <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleView(p.photo_path)}>
-                      <EyeIcon className="h-3.5 w-3.5" /> ดูรูป
-                    </button>
-                    <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleDelete(p.id, p.photo_path)}>
-                      <TrashIcon className="h-3.5 w-3.5" /> ลบรูป
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -168,6 +198,7 @@ function QuizzesPanel() {
   const [error, setError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null); // { id, title } | null
+  const [collapsedGroups, toggleGroup] = useCollapsedGroups();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -213,26 +244,29 @@ function QuizzesPanel() {
       {!loading && quizzes.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบในระบบ</div>}
       {quizzes.length > 0 && (
         <div className="max-h-96 overflow-y-auto -mx-5 px-5">
-          {groupByTeacher(quizzes, q => q.teacherName).map(group => (
-            <div key={group.name}>
-              <TeacherGroupHeader name={group.name} count={group.rows.length} />
-              {group.rows.map(q => (
-                <div key={q.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
-                  <div className="min-w-0">
-                    <div className="font-medium text-gray-900 truncate">{q.title}</div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+          {groupByTeacher(quizzes, q => q.teacherName).map(group => {
+            const expanded = !collapsedGroups.has(group.name);
+            return (
+              <div key={group.name}>
+                <TeacherGroupHeader name={group.name} count={group.rows.length} expanded={expanded} onToggle={() => toggleGroup(group.name)} />
+                {expanded && group.rows.map(q => (
+                  <div key={q.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 truncate">{q.title}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3">
+                      <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
+                        {deletingId === q.id ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบ</>)}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-3">
-                    <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setConfirmTarget({ id: q.id, title: q.title })} disabled={deletingId === q.id}>
-                      {deletingId === q.id ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบ</>)}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
 

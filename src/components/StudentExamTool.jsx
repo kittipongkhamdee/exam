@@ -50,6 +50,38 @@ function clearDraft(attemptId) {
   }
 }
 
+// exam-session holds just the PIN + student code the student last logged in
+// with (never the exam content or answers) — a refresh re-runs
+// start_exam_attempt with these automatically instead of dropping the
+// student back to a blank login form, since that RPC already resumes an
+// existing unsubmitted/unexpired attempt with its original shuffle intact.
+const SESSION_KEY = 'exam-session';
+
+function loadSession() {
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(pin, studentCode) {
+  try {
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify({ pin, studentCode }));
+  } catch {
+    // best-effort — losing this just means no refresh-resume
+  }
+}
+
+function clearSession() {
+  try {
+    window.localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // best-effort
+  }
+}
+
 function formatCountdown(totalSeconds) {
   const s = Math.max(0, totalSeconds);
   const m = Math.floor(s / 60);
@@ -76,9 +108,10 @@ function ClockIcon(props) {
 }
 
 export default function StudentExamTool() {
-  const [phase, setPhase] = useState('login'); // 'login' | 'exam' | 'submitted'
-  const [pin, setPin] = useState('');
-  const [studentCode, setStudentCode] = useState('');
+  const [savedSession] = useState(() => (typeof window !== 'undefined' ? loadSession() : null));
+  const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted'
+  const [pin, setPin] = useState(savedSession?.pin || '');
+  const [studentCode, setStudentCode] = useState(savedSession?.studentCode || '');
   const [loginError, setLoginError] = useState(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
@@ -117,6 +150,7 @@ export default function StudentExamTool() {
       });
       if (error) throw error;
       clearDraft(attempt.attempt_id);
+      clearSession();
       setPhase('submitted');
     } catch {
       // Even on an error the attempt is best treated as done — grading is
@@ -138,17 +172,17 @@ export default function StudentExamTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, secondsLeft]);
 
-  async function handleLogin(e) {
-    e.preventDefault();
+  async function login(pinVal, studentCodeVal) {
     setLoginError(null);
     setLoggingIn(true);
     try {
       const { data, error } = await supabase.rpc('start_exam_attempt', {
-        p_pin: pin.trim(),
-        p_student_code: studentCode.trim(),
+        p_pin: pinVal.trim(),
+        p_student_code: studentCodeVal.trim(),
       });
       if (error) throw error;
       submittedRef.current = false;
+      saveSession(pinVal.trim(), studentCodeVal.trim());
       setAttempt(data);
       setAnswers(loadDraft(data.attempt_id));
       setNow(Date.now());
@@ -156,9 +190,33 @@ export default function StudentExamTool() {
     } catch (err) {
       const code = err?.message?.trim();
       setLoginError(ERROR_MESSAGES[code] || 'เข้าสอบไม่สำเร็จ กรุณาตรวจสอบ PIN และเลขประจำตัวนักเรียน');
+      clearSession();
+      setPhase('login');
     } finally {
       setLoggingIn(false);
     }
+  }
+
+  // A refresh restarts the component with savedSession already loaded (see
+  // useState above), so this runs once on mount to resume transparently
+  // instead of making the student retype the PIN/code they already gave.
+  useEffect(() => {
+    if (savedSession) login(savedSession.pin, savedSession.studentCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    await login(pin, studentCode);
+  }
+
+  function handleLogout() {
+    clearSession();
+    setAttempt(null);
+    setPin('');
+    setStudentCode('');
+    setLoginError(null);
+    setPhase('login');
   }
 
   function selectAnswer(questionId, idx) {
@@ -173,6 +231,19 @@ export default function StudentExamTool() {
   const inputCls = 'px-3 py-2.5 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
   const label = 'text-xs font-semibold text-gray-500 block mb-1';
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed w-full';
+
+  if (phase === 'resuming') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
+        <div className="flex flex-col items-center text-center">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3 animate-pulse">
+            <ClockIcon className="h-7 w-7 text-white" />
+          </div>
+          <p className="text-sm text-gray-500">กำลังเข้าสอบต่อ...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === 'login') {
     return (
@@ -236,7 +307,12 @@ export default function StudentExamTool() {
           <div className="font-semibold text-gray-700 truncate">{attempt.exam_set_title}</div>
           <div className="text-xs text-gray-500">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
         </div>
-        <div className="min-w-0 max-w-full font-bold text-gray-900 truncate text-center">{attempt.student_name}</div>
+        <div className="min-w-0 max-w-full text-center">
+          <div className="font-bold text-gray-900 truncate">{attempt.student_name}</div>
+          <button type="button" onClick={handleLogout} className="text-[11px] text-gray-400 hover:text-gray-600 underline">
+            ไม่ใช่ฉัน? ออกจากระบบ
+          </button>
+        </div>
         <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 justify-self-end ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
           <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
         </div>

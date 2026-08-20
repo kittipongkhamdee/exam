@@ -17,9 +17,6 @@ import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz } from '../
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
-const stat = 'text-center p-3 rounded-lg bg-gray-50';
-const statN = 'text-xl font-extrabold';
-const statL = 'text-[11px] text-gray-500';
 const chip = 'px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors';
 const chipActive = 'bg-indigo-600 border-indigo-600 text-white';
 const chipInactive = 'bg-white border-gray-300 text-gray-600 hover:border-indigo-300';
@@ -222,19 +219,24 @@ export default function OMRReportTool() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <button type="button" onClick={handleBack} className="text-sm font-semibold text-indigo-600 mb-3">
-        ← กลับไปเลือกชุดข้อสอบ
+      <button type="button" onClick={handleBack} className="text-sm font-semibold text-indigo-600 mb-3 inline-flex items-center gap-1">
+        <ChevronLeftIcon className="h-4 w-4" /> กลับไปเลือกชุดข้อสอบ
       </button>
 
       <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{selectedQuiz.title}</h1>
-          <div className="text-sm text-gray-500 mt-0.5">
-            {selectedQuiz.subjectName} ({selectedQuiz.gradeLevel}/{selectedQuiz.room}) · {selectedQuiz.numQuestions} ข้อ
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shrink-0">
+            <ReportIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">{selectedQuiz.title}</h1>
+            <div className="text-sm text-gray-500 mt-0.5 truncate">
+              {selectedQuiz.subjectName} ({selectedQuiz.gradeLevel}/{selectedQuiz.room}) · {selectedQuiz.numQuestions} ข้อ
+            </div>
           </div>
         </div>
-        <button type="button" onClick={handleExportCsv} disabled={results.length === 0} className={btnSecondary}>
-          ⬇ ดาวน์โหลด CSV
+        <button type="button" onClick={handleExportCsv} disabled={results.length === 0} className={btnSecondary + ' inline-flex items-center gap-2'}>
+          <DownloadIcon className="h-4 w-4" /> ดาวน์โหลด CSV
         </button>
       </div>
 
@@ -248,28 +250,18 @@ export default function OMRReportTool() {
 
       {results.length > 0 && (
         <>
-          <div className={card + ' grid grid-cols-2 sm:grid-cols-4 gap-3'}>
-            <div className={stat}>
-              <div className={statN}>{results.length}</div>
-              <div className={statL}>สแกนแล้ว (คน)</div>
-            </div>
-            <div className={stat}>
-              <div className={statN + ' ' + scoreColor(avg)}>{avg}%</div>
-              <div className={statL}>คะแนนเฉลี่ย</div>
-            </div>
-            <div className={stat}>
-              <div className={statN + ' text-green-600'}>{max}%</div>
-              <div className={statL}>สูงสุด</div>
-            </div>
-            <div className={stat}>
-              <div className={statN + ' text-red-600'}>{min}%</div>
-              <div className={statL}>ต่ำสุด</div>
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <StatCard icon={UsersIcon} iconBg="bg-gradient-to-br from-indigo-600 to-blue-500" value={results.length} unit="คน" label="สแกนแล้ว" />
+            <StatCard icon={PercentIcon} iconBg="bg-gradient-to-br from-amber-500 to-orange-500" value={avg} unit="%" label="คะแนนเฉลี่ย" valueClass={scoreColor(avg)} />
+            <StatCard icon={TrendingUpIcon} iconBg="bg-gradient-to-br from-emerald-600 to-teal-500" value={max} unit="%" label="สูงสุด" valueClass="text-green-600" />
+            <StatCard icon={TrendingDownIcon} iconBg="bg-gradient-to-br from-red-500 to-rose-500" value={min} unit="%" label="ต่ำสุด" valueClass="text-red-600" />
           </div>
 
           {hardestQuestions.length > 0 && (
             <div className={card}>
-              <div className="text-sm font-bold mb-3">ข้อที่นักเรียนพลาดบ่อยที่สุด</div>
+              <div className="text-sm font-bold mb-3 flex items-center gap-1.5">
+                <TargetIcon className="h-4 w-4 text-gray-400" /> ข้อที่นักเรียนพลาดบ่อยที่สุด
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {hardestQuestions.map(q => (
                   <div key={q.qIndex} className="rounded-lg bg-gray-50 px-3 py-2">
@@ -313,6 +305,23 @@ export default function OMRReportTool() {
   );
 }
 
+function StatCard({ icon: Icon, iconBg, value, unit, label, valueClass }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <div className={"h-9 w-9 rounded-lg flex items-center justify-center shrink-0 text-white " + iconBg}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="text-xs text-gray-500 truncate">{label}</div>
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className={"text-2xl font-extrabold " + (valueClass || 'text-gray-900')}>{value}</span>
+        <span className="text-xs text-gray-400">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
 function ReportIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -325,6 +334,72 @@ function ChevronRightIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
+function DownloadIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 4v12M7 11l5 5 5-5" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
+function UsersIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M2 20c0-3.3 3.1-6 7-6s7 2.7 7 6" />
+      <circle cx="17" cy="8" r="2.5" />
+      <path d="M16 14.2c2.7.5 5 2.4 5 5.8" />
+    </svg>
+  );
+}
+
+function PercentIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="19" y1="5" x2="5" y2="19" />
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+    </svg>
+  );
+}
+
+function TrendingUpIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m3 17 6-6 4 4 8-8" />
+      <path d="M15 7h6v6" />
+    </svg>
+  );
+}
+
+function TrendingDownIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m3 7 6 6 4-4 8 8" />
+      <path d="M15 17h6v-6" />
+    </svg>
+  );
+}
+
+function TargetIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" />
     </svg>
   );
 }

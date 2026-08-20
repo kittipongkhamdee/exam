@@ -10,6 +10,7 @@
 // report screen reveals them later).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -158,7 +159,7 @@ export default function StudentExamTool() {
       // resume (if still within the window) or correctly report
       // already_submitted if the write actually went through.
       submittedRef.current = false;
-      if (!auto) alert('ส่งข้อสอบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      if (!auto) Swal.fire({ icon: 'error', title: 'ส่งข้อสอบไม่สำเร็จ', text: 'กรุณาลองใหม่อีกครั้ง' });
     } finally {
       setSubmitting(false);
       setConfirmOpen(false);

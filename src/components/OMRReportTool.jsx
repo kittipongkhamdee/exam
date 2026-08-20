@@ -155,7 +155,7 @@ export default function OMRReportTool() {
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-gray-900 truncate">{q.title}</div>
                 <div className="text-sm text-gray-500 mt-0.5 truncate">
-                  {q.subjects?.subject_name} ({q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                  {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
                 </div>
               </div>
               <ChevronRightIcon className="h-4 w-4 text-gray-300 shrink-0" />
@@ -231,7 +231,7 @@ export default function OMRReportTool() {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 truncate">{selectedQuiz.title}</h1>
             <div className="text-sm text-gray-500 mt-0.5 truncate">
-              {selectedQuiz.subjectName} ({selectedQuiz.gradeLevel}/{selectedQuiz.room}) · {selectedQuiz.numQuestions} ข้อ
+              {selectedQuiz.subjectName} (ชั้น {selectedQuiz.gradeLevel}/{selectedQuiz.room}) · {selectedQuiz.numQuestions} ข้อ
             </div>
           </div>
         </div>

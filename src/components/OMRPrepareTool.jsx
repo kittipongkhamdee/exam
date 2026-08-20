@@ -458,7 +458,7 @@ export default function OMRPrepareTool() {
             <select className={inputCls} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
-                <option key={s.id} value={s.id}>{s.subject_code} {s.subject_name} ({s.grade_level}/{s.room})</option>
+                <option key={s.id} value={s.id}>{s.subject_code} {s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
               ))}
             </select>
           </div>

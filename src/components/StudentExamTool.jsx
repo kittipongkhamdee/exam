@@ -258,14 +258,23 @@ export default function StudentExamTool() {
         question_id: q.id,
         selected_index: answers[q.id] ?? null,
       }));
-      const { error } = await supabase.rpc('submit_exam_attempt', {
+      const { data, error } = await supabase.rpc('submit_exam_attempt', {
         p_attempt_id: attempt.attempt_id,
         p_answers: payload,
       });
       if (error) throw error;
       clearDraft(attempt.attempt_id);
       clearSession();
-      setPhase('submitted');
+      // The round's auto_reveal_results setting makes submit_exam_attempt
+      // return the score directly (manual submit or the auto-submit above
+      // on timeout, both go through here) — go straight to the result
+      // screen instead of "รอครูประกาศผล" when that's present.
+      if (data?.score !== undefined && data?.score !== null) {
+        setResult(data);
+        setPhase('result');
+      } else {
+        setPhase('submitted');
+      }
     } catch {
       // Even on an error the attempt is best treated as done — grading is
       // idempotent server-side, so re-entering the PIN/code would just

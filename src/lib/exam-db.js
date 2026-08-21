@@ -183,7 +183,7 @@ export async function listMyExamRounds(supabase, opts = {}) {
   const { data, error } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, schedule_type, created_at,
+      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, auto_reveal_results, schedule_type, created_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .in('exam_set_id', examSetIds)
@@ -195,9 +195,9 @@ export async function listMyExamRounds(supabase, opts = {}) {
 /**
  * Create or update a รอบสอบ.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc' }} args
+ * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc', autoRevealResults?: boolean }} args
  */
-export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType }) {
+export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType, autoRevealResults }) {
   const { data: { user } } = await supabase.auth.getUser();
   const row = {
     exam_set_id: examSetId,
@@ -207,6 +207,7 @@ export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, o
     closes_at: closesAt,
     duration_minutes: durationMinutes,
     schedule_type: scheduleType || 'adhoc',
+    auto_reveal_results: !!autoRevealResults,
   };
   if (id) {
     const { error } = await supabase.from('online_exam_rounds').update(row).eq('id', id);
@@ -233,8 +234,11 @@ export function generatePin() {
 }
 
 /**
- * Set whether this รอบสอบ's results are revealed to students. Once true, a
- * student re-entering their PIN + student code on an already-submitted
+ * Manually reveal (or hide) this รอบสอบ's results to every student who's
+ * already submitted — the alternative to auto_reveal_results (set at
+ * schedule time via saveExamRound), which reveals each student their own
+ * score the moment they submit instead of needing this button. Once true,
+ * a student re-entering their PIN + student code on an already-submitted
  * attempt gets their score back (see start_exam_attempt) instead of an
  * already_submitted error.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
@@ -261,7 +265,7 @@ export async function getRoundReport(supabase, roundId) {
   const { data: round, error: roundError } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible,
+      id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, auto_reveal_results,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .eq('id', roundId)
@@ -311,6 +315,7 @@ export async function getRoundReport(supabase, roundId) {
     closes_at: round.closes_at,
     duration_minutes: round.duration_minutes,
     results_visible: round.results_visible,
+    auto_reveal_results: round.auto_reveal_results,
     exam_set_title: round.online_exam_sets?.title,
     subject_name: subject?.subject_name,
     grade_level: subject?.grade_level,

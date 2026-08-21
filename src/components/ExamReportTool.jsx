@@ -199,6 +199,11 @@ export default function ExamReportTool() {
                 {togglingVisible ? 'กำลังบันทึก...' : (report.results_visible ? 'ผลเปิดเผยอยู่ (กดเพื่อซ่อน)' : 'เปิดเผยผลให้นักเรียนดู')}
               </button>
             </div>
+            {report.auto_reveal_results && (
+              <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 rounded-md px-2.5 py-1.5 inline-block">
+                รอบสอบนี้ตั้งเป็น &ldquo;เผยผลอัตโนมัติ&rdquo; ไว้แล้ว — นักเรียนแต่ละคนเห็นคะแนนของตัวเองทันทีที่ส่งข้อสอบ ไม่ต้องกดปุ่มด้านบน (ปรับได้ที่หน้าจัดสอบ)
+              </div>
+            )}
 
             <div className="flex flex-wrap gap-4 mt-4 text-sm">
               <div><span className="font-bold text-gray-900">{report.rows.length}</span> <span className="text-gray-500">ทั้งหมด</span></div>

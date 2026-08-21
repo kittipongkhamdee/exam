@@ -8,7 +8,7 @@ import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, de
 import { getConfigValue, setConfigValue } from '@/lib/config-db';
 import {
   listProctorAssignmentsForDate, saveProctorAssignment, deleteProctorAssignment,
-  listGradeRoomOptions, listAllTeachers,
+  listGradeRoomOptions, listAllTeachers, listExamAuditLog, EXAM_AUDIT_ACTION_LABEL,
 } from '@/lib/exam-db';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
@@ -614,6 +614,252 @@ function ExamProctorAssignmentPanel() {
   );
 }
 
+function TagIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12.59 2.59a2 2 0 0 0-1.42-.59H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7.17-7.17a2 2 0 0 0 0-2.82Z" />
+      <circle cx="7.5" cy="7.5" r="1.5" />
+    </svg>
+  );
+}
+
+function ListIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+    </svg>
+  );
+}
+
+const MAX_LOGO_FILE_BYTES = 300 * 1024;
+
+// Deliberately its own config keys (exam_app_*), never the shared
+// config.school_name/config.logo_url the ปพ.5-family app already uses live
+// on this same project — the admin explicitly asked for this system's
+// branding to stay separate rather than shared.
+function BrandingPanel() {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [logo, setLogo] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [n, d, l] = await Promise.all([
+          getConfigValue(supabase, 'exam_app_name'),
+          getConfigValue(supabase, 'exam_app_description'),
+          getConfigValue(supabase, 'exam_app_logo'),
+        ]);
+        setName(n || '');
+        setDescription(d || '');
+        setLogo(l || '');
+      } catch (err) {
+        setError(err.message || 'โหลดค่าไม่สำเร็จ');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await Promise.all([
+        setConfigValue(supabase, 'exam_app_name', name.trim()),
+        setConfigValue(supabase, 'exam_app_description', description.trim()),
+      ]);
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleLogoFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(null);
+    if (!file.type.startsWith('image/')) {
+      setError('เลือกไฟล์รูปภาพเท่านั้น');
+      return;
+    }
+    if (file.size > MAX_LOGO_FILE_BYTES) {
+      setError('ไฟล์โลโก้ใหญ่เกินไป (ไม่เกิน 300KB)');
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await setConfigValue(supabase, 'exam_app_logo', dataUrl);
+      setLogo(dataUrl);
+    } catch (err) {
+      setError(err.message || 'อัพโหลดโลโก้ไม่สำเร็จ');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function handleRemoveLogo() {
+    setLogoBusy(true);
+    setError(null);
+    try {
+      await setConfigValue(supabase, 'exam_app_logo', '');
+      setLogo('');
+    } catch (err) {
+      setError(err.message || 'ลบโลโก้ไม่สำเร็จ');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-sky-600 to-cyan-500 text-white flex items-center justify-center shrink-0">
+          <TagIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">ชื่อระบบ คำอธิบาย และโลโก้</div>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        ปรับแต่งชื่อและโลโก้ที่แสดงในเมนูของระบบสอบนี้โดยเฉพาะ ไม่เกี่ยวกับระบบอื่น ถ้าไม่ตั้งค่า จะใช้ชื่อเริ่มต้น &ldquo;ระบบสอบวัดผล&rdquo;
+      </p>
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">ชื่อระบบ</label>
+            <input
+              type="text"
+              className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={name}
+              onChange={e => { setName(e.target.value); setSaved(false); }}
+              placeholder="ระบบสอบวัดผล"
+              maxLength={80}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">คำอธิบาย (แสดงเป็นคำโปรยเล็กๆ)</label>
+            <input
+              type="text"
+              className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={description}
+              onChange={e => { setDescription(e.target.value); setSaved(false); }}
+              placeholder="เช่น ระบบตรวจข้อสอบและสอบออนไลน์ของโรงเรียน"
+              maxLength={160}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">โลโก้</label>
+            <div className="flex items-center gap-3">
+              {logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logo} alt="โลโก้ระบบ" className="h-12 w-12 rounded-lg object-contain border border-gray-200 bg-white" />
+              ) : (
+                <div className="h-12 w-12 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-[10px] text-gray-400 text-center">ไม่มีโลโก้</div>
+              )}
+              <label className={btnTiny + ' cursor-pointer inline-flex items-center'}>
+                {logoBusy ? 'กำลังอัพโหลด...' : 'อัพโหลดโลโก้'}
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoFile} disabled={logoBusy} />
+              </label>
+              {logo && (
+                <button type="button" className={btnTiny} onClick={handleRemoveLogo} disabled={logoBusy}>ลบโลโก้</button>
+              )}
+            </div>
+            <div className="text-[11px] text-gray-400 mt-0.5">ไฟล์รูปภาพ ขนาดไม่เกิน 300KB</div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึกชื่อ/คำอธิบาย'}
+            </button>
+            {saved && <span className="text-sm text-green-600">บันทึกแล้ว</span>}
+          </div>
+          {error && <div className="text-sm text-red-600">{error}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatLogTimestamp(iso) {
+  try {
+    return new Date(iso).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Bangkok' });
+  } catch {
+    return iso;
+  }
+}
+
+function ExamAuditLogPanel() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await listExamAuditLog(supabase));
+    } catch (err) {
+      setError(err.message || 'โหลด log ไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-slate-600 to-gray-500 text-white flex items-center justify-center shrink-0">
+            <ListIcon className="h-4 w-4" />
+          </div>
+          <div className="font-semibold text-gray-900">Log ระบบการสอบ</div>
+        </div>
+        <button type="button" className={btnTiny} onClick={refresh}>รีเฟรช</button>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        เหตุการณ์ล่าสุดของระบบสอบออนไลน์ (เข้าสอบ สลับหน้าจอ ปลดล็อก ส่งข้อสอบ) แสดง 200 รายการล่าสุด
+      </p>
+      {loading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
+      {error && <div className="text-sm text-red-600">{error}</div>}
+      {!loading && rows.length === 0 && <div className="text-sm text-gray-500">ยังไม่มี log</div>}
+      {rows.length > 0 && (
+        <div className="max-h-96 overflow-y-auto -mx-5 px-5">
+          <div className="divide-y divide-gray-100">
+            {rows.map(r => (
+              <div key={r.id} className="py-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-gray-900">{EXAM_AUDIT_ACTION_LABEL[r.action] || r.action}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{formatLogTimestamp(r.created_at)}</span>
+                </div>
+                <div className="text-xs text-gray-500 truncate">
+                  {r.actor_name || 'ไม่ทราบผู้กระทำ'}{r.detail ? ` · ${r.detail}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsContent() {
   const { isAdmin } = useAuth();
 
@@ -636,11 +882,13 @@ function SettingsContent() {
       <h1 className="text-2xl font-bold text-gray-900">ตั้งค่าระบบ</h1>
       <p className="mt-1 text-sm text-gray-500">สำหรับผู้ดูแลระบบเท่านั้น</p>
 
+      <BrandingPanel />
       <QuizzesPanel />
       <ScanPhotosPanel />
       <AISettingsPanel />
       <ExamSecurityPanel />
       <ExamProctorAssignmentPanel />
+      <ExamAuditLogPanel />
     </div>
   );
 }

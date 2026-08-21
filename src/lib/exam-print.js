@@ -27,23 +27,27 @@ import { getBankQuestionImageUrl } from './bank-db';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
 const FONT = '"Sarabun", sans-serif';
-const SCHOOL_FONT = `bold 15px ${FONT}`;
-const EXAM_TITLE_FONT = `bold 14px ${FONT}`;
-const SUBTITLE_FONT = `11px ${FONT}`;
-const CONT_FONT = `11px ${FONT}`;
-const INSTRUCTION_FONT = `10px ${FONT}`;
-const QNUM_FONT = `bold 13px ${FONT}`;
-const BODY_FONT = `13px ${FONT}`;
-const CHOICE_FONT = `12px ${FONT}`;
+// PAGE_W=850 for a 210mm-wide page (~4.05 px/mm here) — these are sized in
+// that coordinate system to print at roughly 12-14pt, not their raw px
+// number; the original 13px body / 12px choice text worked out to ~9pt on
+// paper, too small for a printed exam.
+const SCHOOL_FONT = `bold 19px ${FONT}`;
+const EXAM_TITLE_FONT = `bold 18px ${FONT}`;
+const SUBTITLE_FONT = `14px ${FONT}`;
+const CONT_FONT = `14px ${FONT}`;
+const INSTRUCTION_FONT = `13px ${FONT}`;
+const QNUM_FONT = `bold 16px ${FONT}`;
+const BODY_FONT = `16px ${FONT}`;
+const CHOICE_FONT = `15px ${FONT}`;
 
 const CONTENT_X = MARGIN;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const COLUMN_GUTTER = 24;
-const CHOICE_INDENT = 20;
+const COLUMN_GUTTER = 30;
+const CHOICE_INDENT = 25;
 const MAX_IMAGE_H = 200;
-const TEXT_LINE_H = 18;
-const CHOICE_LINE_H = 17;
-const BLOCK_GAP = 18;
+const TEXT_LINE_H = 23;
+const CHOICE_LINE_H = 21;
+const BLOCK_GAP = 23;
 const FOOTER_RESERVE = 20;
 const LOGO_SIZE = 56;
 
@@ -87,16 +91,16 @@ function getColumnLayout(columns) {
 function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth) {
   return questions.map((q, qi) => {
     measureCtx.font = BODY_FONT;
-    const textLines = wrapText(measureCtx, q.question_text, columnWidth - 24);
+    const textLines = wrapText(measureCtx, q.question_text, columnWidth - 30);
 
     const letters = choiceLetters(choiceScheme, q.choices.length);
     measureCtx.font = CHOICE_FONT;
-    const choiceLines = q.choices.map((c, ci) => wrapText(measureCtx, `${letters[ci]}. ${c}`, columnWidth - 24 - CHOICE_INDENT));
+    const choiceLines = q.choices.map((c, ci) => wrapText(measureCtx, `${letters[ci]}. ${c}`, columnWidth - 30 - CHOICE_INDENT));
 
     const img = q.image_path ? images.get(q.image_path) : null;
     let imgW = 0, imgH = 0;
     if (img) {
-      const maxW = columnWidth - 24;
+      const maxW = columnWidth - 30;
       const scale = Math.min(1, maxW / img.width, MAX_IMAGE_H / img.height);
       imgW = Math.round(img.width * scale);
       imgH = Math.round(img.height * scale);
@@ -104,7 +108,7 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth)
 
     const height =
       TEXT_LINE_H * textLines.length +
-      (img ? imgH + 10 : 0) +
+      (img ? imgH + 13 : 0) +
       choiceLines.reduce((sum, lines) => sum + lines.length * CHOICE_LINE_H, 0) +
       BLOCK_GAP;
 
@@ -126,56 +130,63 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
     const hasLogo = !!logoImg;
     const textX = hasLogo ? MARGIN + LOGO_SIZE + 14 : MARGIN;
     if (hasLogo) {
-      ctx.drawImage(logoImg, MARGIN, y, LOGO_SIZE, LOGO_SIZE);
+      // "Contain" the logo within the LOGO_SIZE box instead of stretching
+      // it to fill a fixed square — most school logos/crests aren't
+      // square, and drawImage with explicit width+height forces exactly
+      // that aspect ratio, visibly distorting anything that isn't.
+      const logoScale = Math.min(LOGO_SIZE / logoImg.width, LOGO_SIZE / logoImg.height);
+      const logoW = logoImg.width * logoScale;
+      const logoH = logoImg.height * logoScale;
+      ctx.drawImage(logoImg, MARGIN + (LOGO_SIZE - logoW) / 2, y + (LOGO_SIZE - logoH) / 2, logoW, logoH);
     }
 
-    let ty = y + 14;
+    let ty = y + 18;
     if (schoolName) {
       ctx.font = SCHOOL_FONT; ctx.fillStyle = '#000';
       ctx.fillText(schoolName, textX, ty);
-      ty += 20;
+      ty += 25;
     }
     if (examTitle) {
       ctx.font = EXAM_TITLE_FONT; ctx.fillStyle = '#111';
       ctx.fillText(examTitle, textX, ty);
-      ty += 18;
+      ty += 23;
     }
     ctx.font = SUBTITLE_FONT; ctx.fillStyle = '#333';
     ctx.fillText(subjectLine, textX, ty);
-    ty += 16;
+    ty += 20;
     if (scoreTimeLine) {
       ctx.fillText(scoreTimeLine, textX, ty);
-      ty += 16;
+      ty += 20;
     }
-    y = Math.max(y + (hasLogo ? LOGO_SIZE : 0), ty) + 12;
+    y = Math.max(y + (hasLogo ? LOGO_SIZE : 0), ty) + 15;
 
     if (instructions.length > 0) {
-      const lineH = 15;
-      const boxPad = 8;
+      const lineH = 19;
+      const boxPad = 10;
       ctx.font = INSTRUCTION_FONT;
       const boxH = instructions.length * lineH + boxPad * 2;
       ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
       ctx.strokeRect(MARGIN, y, CONTENT_W, boxH);
       ctx.fillStyle = '#222';
       instructions.forEach((line, i) => {
-        ctx.fillText(line, MARGIN + boxPad, y + boxPad + 11 + i * lineH);
+        ctx.fillText(line, MARGIN + boxPad, y + boxPad + 14 + i * lineH);
       });
-      y += boxH + 12;
+      y += boxH + 15;
     }
 
     ctx.font = INSTRUCTION_FONT; ctx.fillStyle = '#555';
-    ctx.fillText('คำชี้แจง: เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว แล้วระบายคำตอบลงในกระดาษคำตอบที่แจก', MARGIN, y + 8);
-    y += 16;
+    ctx.fillText('คำชี้แจง: เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว แล้วระบายคำตอบลงในกระดาษคำตอบที่แจก', MARGIN, y + 10);
+    y += 20;
     ctx.font = INSTRUCTION_FONT; ctx.fillStyle = '#333';
-    ctx.fillText('ชื่อ-สกุล: ____________________________  ชั้น/ห้อง: __________  เลขที่: ______', MARGIN, y + 12);
-    y += 22;
+    ctx.fillText('ชื่อ-สกุล: ____________________________  ชั้น/ห้อง: __________  เลขที่: ______', MARGIN, y + 15);
+    y += 28;
     ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(MARGIN, y); ctx.lineTo(PAGE_W - MARGIN, y); ctx.stroke();
-    y += 16;
+    y += 20;
   } else {
     ctx.font = CONT_FONT; ctx.fillStyle = '#666';
-    ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 10);
-    y += 22;
+    ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 13);
+    y += 28;
   }
   return y;
 }
@@ -185,22 +196,22 @@ function drawQuestionBlock(ctx, plan, x, y) {
   ctx.font = QNUM_FONT;
   const qLabel = `ข้อ ${plan.qi + 1}. `;
   const qLabelW = ctx.measureText(qLabel).width;
-  ctx.fillText(qLabel, x, y + 13);
+  ctx.fillText(qLabel, x, y + 16);
   ctx.font = BODY_FONT;
   plan.textLines.forEach((line, i) => {
-    ctx.fillText(line, i === 0 ? x + qLabelW : x + 20, y + 13 + i * TEXT_LINE_H);
+    ctx.fillText(line, i === 0 ? x + qLabelW : x + 25, y + 16 + i * TEXT_LINE_H);
   });
   let cursorY = y + TEXT_LINE_H * plan.textLines.length;
 
   if (plan.img) {
-    ctx.drawImage(plan.img, x + 20, cursorY, plan.imgW, plan.imgH);
-    cursorY += plan.imgH + 10;
+    ctx.drawImage(plan.img, x + 25, cursorY, plan.imgW, plan.imgH);
+    cursorY += plan.imgH + 13;
   }
 
   ctx.font = CHOICE_FONT;
   for (const lines of plan.choiceLines) {
     lines.forEach((line, li) => {
-      ctx.fillText(line, x + CHOICE_INDENT, cursorY + 12 + li * CHOICE_LINE_H);
+      ctx.fillText(line, x + CHOICE_INDENT, cursorY + 15 + li * CHOICE_LINE_H);
     });
     cursorY += lines.length * CHOICE_LINE_H;
   }

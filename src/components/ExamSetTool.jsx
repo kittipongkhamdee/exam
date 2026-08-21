@@ -31,7 +31,13 @@ function PrintOptionsDialog({ open, initial, onCancel, onConfirm, submitting }) 
   const [form, setForm] = useState(initial);
   useEffect(() => { if (open) setForm(initial); }, [open, initial]);
 
-  if (!open) return null;
+  // `form` only picks up `initial` via the effect above, which runs AFTER
+  // the render that first flips `open` true — on that one render, `form`
+  // is still whatever it was at this (already-mounted) component's last
+  // render, i.e. null the very first time this dialog opens each session.
+  // Guarding on `!form` too (not just `!open`) skips that single render
+  // instead of crashing on `form.schoolName` with form still null.
+  if (!open || !form) return null;
 
   const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
   const labelCls = 'text-xs font-semibold text-gray-500';
@@ -116,7 +122,10 @@ function CopyExamSetDialog({ open, initial, subjectOptions, onCancel, onConfirm,
   const [form, setForm] = useState(initial);
   useEffect(() => { if (open) setForm(initial); }, [open, initial]);
 
-  if (!open) return null;
+  // Same race as PrintOptionsDialog above -- form syncs via an effect that
+  // runs after the render where `open` first flips true, so it can still
+  // be null on that render; guard on it too, not just `open`.
+  if (!open || !form) return null;
 
   const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
   const labelCls = 'text-xs font-semibold text-gray-500';

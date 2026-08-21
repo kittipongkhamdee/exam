@@ -278,6 +278,7 @@ export default function ExamSetTool() {
   const [availableQuestions, setAvailableQuestions] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [pointsById, setPointsById] = useState({}); // { [bank_question_id]: points }
   const [editingSetId, setEditingSetId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -359,6 +360,7 @@ export default function ExamSetTool() {
     setSubjectId('');
     setTitle('');
     setSelectedIds([]);
+    setPointsById({});
     setFormError(null);
   }
 
@@ -371,6 +373,7 @@ export default function ExamSetTool() {
       setSubjectId(full.subject_id);
       setTitle(full.title);
       setSelectedIds(full.questions.map(q => q.id));
+      setPointsById(Object.fromEntries(full.questions.map(q => [q.id, q.points ?? 1])));
     } catch (err) {
       setFormError(err.message || 'โหลดชุดข้อสอบไม่สำเร็จ');
     } finally {
@@ -380,6 +383,26 @@ export default function ExamSetTool() {
 
   function toggleQuestion(id) {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setPointsById(prev => (prev[id] !== undefined ? prev : { ...prev, [id]: 1 }));
+  }
+
+  function toggleSelectAllQuestions() {
+    const allSelected = availableQuestions.length > 0 && availableQuestions.every(q => selectedIds.includes(q.id));
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(availableQuestions.map(q => q.id));
+      setPointsById(prev => {
+        const next = { ...prev };
+        for (const q of availableQuestions) if (next[q.id] === undefined) next[q.id] = 1;
+        return next;
+      });
+    }
+  }
+
+  function updatePoints(id, value) {
+    const n = Math.max(0.01, Number(value) || 1);
+    setPointsById(prev => ({ ...prev, [id]: n }));
   }
 
   function removeSelected(id) {
@@ -398,13 +421,18 @@ export default function ExamSetTool() {
 
   const questionsById = new Map(availableQuestions.map(q => [q.id, q]));
   const selectedQuestions = selectedIds.map(id => questionsById.get(id)).filter(Boolean);
+  const totalPoints = selectedIds.reduce((sum, id) => sum + (pointsById[id] ?? 1), 0);
+  const allQuestionsSelected = availableQuestions.length > 0 && availableQuestions.every(q => selectedIds.includes(q.id));
 
   async function handleSave() {
     if (!subjectId || !title.trim() || selectedIds.length === 0) return;
     setSaving(true);
     setFormError(null);
     try {
-      await saveExamSet(supabase, { id: editingSetId, subjectId, title: title.trim(), questionIds: selectedIds });
+      await saveExamSet(supabase, {
+        id: editingSetId, subjectId, title: title.trim(),
+        questions: selectedIds.map(id => ({ id, points: pointsById[id] ?? 1 })),
+      });
       resetForm();
       refreshSets();
     } catch (err) {
@@ -431,14 +459,15 @@ export default function ExamSetTool() {
         return;
       }
       const numQuestions = full.questions.length;
+      const totalScore = full.questions.reduce((sum, q) => sum + (q.points ?? 1), 0);
       setPrintTarget(full);
       setPrintForm({
         schoolName: brandDefaults.name,
         examTitle: full.title,
         subjectCode: full.subject_code || '',
-        totalScore: String(numQuestions),
+        totalScore: String(totalScore),
         durationMinutes: '',
-        instructionsText: defaultInstructions(numQuestions, numQuestions),
+        instructionsText: defaultInstructions(numQuestions, totalScore),
         columns: 2,
         hasLogo: !!brandDefaults.logo,
         includeLogo: !!brandDefaults.logo,
@@ -574,7 +603,15 @@ export default function ExamSetTool() {
         {subjectId && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className={label}>ข้อสอบในคลัง (ติ๊กเพื่อเพิ่มเข้าชุด)</label>
+              <div className="flex items-center justify-between">
+                <label className={label}>ข้อสอบในคลัง (ติ๊กเพื่อเพิ่มเข้าชุด)</label>
+                {availableQuestions.length > 0 && (
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 cursor-pointer">
+                    <input type="checkbox" checked={allQuestionsSelected} onChange={toggleSelectAllQuestions} />
+                    เลือกทั้งหมด
+                  </label>
+                )}
+              </div>
               {questionsLoading && <div className="text-sm text-gray-500 mt-2">กำลังโหลด...</div>}
               {!questionsLoading && availableQuestions.length === 0 && (
                 <div className="text-sm text-gray-500 mt-2">วิชานี้ยังไม่มีข้อสอบในคลัง — ไปสร้างที่ &quot;คลังข้อสอบ&quot; ก่อน</div>
@@ -602,7 +639,7 @@ export default function ExamSetTool() {
             </div>
 
             <div>
-              <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ)</label>
+              <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ, รวม {totalPoints} คะแนน)</label>
               {selectedQuestions.length === 0 ? (
                 <div className="text-sm text-gray-500 mt-2">ยังไม่ได้เลือกข้อสอบ</div>
               ) : (
@@ -611,6 +648,13 @@ export default function ExamSetTool() {
                     <div key={q.id} className="flex items-start gap-2 px-3 py-2 text-sm">
                       <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
                       <span className="min-w-0 flex-1 text-gray-700">{q.question_text}</span>
+                      <input
+                        type="number" min={0.01} step="any"
+                        className="w-14 shrink-0 px-1.5 py-1 border border-gray-300 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        value={pointsById[q.id] ?? 1}
+                        onChange={e => updatePoints(q.id, e.target.value)}
+                        aria-label={`คะแนนข้อ ${i + 1}`}
+                      />
                       <div className="flex items-center gap-1 shrink-0">
                         <button type="button" className={btnTiny} disabled={i === 0} onClick={() => moveSelected(i, -1)} aria-label="เลื่อนขึ้น">
                           <ArrowUpIcon className="h-3.5 w-3.5" />

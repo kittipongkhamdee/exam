@@ -98,15 +98,15 @@ export async function getExamSetWithQuestions(supabase, id) {
     .select(`
       id, subject_id, title, printed_quiz_id,
       subjects ( subject_name, subject_code, grade_level, room ),
-      online_exam_set_questions ( seq, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path ) )
+      online_exam_set_questions ( seq, points, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path ) )
     `)
     .eq('id', id)
     .single();
   if (error) throw error;
   const questions = (data.online_exam_set_questions || [])
     .sort((a, b) => a.seq - b.seq)
-    .map(x => x.bank_questions)
-    .filter(Boolean);
+    .filter(x => x.bank_questions)
+    .map(x => ({ ...x.bank_questions, points: x.points }));
   return {
     id: data.id,
     subject_id: data.subject_id,
@@ -125,10 +125,10 @@ export async function getExamSetWithQuestions(supabase, id) {
  * — simplest correct way to persist a reordered/edited selection without a
  * client-side transaction.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, subjectId: string, title: string, questionIds: string[] }} args
+ * @param {{ id?: string, subjectId: string, title: string, questions: Array<{ id: string, points: number }> }} args
  * @returns {Promise<string>} the exam set's id
  */
-export async function saveExamSet(supabase, { id, subjectId, title, questionIds }) {
+export async function saveExamSet(supabase, { id, subjectId, title, questions }) {
   const { data: { user } } = await supabase.auth.getUser();
   let examSetId = id;
   if (examSetId) {
@@ -141,7 +141,7 @@ export async function saveExamSet(supabase, { id, subjectId, title, questionIds 
     if (error) throw error;
     examSetId = data.id;
   }
-  const rows = questionIds.map((qid, i) => ({ exam_set_id: examSetId, bank_question_id: qid, seq: i + 1 }));
+  const rows = questions.map((q, i) => ({ exam_set_id: examSetId, bank_question_id: q.id, seq: i + 1, points: q.points }));
   if (rows.length > 0) {
     const { error } = await supabase.from('online_exam_set_questions').insert(rows);
     if (error) throw error;
@@ -181,7 +181,7 @@ export async function copyExamSetToSubject(supabase, { examSetId, targetSubjectI
   const { data: setRow, error: setError } = await supabase
     .from('online_exam_sets')
     .select(`
-      online_exam_set_questions ( seq, bank_questions (
+      online_exam_set_questions ( seq, points, bank_questions (
         question_text, difficulty, choices, correct_choice, explanation, source, image_path, indicator_id
       ) )
     `)
@@ -189,11 +189,11 @@ export async function copyExamSetToSubject(supabase, { examSetId, targetSubjectI
     .single();
   if (setError) throw setError;
 
-  const questions = (setRow.online_exam_set_questions || [])
+  const sourceLinks = (setRow.online_exam_set_questions || [])
     .sort((a, b) => a.seq - b.seq)
-    .map(x => x.bank_questions)
-    .filter(Boolean);
-  if (questions.length === 0) throw new Error('ชุดข้อสอบนี้ยังไม่มีข้อสอบ');
+    .filter(x => x.bank_questions);
+  if (sourceLinks.length === 0) throw new Error('ชุดข้อสอบนี้ยังไม่มีข้อสอบ');
+  const questions = sourceLinks.map(x => x.bank_questions);
 
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -206,7 +206,7 @@ export async function copyExamSetToSubject(supabase, { examSetId, targetSubjectI
     .single();
   if (newSetError) throw newSetError;
 
-  const linkRows = inserted.map((q, i) => ({ exam_set_id: newSet.id, bank_question_id: q.id, seq: i + 1 }));
+  const linkRows = inserted.map((q, i) => ({ exam_set_id: newSet.id, bank_question_id: q.id, seq: i + 1, points: sourceLinks[i].points }));
   const { error: linkError } = await supabase.from('online_exam_set_questions').insert(linkRows);
   if (linkError) throw linkError;
 
@@ -338,7 +338,7 @@ export async function getRoundReport(supabase, roundId) {
 
   const { data: attempts, error: attemptsError } = await supabase
     .from('online_exam_attempts')
-    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, score, violation_count')
+    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, total_points, earned_points, score, violation_count')
     .eq('round_id', roundId);
   if (attemptsError) throw attemptsError;
 
@@ -356,6 +356,8 @@ export async function getRoundReport(supabase, roundId) {
       submitted_at: attempt?.submitted_at ?? null,
       total_correct: attempt?.total_correct ?? null,
       total_questions: attempt?.total_questions ?? null,
+      total_points: attempt?.total_points ?? null,
+      earned_points: attempt?.earned_points ?? null,
       score: attempt?.score ?? null,
       violation_count: attempt?.violation_count ?? 0,
     };
@@ -649,7 +651,7 @@ export async function listAllExamRoundsWithTeacher(supabase) {
  * so this takes the max across the set's questions.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ examSetId: string, subjectId: string, title: string, questions: Array<{ correct_choice: number, num_choices: number }>, existingQuizId?: string|null }} args
+ * @param {{ examSetId: string, subjectId: string, title: string, questions: Array<{ correct_choice: number, num_choices: number, points?: number }>, existingQuizId?: string|null }} args
  * @returns {Promise<string>} the omr_quizzes id
  */
 export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title, questions, existingQuizId }) {
@@ -667,7 +669,7 @@ export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title
   const numChoices = Math.max(...questions.map(q => q.num_choices || 4));
   const answerKey = {};
   questions.forEach((q, i) => {
-    answerKey[i] = { choices: [q.correct_choice], points: 1 };
+    answerKey[i] = { choices: [q.correct_choice], points: q.points ?? 1 };
   });
 
   const { quizId } = await createQuiz(supabase, {

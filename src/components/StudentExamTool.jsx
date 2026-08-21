@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { getBankQuestionImageUrl } from '../lib/bank-db';
+import { detectInAppBrowser } from '../lib/in-app-browser';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
@@ -109,6 +110,15 @@ function CheckCircleIcon(props) {
   );
 }
 
+function AlertIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 9v4M12 17h.01" />
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+    </svg>
+  );
+}
+
 function ClockIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -152,6 +162,8 @@ function watermarkBackground(line1, line2) {
 }
 
 export default function StudentExamTool() {
+  const [inAppBrowser] = useState(() => detectInAppBrowser());
+  const [linkCopied, setLinkCopied] = useState(false);
   const [savedSession] = useState(() => (typeof window !== 'undefined' ? loadSession() : null));
   const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted' | 'result'
   const [pin, setPin] = useState(savedSession?.pin || '');
@@ -166,6 +178,18 @@ export default function StudentExamTool() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittedRef = useRef(false);
+  // The visibilitychange listener below (and the handleViolation/
+  // handleSubmit chain it calls) is attached once per exam session — its
+  // closure over `answers` is frozen from whenever that effect last ran,
+  // NOT the latest render. Without this ref, a violation-triggered auto-
+  // submit would silently send that stale (often empty) answers snapshot
+  // instead of what the student actually picked — scoring them 0 despite
+  // correct answers. handleSubmit reads answersRef.current instead of the
+  // closed-over `answers` so it's always current no matter which stale
+  // closure ends up calling it.
+  const answersRef = useRef({});
+  useEffect(() => { answersRef.current = answers; }, [answers]);
+  const autoSubmitTriggeredRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageUrls, setImageUrls] = useState({});
   const fetchedImagePaths = useRef(new Set());
@@ -256,7 +280,7 @@ export default function StudentExamTool() {
     try {
       const payload = attempt.questions.map(q => ({
         question_id: q.id,
-        selected_index: answers[q.id] ?? null,
+        selected_index: answersRef.current[q.id] ?? null,
       }));
       const { data, error } = await supabase.rpc('submit_exam_attempt', {
         p_attempt_id: attempt.attempt_id,
@@ -288,9 +312,40 @@ export default function StudentExamTool() {
     }
   }
 
+  // A brief, visibly-ticking warning before every auto-submit (timeout or
+  // exceeded violations) — explains why the system is about to submit
+  // instead of just doing it with no warning, which otherwise reads as the
+  // app malfunctioning to a student who's still mid-answer.
+  async function showAutoSubmitCountdown(reasonHtml, seconds) {
+    let timerInterval;
+    Swal.close();
+    await Swal.fire({
+      icon: 'warning',
+      title: 'ระบบจะส่งข้อสอบให้อัตโนมัติ',
+      html: `${reasonHtml}<br>กำลังส่งข้อสอบในอีก <b></b> วินาที`,
+      timer: seconds * 1000,
+      timerProgressBar: true,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => {
+        const b = Swal.getHtmlContainer()?.querySelector('b');
+        timerInterval = setInterval(() => {
+          const left = Swal.getTimerLeft();
+          if (b && left != null) b.textContent = String(Math.ceil(left / 1000));
+        }, 100);
+      },
+      willClose: () => clearInterval(timerInterval),
+    });
+  }
+
   useEffect(() => {
-    if (phase === 'exam' && secondsLeft <= 0 && !submittedRef.current) {
-      handleSubmit(true);
+    if (phase === 'exam' && secondsLeft <= 0 && !submittedRef.current && !autoSubmitTriggeredRef.current) {
+      autoSubmitTriggeredRef.current = true;
+      (async () => {
+        await showAutoSubmitCountdown('หมดเวลาทำข้อสอบแล้ว', 5);
+        handleSubmit(true);
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, secondsLeft]);
@@ -338,14 +393,11 @@ export default function StudentExamTool() {
       if (data.submitted) return;
       setAttempt(prev => (prev ? { ...prev, violation_count: data.violation_count } : prev));
       if (data.exceeded) {
-        await Swal.fire({
-          icon: 'error',
-          title: 'ออกจากหน้าจอเกินจำนวนที่กำหนด',
-          text: 'ระบบจะส่งข้อสอบให้อัตโนมัติ',
-          timer: 3000,
-          showConfirmButton: false,
-          allowOutsideClick: false,
-        });
+        autoSubmitTriggeredRef.current = true;
+        await showAutoSubmitCountdown(
+          `ออกจากหน้าจอทำข้อสอบเกินจำนวนที่กำหนด (${data.violation_count}/${data.max_violations} ครั้ง)`,
+          5
+        );
         await handleSubmit(true);
       } else {
         setAttempt(prev => (prev ? { ...prev, locked: true } : prev));
@@ -455,10 +507,23 @@ export default function StudentExamTool() {
   // A refresh restarts the component with savedSession already loaded (see
   // useState above), so this runs once on mount to resume transparently
   // instead of making the student retype the PIN/code they already gave.
+  // Skipped entirely inside a detected in-app browser — see the blocking
+  // screen below; no point starting/resuming an attempt there.
   useEffect(() => {
-    if (savedSession) login(savedSession.pin, savedSession.studentCode);
+    if (savedSession && !inAppBrowser) login(savedSession.pin, savedSession.studentCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function copyPageLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      // best-effort — clipboard permission can be denied inside some
+      // in-app browsers, which is exactly the situation this is for
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -494,6 +559,32 @@ export default function StudentExamTool() {
   const inputCls = 'px-3 py-2.5 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
   const label = 'text-xs font-semibold text-gray-500 block mb-1';
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed w-full';
+
+  // Hard block, no bypass — see in-app-browser.js for why. Checked before
+  // every other phase (including 'resuming') so a saved session inside an
+  // in-app browser never even attempts to resume; the student must switch
+  // to a real browser and re-enter the PIN + student code there.
+  if (inAppBrowser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
+        <div className={card + ' w-full max-w-sm text-center'}>
+          <div className="h-14 w-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
+            <AlertIcon className="h-8 w-8" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900">กรุณาเปิดในเว็บเบราว์เซอร์</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            ตรวจพบว่าเปิดหน้านี้ผ่านแอป {inAppBrowser} ซึ่งอาจทำให้ระบบทำข้อสอบทำงานผิดพลาด (เช่น บันทึกการเข้าสอบไม่ได้ หรือครูปลดล็อกหน้าจอให้ไม่ได้) กรุณาเปิดลิงก์นี้ในเว็บเบราว์เซอร์ปกติ เช่น Chrome หรือ Safari ก่อนทำข้อสอบ
+          </p>
+          <p className="mt-3 text-xs text-gray-500">
+            แตะปุ่มเมนู (⋮ หรือจุดสามจุด) ที่มุมบนของหน้าจอ แล้วเลือก &quot;เปิดในเบราว์เซอร์&quot; (Open in Browser) — หรือคัดลอกลิงก์ด้านล่างไปวางในเบราว์เซอร์เอง
+          </p>
+          <button type="button" className={btn + ' mt-4'} onClick={copyPageLink}>
+            {linkCopied ? 'คัดลอกลิงก์แล้ว' : 'คัดลอกลิงก์หน้านี้'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === 'resuming') {
     return (

@@ -5,6 +5,13 @@
 // starts, and a single PIN the teacher announces to the whole class at the
 // start of the exam — per the teacher's own scoping, one shared PIN per
 // round rather than per student.
+//
+// Each round also picks how students find out their score: the manual
+// "เปิดเผยผลให้นักเรียนดู" button on the "รายงาน" page (results_visible,
+// the default), or auto_reveal_results here — each student sees their own
+// score immediately when their attempt is graded by submit_exam_attempt,
+// whether that's a manual submit or the client's own auto-submit on
+// timeout, with no teacher action needed.
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
@@ -111,6 +118,7 @@ export default function ExamScheduleTool() {
   const [pin, setPin] = useState(() => generatePin());
   const [unlockPin, setUnlockPin] = useState(() => generatePin());
   const [scheduleType, setScheduleType] = useState('adhoc');
+  const [autoRevealResults, setAutoRevealResults] = useState(false);
   const [editingRoundId, setEditingRoundId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -151,6 +159,7 @@ export default function ExamScheduleTool() {
     setPin(generatePin());
     setUnlockPin(generatePin());
     setScheduleType('adhoc');
+    setAutoRevealResults(false);
     setFormError(null);
   }
 
@@ -163,6 +172,7 @@ export default function ExamScheduleTool() {
     setPin(r.pin);
     setUnlockPin(r.unlock_pin);
     setScheduleType(r.schedule_type || 'adhoc');
+    setAutoRevealResults(!!r.auto_reveal_results);
     setFormError(null);
   }
 
@@ -184,6 +194,7 @@ export default function ExamScheduleTool() {
         closesAt: new Date(closesAt).toISOString(),
         durationMinutes: Number(durationMinutes),
         scheduleType,
+        autoRevealResults,
       });
       resetForm();
       refreshRounds();
@@ -302,6 +313,23 @@ export default function ExamScheduleTool() {
               </p>
             </div>
 
+            <div className={field + ' mt-3'}>
+              <label className={label}>การเปิดเผยผลคะแนนให้นักเรียน</label>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="revealMode" checked={!autoRevealResults} onChange={() => setAutoRevealResults(false)} />
+                  กดปุ่มเปิดเผยผลเอง (ที่หน้ารายงาน)
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="revealMode" checked={autoRevealResults} onChange={() => setAutoRevealResults(true)} />
+                  แสดงคะแนนอัตโนมัติทันทีที่ส่งข้อสอบ/หมดเวลา
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                โหมดอัตโนมัติ: นักเรียนแต่ละคนเห็นคะแนนของตัวเองทันทีที่กดส่งข้อสอบ หรือเมื่อหมดเวลาแล้วระบบส่งให้อัตโนมัติ — ไม่ต้องรอครูกดเปิดเผยผล
+              </p>
+            </div>
+
             {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -342,6 +370,9 @@ export default function ExamScheduleTool() {
                             </span>
                             <span className="font-mono font-bold tracking-widest text-gray-900">PIN: {r.pin}</span>
                             <span className="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: {r.unlock_pin}</span>
+                            {r.auto_reveal_results && (
+                              <span className={pill + ' bg-emerald-50 text-emerald-700'}>เผยผลอัตโนมัติ</span>
+                            )}
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             {formatThai(r.opens_at)} – {formatThai(r.closes_at)} · ทำได้ {r.duration_minutes} นาที/คน

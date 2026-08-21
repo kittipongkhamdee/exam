@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz, getItemAnalysisForQuiz } from '../lib/omr-db';
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { formatStudentName } from '../lib/student-name';
+import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -234,6 +235,24 @@ export default function OMRReportTool() {
     URL.revokeObjectURL(url);
   }
 
+  function analysisExportArgs() {
+    return {
+      fileTitle: `วิเคราะห์คุณภาพข้อสอบ-${selectedQuiz.title}`,
+      title: selectedQuiz.title,
+      subjectLine: `${selectedQuiz.subjectName} (ชั้น ${selectedQuiz.gradeLevel}/${selectedQuiz.room}) · ${selectedQuiz.numQuestions} ข้อ`,
+      analysis: itemAnalysis,
+      rowLabels: Array.from({ length: selectedQuiz.numQuestions }, (_, i) => `ข้อ ${i + 1}`),
+    };
+  }
+
+  function handleExportAnalysisExcel() {
+    exportItemAnalysisExcel(analysisExportArgs());
+  }
+
+  function handleExportAnalysisPdf() {
+    exportItemAnalysisPdf(analysisExportArgs());
+  }
+
   return (
     <div className="max-w-5xl">
       <button type="button" onClick={handleBack} className="text-sm font-semibold text-indigo-600 mb-3 inline-flex items-center gap-1">
@@ -291,8 +310,20 @@ export default function OMRReportTool() {
           )}
 
           <div className={card}>
-            <div className="text-sm font-bold mb-3 flex items-center gap-1.5">
-              <TargetIcon className="h-4 w-4 text-gray-400" /> ผลการวิเคราะห์คุณภาพข้อสอบ
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div className="text-sm font-bold flex items-center gap-1.5">
+                <TargetIcon className="h-4 w-4 text-gray-400" /> ผลการวิเคราะห์คุณภาพข้อสอบ
+              </div>
+              {!loadingAnalysis && itemAnalysis && itemAnalysis.n >= 2 && (
+                <div className="flex items-center gap-2">
+                  <button type="button" className={btnSecondary + ' inline-flex items-center gap-1.5 text-xs px-3 py-1.5'} onClick={() => handleExportAnalysisExcel()}>
+                    <DownloadIcon className="h-3.5 w-3.5" /> Excel
+                  </button>
+                  <button type="button" className={btnSecondary + ' inline-flex items-center gap-1.5 text-xs px-3 py-1.5'} onClick={() => handleExportAnalysisPdf()}>
+                    <DownloadIcon className="h-3.5 w-3.5" /> PDF
+                  </button>
+                </div>
+              )}
             </div>
             {loadingAnalysis && <div className="text-sm text-gray-500">กำลังวิเคราะห์...</div>}
             {!loadingAnalysis && (

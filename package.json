@@ -14,7 +14,8 @@
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sweetalert2": "^11.26.25"
+    "sweetalert2": "^11.26.25",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

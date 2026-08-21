@@ -176,6 +176,12 @@ export default function OMRScanTool() {
     setStudentId('');
     setForcePicker(false);
     resetScan();
+    // Skip straight to the camera instead of making the teacher tap
+    // "ถ่ายภาพกระดาษคำตอบ" again for every student in a batch — this still
+    // runs inside the button's click handler, so the browser still counts
+    // it as a user gesture and won't block the getUserMedia permission
+    // prompt.
+    openCamera();
   }
 
   function runScan(imgSrc) {

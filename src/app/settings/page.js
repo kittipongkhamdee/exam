@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, deleteQuiz } from '@/lib/omr-db';
 import { getConfigValue, setConfigValue } from '@/lib/config-db';
+import { resizeImageToFit } from '@/lib/image-resize';
 import { formatStudentName } from '@/lib/student-name';
 import {
   listProctorAssignmentsForDate, saveProctorAssignment, deleteProctorAssignment,
@@ -723,18 +724,12 @@ function BrandingPanel() {
       setError('เลือกไฟล์รูปภาพเท่านั้น');
       return;
     }
-    if (file.size > MAX_LOGO_FILE_BYTES) {
-      setError('ไฟล์โลโก้ใหญ่เกินไป (ไม่เกิน 300KB)');
-      return;
-    }
     setLogoBusy(true);
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Always through the resizer, even for an already-small file — a
+      // logo only ever displays a few dozen pixels tall, so this also
+      // normalizes oversized dimensions, not just oversized bytes.
+      const dataUrl = await resizeImageToFit(file, { maxBytes: MAX_LOGO_FILE_BYTES });
       await setConfigValue(supabase, 'exam_app_logo', dataUrl);
       setLogo(dataUrl);
     } catch (err) {
@@ -811,7 +806,7 @@ function BrandingPanel() {
                 <button type="button" className={btnTiny} onClick={handleRemoveLogo} disabled={logoBusy}>ลบโลโก้</button>
               )}
             </div>
-            <div className="text-[11px] text-gray-400 mt-0.5">ไฟล์รูปภาพ ขนาดไม่เกิน 300KB</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">ไฟล์รูปภาพ — ถ้าไฟล์ใหญ่เกินไป ระบบจะย่อขนาดให้อัตโนมัติ</div>
           </div>
           <div className="flex items-center gap-2 pt-1">
             <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>

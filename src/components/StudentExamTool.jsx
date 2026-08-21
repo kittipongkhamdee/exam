@@ -101,6 +101,24 @@ function formatCountdown(totalSeconds) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
+// Same idea as formatCountdown but for the "รอเข้าสอบ" wait, which can run
+// well past an hour (unlike the in-exam timer) — adds an hours segment
+// when needed instead of just letting minutes run past 59.
+function formatWaitCountdown(totalSeconds) {
+  const s = Math.max(0, totalSeconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+// A live wait is only useful for a plausible "arrived early" gap — beyond
+// this, just tell the student the start time and let them come back later
+// instead of implying a tab left open for days will do anything useful.
+const EARLY_WAIT_THRESHOLD_SECONDS = 3 * 60 * 60;
+
 function CheckCircleIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -466,6 +484,65 @@ export default function StudentExamTool() {
     });
   }
 
+  // "ยังไม่ถึงเวลาสอบ" — the PIN is real but opens_at hasn't arrived yet.
+  // Within EARLY_WAIT_THRESHOLD_SECONDS this shows a live countdown and
+  // (per "นับเวลาถอยหลังเข้าระบบสอบ") retries the same login automatically
+  // the moment it reaches zero; beyond that it's just informational, since
+  // nobody realistically leaves a tab open for hours/days waiting.
+  async function showTooEarlyDialog(data, pinVal, studentCodeVal) {
+    const opensAtText = new Date(data.opens_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
+    const secondsUntilOpen = Math.floor((new Date(data.opens_at).getTime() - Date.now()) / 1000);
+
+    if (secondsUntilOpen > EARLY_WAIT_THRESHOLD_SECONDS) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'ยังไม่ถึงเวลาสอบ',
+        html: `การสอบ &quot;${data.exam_set_title}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>กรุณากลับมาเข้าสอบใหม่เมื่อถึงเวลา`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#4f46e5',
+      });
+      return;
+    }
+
+    let timerInterval;
+    const result = await Swal.fire({
+      icon: 'info',
+      title: 'ยังไม่ถึงเวลาสอบ',
+      html: `การสอบ &quot;${data.exam_set_title}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>เหลือเวลาอีก <b class="wait-countdown"></b> — ระบบจะพาเข้าสอบให้อัตโนมัติเมื่อถึงเวลา`,
+      confirmButtonText: 'ปิด',
+      confirmButtonColor: '#4f46e5',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      timer: secondsUntilOpen * 1000,
+      timerProgressBar: true,
+      didOpen: () => {
+        const b = Swal.getHtmlContainer()?.querySelector('.wait-countdown');
+        timerInterval = setInterval(() => {
+          const left = Swal.getTimerLeft();
+          if (b && left != null) b.textContent = formatWaitCountdown(Math.ceil(left / 1000));
+        }, 500);
+      },
+      willClose: () => clearInterval(timerInterval),
+    });
+
+    if (result.dismiss === Swal.DismissReason.timer) {
+      login(pinVal, studentCodeVal, { showRulesNotice: true });
+    }
+  }
+
+  // "เข้าสอบสายเกินเวลา" — the PIN is real but closes_at has already passed.
+  async function showTooLateDialog(data) {
+    const opensAtText = new Date(data.opens_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
+    const closesAtText = new Date(data.closes_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
+    await Swal.fire({
+      icon: 'error',
+      title: 'เข้าสอบสายเกินเวลาที่กำหนด',
+      html: `การสอบ &quot;${data.exam_set_title}&quot; กำหนดให้เข้าสอบในช่วง <b>${opensAtText} – ${closesAtText}</b><br>ขณะนี้เลยเวลาที่กำหนดแล้ว กรุณาติดต่อครูผู้สอน`,
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#4f46e5',
+    });
+  }
+
   async function login(pinVal, studentCodeVal, opts = {}) {
     setLoginError(null);
     setLoggingIn(true);
@@ -476,6 +553,17 @@ export default function StudentExamTool() {
       });
       if (error) throw error;
       submittedRef.current = false;
+      if (data.blocked === 'too_early') {
+        setPhase('login');
+        showTooEarlyDialog(data, pinVal.trim(), studentCodeVal.trim());
+        return;
+      }
+      if (data.blocked === 'too_late') {
+        clearSession();
+        setPhase('login');
+        showTooLateDialog(data);
+        return;
+      }
       if (data.submitted) {
         // The attempt was already submitted and the teacher has since
         // revealed results (see the migration) — same PIN + code doubles

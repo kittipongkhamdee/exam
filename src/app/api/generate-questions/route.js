@@ -12,6 +12,72 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publish
 const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
 const MAX_QUESTIONS = 15;
 
+// Gemini returns 503 (model overloaded) and 429 (rate limited) fairly often
+// under normal load — both are meant to be retried, not surfaced as a
+// failure on the first try. Bounded to fit comfortably inside maxDuration
+// (60s) alongside the Supabase queries around it: 3 attempts, a 15s
+// per-attempt timeout so one hung attempt can't eat the whole budget, and a
+// short exponential backoff between attempts.
+const GEMINI_MAX_ATTEMPTS = 3;
+const GEMINI_ATTEMPT_TIMEOUT_MS = 15000;
+const GEMINI_RETRY_DELAYS_MS = [1000, 2000];
+const GEMINI_RETRYABLE_STATUSES = new Set([429, 503]);
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * POSTs to Gemini's generateContent endpoint, retrying transient failures
+ * (503 overloaded, 429 rate-limited, timeouts, network errors) with
+ * exponential backoff. Returns { data } on success or { error, detail } once
+ * every attempt is exhausted.
+ */
+async function fetchGeminiWithRetry(model, apiKey, prompt, responseSchema) {
+  let lastError = 'ติดต่อ Gemini API ไม่สำเร็จ';
+  let lastDetail = '';
+
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_ATTEMPT_TIMEOUT_MS);
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (res.ok) {
+        return { data: await res.json() };
+      }
+
+      lastError = `Gemini API ผิดพลาด (${res.status})`;
+      lastDetail = await res.text().catch(() => '');
+      if (!GEMINI_RETRYABLE_STATUSES.has(res.status)) {
+        return { error: lastError, detail: lastDetail };
+      }
+    } catch (err) {
+      lastError = err?.name === 'AbortError' ? 'Gemini API ไม่ตอบสนอง (timeout)' : 'ติดต่อ Gemini API ไม่สำเร็จ';
+      lastDetail = '';
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (attempt < GEMINI_MAX_ATTEMPTS) {
+      await sleep(GEMINI_RETRY_DELAYS_MS[attempt - 1]);
+    }
+  }
+
+  return { error: lastError, detail: lastDetail };
+}
+
 export async function POST(request) {
   const authHeader = request.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
@@ -123,30 +189,12 @@ ${topicLines}
   };
 
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  let geminiRes;
-  try {
-    geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema,
-        },
-      }),
-    });
-  } catch {
-    return Response.json({ error: 'ติดต่อ Gemini API ไม่สำเร็จ' }, { status: 502 });
+  const geminiRes = await fetchGeminiWithRetry(model, apiKey, prompt, responseSchema);
+  if (geminiRes.error) {
+    return Response.json({ error: geminiRes.error, detail: geminiRes.detail }, { status: 502 });
   }
 
-  if (!geminiRes.ok) {
-    const detail = await geminiRes.text().catch(() => '');
-    return Response.json({ error: `Gemini API ผิดพลาด (${geminiRes.status})`, detail }, { status: 502 });
-  }
-
-  const geminiData = await geminiRes.json();
-  const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
     return Response.json({ error: 'ไม่ได้รับผลลัพธ์จาก Gemini' }, { status: 502 });
   }

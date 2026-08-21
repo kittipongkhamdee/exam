@@ -12,6 +12,14 @@
 // loaded app-wide — see layout.js) draw Thai correctly; each page's canvas
 // then becomes one JPEG image embedded in the PDF, exactly like
 // OMRPrepareTool's downloadSheetHalfA4/handleGenerateClassPDF.
+//
+// The letterhead (school name, exam title, subject/score/time line, boxed
+// คำชี้แจง rules, and an optional logo) and the 1 vs 2-column question
+// layout are all caller-supplied — ExamSetTool's print dialog is what lets
+// a teacher edit them per print, prefilled from the admin's exam_app_name/
+// exam_app_logo (Settings) and the ชุดข้อสอบ itself. This module just draws
+// whatever it's given; it has no config/Supabase dependency of its own
+// beyond fetching question images.
 
 import { jsPDF } from 'jspdf';
 import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText } from './omr-core';
@@ -19,7 +27,8 @@ import { getBankQuestionImageUrl } from './bank-db';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
 const FONT = '"Prompt", sans-serif';
-const TITLE_FONT = `bold 18px ${FONT}`;
+const SCHOOL_FONT = `bold 15px ${FONT}`;
+const EXAM_TITLE_FONT = `bold 14px ${FONT}`;
 const SUBTITLE_FONT = `11px ${FONT}`;
 const CONT_FONT = `11px ${FONT}`;
 const INSTRUCTION_FONT = `10px ${FONT}`;
@@ -29,12 +38,14 @@ const CHOICE_FONT = `12px ${FONT}`;
 
 const CONTENT_X = MARGIN;
 const CONTENT_W = PAGE_W - MARGIN * 2;
+const COLUMN_GUTTER = 24;
 const CHOICE_INDENT = 20;
-const MAX_IMAGE_H = 220;
+const MAX_IMAGE_H = 200;
 const TEXT_LINE_H = 18;
 const CHOICE_LINE_H = 17;
 const BLOCK_GAP = 18;
 const FOOTER_RESERVE = 20;
+const LOGO_SIZE = 56;
 
 function loadImage(url) {
   return new Promise(resolve => {
@@ -62,23 +73,30 @@ async function loadQuestionImages(supabase, questions) {
   return images;
 }
 
+// One or two columns of equal width across the content area, left-to-right.
+function getColumnLayout(columns) {
+  if (columns !== 2) return { count: 1, width: CONTENT_W, xs: [CONTENT_X] };
+  const width = (CONTENT_W - COLUMN_GUTTER) / 2;
+  return { count: 2, width, xs: [CONTENT_X, CONTENT_X + width + COLUMN_GUTTER] };
+}
+
 // One measurement/layout pass per question — wraps its text and each
-// choice's text, and scales its image (if any) to fit the content column —
+// choice's text, and scales its image (if any) to fit one column —
 // producing everything the draw pass needs, plus the total height the
-// question will occupy, used to decide where page breaks fall.
-function planQuestions(measureCtx, questions, choiceScheme, images) {
+// question will occupy, used to decide where column/page breaks fall.
+function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth) {
   return questions.map((q, qi) => {
     measureCtx.font = BODY_FONT;
-    const textLines = wrapText(measureCtx, q.question_text, CONTENT_W - 24);
+    const textLines = wrapText(measureCtx, q.question_text, columnWidth - 24);
 
     const letters = choiceLetters(choiceScheme, q.choices.length);
     measureCtx.font = CHOICE_FONT;
-    const choiceLines = q.choices.map((c, ci) => wrapText(measureCtx, `${letters[ci]}. ${c}`, CONTENT_W - 24 - CHOICE_INDENT));
+    const choiceLines = q.choices.map((c, ci) => wrapText(measureCtx, `${letters[ci]}. ${c}`, columnWidth - 24 - CHOICE_INDENT));
 
     const img = q.image_path ? images.get(q.image_path) : null;
     let imgW = 0, imgH = 0;
     if (img) {
-      const maxW = CONTENT_W - 24;
+      const maxW = columnWidth - 24;
       const scale = Math.min(1, maxW / img.width, MAX_IMAGE_H / img.height);
       imgW = Math.round(img.width * scale);
       imgH = Math.round(img.height * scale);
@@ -94,16 +112,57 @@ function planQuestions(measureCtx, questions, choiceScheme, images) {
   });
 }
 
-function drawPageHeader(ctx, { title, subjectLine, isFirstPage }) {
+/**
+ * Draws the top-of-page letterhead and returns the y where question columns
+ * can start. The first page gets the full letterhead (logo, school name,
+ * exam title, subject/score/time line, boxed คำชี้แจง rules, an answer-
+ * method note, a name/class/number blank, and a rule); continuation pages
+ * just get a short "(ต่อ)" line so the two-column body has more room.
+ */
+function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle, isFirstPage }) {
   let y = MARGIN;
   ctx.fillStyle = '#000';
   if (isFirstPage) {
-    ctx.font = TITLE_FONT;
-    ctx.fillText(title, MARGIN, y + 16);
-    y += 26;
+    const hasLogo = !!logoImg;
+    const textX = hasLogo ? MARGIN + LOGO_SIZE + 14 : MARGIN;
+    if (hasLogo) {
+      ctx.drawImage(logoImg, MARGIN, y, LOGO_SIZE, LOGO_SIZE);
+    }
+
+    let ty = y + 14;
+    if (schoolName) {
+      ctx.font = SCHOOL_FONT; ctx.fillStyle = '#000';
+      ctx.fillText(schoolName, textX, ty);
+      ty += 20;
+    }
+    if (examTitle) {
+      ctx.font = EXAM_TITLE_FONT; ctx.fillStyle = '#111';
+      ctx.fillText(examTitle, textX, ty);
+      ty += 18;
+    }
     ctx.font = SUBTITLE_FONT; ctx.fillStyle = '#333';
-    ctx.fillText(subjectLine, MARGIN, y + 10);
-    y += 22;
+    ctx.fillText(subjectLine, textX, ty);
+    ty += 16;
+    if (scoreTimeLine) {
+      ctx.fillText(scoreTimeLine, textX, ty);
+      ty += 16;
+    }
+    y = Math.max(y + (hasLogo ? LOGO_SIZE : 0), ty) + 12;
+
+    if (instructions.length > 0) {
+      const lineH = 15;
+      const boxPad = 8;
+      ctx.font = INSTRUCTION_FONT;
+      const boxH = instructions.length * lineH + boxPad * 2;
+      ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+      ctx.strokeRect(MARGIN, y, CONTENT_W, boxH);
+      ctx.fillStyle = '#222';
+      instructions.forEach((line, i) => {
+        ctx.fillText(line, MARGIN + boxPad, y + boxPad + 11 + i * lineH);
+      });
+      y += boxH + 12;
+    }
+
     ctx.font = INSTRUCTION_FONT; ctx.fillStyle = '#555';
     ctx.fillText('คำชี้แจง: เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว แล้วระบายคำตอบลงในกระดาษคำตอบที่แจก', MARGIN, y + 8);
     y += 16;
@@ -115,7 +174,7 @@ function drawPageHeader(ctx, { title, subjectLine, isFirstPage }) {
     y += 16;
   } else {
     ctx.font = CONT_FONT; ctx.fillStyle = '#666';
-    ctx.fillText(`${title} (ต่อ)`, MARGIN, y + 10);
+    ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 10);
     y += 22;
   }
   return y;
@@ -156,14 +215,36 @@ function drawQuestionBlock(ctx, plan, x, y) {
  * flow). Choice lettering (ก/ข/ค/ง, A/B/C/D, or 1/2/3/4) must match
  * whatever the class's OMR answer sheet uses — see syncPrintedOmrQuiz,
  * which is always called with the same choiceScheme for this reason.
+ *
+ * The letterhead and layout are fully caller-supplied (see ExamSetTool's
+ * print dialog): schoolName/examTitle/subjectCode/totalScore/
+ * durationMinutes/instructions build the letterhead, logoDataUrl (a data:
+ * URI, e.g. from the admin's exam_app_logo config) prints a logo, and
+ * columns (1 or 2) picks the body layout — 2 to match a traditional
+ * two-column paper exam, 1 for a simpler single-column sheet.
+ *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ title: string, subjectName: string, gradeLevel: string, room: string, questions: Array<{question_text:string, choices:string[], image_path:string|null}>, choiceScheme?: 'thai'|'en'|'num' }} args
+ * @param {{
+ *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string, room: string,
+ *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
+ *   choiceScheme?: 'thai'|'en'|'num',
+ *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
+ *   instructions?: string[], columns?: 1|2, logoDataUrl?: string|null,
+ * }} args
  */
-export async function generateExamQuestionPaperPdf(supabase, { title, subjectName, gradeLevel, room, questions, choiceScheme = 'thai' }) {
+export async function generateExamQuestionPaperPdf(supabase, {
+  title, subjectName, subjectCode, gradeLevel, room, questions, choiceScheme = 'thai',
+  schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
+}) {
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
-  const images = await loadQuestionImages(supabase, questions);
-  const plans = planQuestions(measureCtx, questions, choiceScheme, images);
+  const [images, logoImg] = await Promise.all([
+    loadQuestionImages(supabase, questions),
+    logoDataUrl ? loadImage(logoDataUrl) : Promise.resolve(null),
+  ]);
+
+  const colLayout = getColumnLayout(columns === 1 ? 1 : 2);
+  const plans = planQuestions(measureCtx, questions, choiceScheme, images, colLayout.width);
 
   const canvas = document.createElement('canvas');
   canvas.width = PAGE_W * PRINT_SCALE;
@@ -171,7 +252,11 @@ export async function generateExamQuestionPaperPdf(supabase, { title, subjectNam
   const ctx = canvas.getContext('2d');
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-  const subjectLine = `${subjectName} (ชั้น ${gradeLevel}/${room})`;
+  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${gradeLevel}/${room}`;
+  const scoreTimeLine = [
+    Number.isFinite(totalScore) && totalScore > 0 ? `คะแนนเต็ม ${totalScore} คะแนน` : '',
+    Number(durationMinutes) > 0 ? `เวลา ${durationMinutes} นาที` : '',
+  ].filter(Boolean).join('   ');
   const bottomLimit = PAGE_H - MARGIN - FOOTER_RESERVE;
 
   function resetCanvas() {
@@ -187,19 +272,34 @@ export async function generateExamQuestionPaperPdf(supabase, { title, subjectNam
     pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
   }
 
-  let isFirstPage = true;
+  function drawHeaderForPage(isFirstPage) {
+    return drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle: title, isFirstPage });
+  }
+
   resetCanvas();
-  let y = drawPageHeader(ctx, { title, subjectLine, isFirstPage });
-  isFirstPage = false;
+  let headerY = drawHeaderForPage(true);
+  let colY = colLayout.xs.map(() => headerY);
+  let colIndex = 0;
 
   for (const plan of plans) {
-    if (y + plan.height > bottomLimit) {
+    let placed = false;
+    while (colIndex < colLayout.xs.length) {
+      if (colY[colIndex] + plan.height <= bottomLimit) { placed = true; break; }
+      colIndex++;
+    }
+    if (!placed) {
       flushPage();
       pdf.addPage();
       resetCanvas();
-      y = drawPageHeader(ctx, { title, subjectLine, isFirstPage });
+      headerY = drawHeaderForPage(false);
+      colY = colLayout.xs.map(() => headerY);
+      colIndex = 0;
+      // A fresh page always accepts the next question even if it still
+      // overflows the column (an unusually tall single question) — without
+      // this, a question taller than one column's height would flush pages
+      // forever without ever placing it.
     }
-    y = drawQuestionBlock(ctx, plan, CONTENT_X, y);
+    colY[colIndex] = drawQuestionBlock(ctx, plan, colLayout.xs[colIndex], colY[colIndex]);
   }
   flushPage();
 

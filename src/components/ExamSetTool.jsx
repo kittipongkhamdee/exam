@@ -11,7 +11,100 @@ import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
 import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz } from '../lib/exam-db';
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
+import { getConfigValue } from '../lib/config-db';
 import ConfirmDialog from './ConfirmDialog';
+
+function defaultInstructions(numQuestions, totalScore) {
+  return [
+    `1. ข้อสอบแบบปรนัย ${numQuestions} ข้อ ${totalScore} คะแนน`,
+    '2. ห้ามนำข้อสอบออกจากห้องสอบโดยเด็ดขาด หากมีข้อสงสัยควรสอบถามกรรมการคุมห้องสอบ',
+    '3. เมื่อทำข้อสอบเสร็จแล้ว ส่งข้อสอบคืนที่กรรมการคุมห้องสอบ',
+  ].join('\n');
+}
+
+// Print-time letterhead editor — lets a teacher tweak the school name, exam
+// title, subject code, score/time, คำชี้แจง rules, column count, and
+// whether to include the admin's logo (Settings → ชื่อระบบ/โลโก้) before
+// generating this specific ชุดข้อสอบ's PDF. Fully controlled by ExamSetTool;
+// re-seeds its local form state from `initial` every time it opens.
+function PrintOptionsDialog({ open, initial, onCancel, onConfirm, submitting }) {
+  const [form, setForm] = useState(initial);
+  useEffect(() => { if (open) setForm(initial); }, [open, initial]);
+
+  if (!open) return null;
+
+  const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+  const labelCls = 'text-xs font-semibold text-gray-500';
+  const fieldCls = 'flex flex-col gap-1';
+
+  function update(key, value) {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5">
+        <div className="font-semibold text-gray-900 mb-1">ตั้งค่าหัวกระดาษก่อนพิมพ์</div>
+        <p className="text-xs text-gray-500 mb-4">ปรับข้อมูลหัวกระดาษของข้อสอบชุดนี้ได้ตามต้องการ — ใช้ครั้งนี้ครั้งเดียว ไม่กระทบชุดข้อสอบอื่น</p>
+
+        <div className="space-y-3">
+          <div className={fieldCls}>
+            <label className={labelCls}>ชื่อโรงเรียน/หน่วยงาน</label>
+            <input type="text" className={inputCls} value={form.schoolName} onChange={e => update('schoolName', e.target.value)} placeholder="เช่น โรงเรียนตาเบาวิทยา อำเภอปราสาท จังหวัดสุรินทร์" />
+          </div>
+          <div className={fieldCls}>
+            <label className={labelCls}>ชื่อการสอบ</label>
+            <input type="text" className={inputCls} value={form.examTitle} onChange={e => update('examTitle', e.target.value)} placeholder="เช่น แบบทดสอบวัดผลปลายภาคเรียนที่ 1" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className={fieldCls}>
+              <label className={labelCls}>รหัสวิชา</label>
+              <input type="text" className={inputCls} value={form.subjectCode} onChange={e => update('subjectCode', e.target.value)} />
+            </div>
+            <div className={fieldCls}>
+              <label className={labelCls}>คะแนนเต็ม</label>
+              <input type="number" min={0} className={inputCls} value={form.totalScore} onChange={e => update('totalScore', e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className={fieldCls}>
+              <label className={labelCls}>เวลา (นาที)</label>
+              <input type="number" min={0} className={inputCls} value={form.durationMinutes} onChange={e => update('durationMinutes', e.target.value)} placeholder="ไม่บังคับ" />
+            </div>
+            <div className={fieldCls}>
+              <label className={labelCls}>จำนวนคอลัมน์</label>
+              <select className={inputCls} value={form.columns} onChange={e => update('columns', Number(e.target.value))}>
+                <option value={2}>2 คอลัมน์</option>
+                <option value={1}>1 คอลัมน์</option>
+              </select>
+            </div>
+          </div>
+          <div className={fieldCls}>
+            <label className={labelCls}>คำชี้แจง (บรรทัดละ 1 ข้อ)</label>
+            <textarea className={inputCls + ' min-h-24'} value={form.instructionsText} onChange={e => update('instructionsText', e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={form.includeLogo} disabled={!form.hasLogo} onChange={e => update('includeLogo', e.target.checked)} />
+            แสดงโลโก้ที่แอดมินอัพโหลดไว้ในหน้าตั้งค่า
+            {!form.hasLogo && <span className="text-xs text-gray-400 ml-1">(ยังไม่มีโลโก้ — ไปอัพโหลดที่หน้าตั้งค่าก่อน)</span>}
+          </label>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="bg-gray-100 text-gray-900 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200 disabled:opacity-50" onClick={onCancel} disabled={submitting}>ยกเลิก</button>
+          <button
+            type="button"
+            className="bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50"
+            onClick={() => onConfirm(form)}
+            disabled={submitting}
+          >
+            {submitting ? 'กำลังสร้าง PDF...' : 'พิมพ์ข้อสอบ (A4)'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
 const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
@@ -124,6 +217,28 @@ export default function ExamSetTool() {
   const [deleting, setDeleting] = useState(false);
   const [printingId, setPrintingId] = useState(null);
 
+  // exam_app_name/exam_app_logo (Settings → ชื่อระบบ/โลโก้) — used only as
+  // this dialog's starting values; the teacher can still edit or drop them
+  // per print, and nothing here is written back to config.
+  const [brandDefaults, setBrandDefaults] = useState({ name: '', logo: '' });
+  const [printTarget, setPrintTarget] = useState(null); // full exam set (with questions) being printed, or null
+  const [printForm, setPrintForm] = useState(null);
+  const [printSubmitting, setPrintSubmitting] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [name, logo] = await Promise.all([
+          getConfigValue(supabase, 'exam_app_name'),
+          getConfigValue(supabase, 'exam_app_logo'),
+        ]);
+        setBrandDefaults({ name: name || '', logo: logo || '' });
+      } catch {
+        // best-effort
+      }
+    })();
+  }, []);
+
   const refreshSets = useCallback(async () => {
     setSetsLoading(true);
     try {
@@ -223,12 +338,15 @@ export default function ExamSetTool() {
     }
   }
 
-  // "พิมพ์ข้อสอบ (A4)": generates the question-paper PDF and, in the same
-  // action, creates/updates the matching OMR quiz + answer key (pulled
-  // straight from these questions' correct_choice) so the teacher never
-  // types the answer key by hand for a paper exam — see exam-print.js and
-  // syncPrintedOmrQuiz.
-  async function handlePrint(set) {
+  // "พิมพ์ข้อสอบ (A4)": opens the letterhead editor first (school name/exam
+  // title/subject code/score/time/คำชี้แจง/columns/logo), prefilled from the
+  // admin's Settings branding and the ชุดข้อสอบ itself — see
+  // PrintOptionsDialog. Confirming there runs the actual generation:
+  // creates/updates the matching OMR quiz + answer key (pulled straight
+  // from these questions' correct_choice, so the teacher never types the
+  // answer key by hand for a paper exam) and downloads the PDF — see
+  // exam-print.js and syncPrintedOmrQuiz.
+  async function openPrintDialog(set) {
     setPrintingId(set.id);
     try {
       const full = await getExamSetWithQuestions(supabase, set.id);
@@ -236,6 +354,31 @@ export default function ExamSetTool() {
         Swal.fire({ icon: 'warning', title: 'ชุดข้อสอบนี้ยังไม่มีข้อสอบ', text: 'เพิ่มข้อสอบเข้าชุดก่อนพิมพ์' });
         return;
       }
+      const numQuestions = full.questions.length;
+      setPrintTarget(full);
+      setPrintForm({
+        schoolName: brandDefaults.name,
+        examTitle: full.title,
+        subjectCode: full.subject_code || '',
+        totalScore: String(numQuestions),
+        durationMinutes: '',
+        instructionsText: defaultInstructions(numQuestions, numQuestions),
+        columns: 2,
+        hasLogo: !!brandDefaults.logo,
+        includeLogo: !!brandDefaults.logo,
+      });
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'โหลดชุดข้อสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+      setPrintingId(null);
+    }
+  }
+
+  async function confirmPrint(form) {
+    if (!printTarget) return;
+    const full = printTarget;
+    setPrintSubmitting(true);
+    try {
       await syncPrintedOmrQuiz(supabase, {
         examSetId: full.id,
         subjectId: full.subject_id,
@@ -246,10 +389,20 @@ export default function ExamSetTool() {
       await generateExamQuestionPaperPdf(supabase, {
         title: full.title,
         subjectName: full.subject_name,
+        subjectCode: form.subjectCode,
         gradeLevel: full.grade_level,
         room: full.room,
         questions: full.questions,
+        schoolName: form.schoolName.trim(),
+        examTitle: form.examTitle.trim(),
+        totalScore: Number(form.totalScore) || undefined,
+        durationMinutes: form.durationMinutes,
+        instructions: form.instructionsText.split('\n').map(s => s.trim()).filter(Boolean),
+        columns: form.columns,
+        logoDataUrl: form.includeLogo ? brandDefaults.logo : null,
       });
+      setPrintTarget(null);
+      setPrintForm(null);
       refreshSets();
       Swal.fire({
         icon: 'success', title: 'พิมพ์ข้อสอบแล้ว',
@@ -258,7 +411,7 @@ export default function ExamSetTool() {
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'พิมพ์ข้อสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
     } finally {
-      setPrintingId(null);
+      setPrintSubmitting(false);
     }
   }
 
@@ -402,8 +555,8 @@ export default function ExamSetTool() {
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <button className={btnTiny} disabled={printingId === s.id} onClick={() => handlePrint(s)}>
-                          <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังพิมพ์...' : 'พิมพ์ข้อสอบ (A4)'}
+                        <button className={btnTiny} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
+                          <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังโหลด...' : 'พิมพ์ข้อสอบ (A4)'}
                         </button>
                         <button className={btnTiny} onClick={() => startEdit(s)}>
                           <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
@@ -430,6 +583,14 @@ export default function ExamSetTool() {
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <PrintOptionsDialog
+        open={!!printTarget && !!printForm}
+        initial={printForm}
+        submitting={printSubmitting}
+        onConfirm={confirmPrint}
+        onCancel={() => { setPrintTarget(null); setPrintForm(null); }}
       />
     </div>
   );

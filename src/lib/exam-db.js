@@ -518,6 +518,16 @@ export async function listMonitorableRounds(supabase) {
 }
 
 /**
+ * Channel name a locked attempt's own unlock broadcast travels on — shared
+ * between proctorUnlockAttempt (sender) and StudentExamTool.jsx's listener
+ * (receiver), so both sides agree on the topic without either importing
+ * the other.
+ */
+export function attemptUnlockChannelName(attemptId) {
+  return `attempt-unlock-${attemptId}`;
+}
+
+/**
  * Unlock a locked attempt from the live monitor, using the caller's own
  * identity (owner teacher / admin / assigned proctor) instead of the
  * round's unlock_pin.
@@ -527,6 +537,40 @@ export async function listMonitorableRounds(supabase) {
 export async function proctorUnlockAttempt(supabase, attemptId) {
   const { error } = await supabase.rpc('proctor_unlock_exam_attempt', { p_attempt_id: attemptId });
   if (error) throw error;
+  // Nudge the student's own already-open "หน้าจอถูกล็อก" prompt closed
+  // immediately, instead of leaving them stuck until they think to
+  // refresh — the DB write above is what actually matters and already
+  // succeeded, so a failure here (e.g. the student's tab isn't connected
+  // right now) is harmless: they still unlock correctly on their next
+  // resume/refresh, this broadcast just saves the manual step in the
+  // common case where they're sitting right there. A plain (non-private)
+  // broadcast channel, not a postgres_changes subscription on the table
+  // itself — the anon key students use has no RLS SELECT grant on
+  // online_exam_attempts (deliberately: that table carries scores, which
+  // must stay hidden from students until the teacher reveals them), and
+  // a plain broadcast never touches that table or its RLS at all.
+  try {
+    await new Promise((resolve) => {
+      const channel = supabase.channel(attemptUnlockChannelName(attemptId));
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        supabase.removeChannel(channel);
+        resolve();
+      };
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          channel.send({ type: 'broadcast', event: 'unlocked', payload: {} }).finally(finish);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          finish();
+        }
+      });
+      setTimeout(finish, 3000);
+    });
+  } catch {
+    // best-effort — see comment above
+  }
 }
 
 // ---------------------------------------------------------------------

@@ -117,6 +117,8 @@ function ScanPhotosPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedGroups, toggleGroup] = useExpandedGroups();
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null); // { id, photoPath, label } | null
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -141,9 +143,18 @@ function ScanPhotosPanel() {
     }
   }
 
-  async function handleDelete(id, photoPath) {
-    await deleteScanPhoto(supabase, id, photoPath);
-    refresh();
+  async function handleDelete() {
+    if (!confirmTarget) return;
+    setDeletingId(confirmTarget.id);
+    try {
+      await deleteScanPhoto(supabase, confirmTarget.id, confirmTarget.photoPath);
+      setConfirmTarget(null);
+      refresh();
+    } catch (err) {
+      setError(err.message || 'ลบรูปไม่สำเร็จ');
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -182,8 +193,16 @@ function ScanPhotosPanel() {
                       <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleView(p.photo_path)}>
                         <EyeIcon className="h-3.5 w-3.5" /> ดูรูป
                       </button>
-                      <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => handleDelete(p.id, p.photo_path)}>
-                        <TrashIcon className="h-3.5 w-3.5" /> ลบรูป
+                      <button
+                        className={btnTiny + ' inline-flex items-center gap-1'}
+                        onClick={() => setConfirmTarget({
+                          id: p.id,
+                          photoPath: p.photo_path,
+                          label: `${p.students?.student_code || ''} ${p.students?.prefix || ''}${p.students?.student_name || ''}`.trim(),
+                        })}
+                        disabled={deletingId === p.id}
+                      >
+                        {deletingId === p.id ? 'กำลังลบ...' : (<><TrashIcon className="h-3.5 w-3.5" /> ลบรูป</>)}
                       </button>
                     </div>
                   </div>
@@ -193,6 +212,17 @@ function ScanPhotosPanel() {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="ยืนยันลบรูปกระดาษคำตอบ"
+        message={confirmTarget ? `ลบรูปกระดาษคำตอบของ "${confirmTarget.label}"?\n\nลบแล้วกู้คืนไม่ได้ (ข้อมูลคะแนน/เฉลยไม่หาย ลบแค่รูป)` : ''}
+        confirmLabel="ลบรูป"
+        danger
+        loading={!!deletingId}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

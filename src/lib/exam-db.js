@@ -60,6 +60,7 @@
 import { createQuiz, deleteQuiz } from './omr-db';
 import { analyzeItems } from './item-analysis';
 import { formatStudentName } from './student-name';
+import { saveBankQuestions } from './bank-db';
 
 /**
  * List this teacher's ชุดข้อสอบ, each with its subject and question count.
@@ -157,6 +158,59 @@ export async function saveExamSet(supabase, { id, subjectId, title, questionIds 
 export async function deleteExamSet(supabase, id) {
   const { error } = await supabase.from('online_exam_sets').delete().eq('id', id);
   if (error) throw error;
+}
+
+/**
+ * Copies a ชุดข้อสอบ into a different subject — typically the same course
+ * taught in another ห้อง, since a รอบสอบ can only admit students from the
+ * one ห้อง its ชุดข้อสอบ's subject belongs to (see start_exam_attempt: it
+ * matches the entering student's grade_level/room against the subject's),
+ * so reusing the same set across rooms isn't otherwise possible. Both
+ * bank_questions and online_exam_sets are subject-scoped with no
+ * cross-subject sharing, so this copies each question into the target
+ * subject's own bank first (via saveBankQuestions — the same insert path
+ * as writing a question by hand or from AI, so the teacher never retypes
+ * anything) and then a new ชุดข้อสอบ pointing at those copies, in the same
+ * order. RLS requires the target subject to belong to the caller, same as
+ * creating either from scratch; the source ชุดข้อสอบ is left untouched.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ examSetId: string, targetSubjectId: string, title: string }} args
+ * @returns {Promise<string>} the new ชุดข้อสอบ's id
+ */
+export async function copyExamSetToSubject(supabase, { examSetId, targetSubjectId, title }) {
+  const { data: setRow, error: setError } = await supabase
+    .from('online_exam_sets')
+    .select(`
+      online_exam_set_questions ( seq, bank_questions (
+        question_text, difficulty, choices, correct_choice, explanation, source, image_path, indicator_id
+      ) )
+    `)
+    .eq('id', examSetId)
+    .single();
+  if (setError) throw setError;
+
+  const questions = (setRow.online_exam_set_questions || [])
+    .sort((a, b) => a.seq - b.seq)
+    .map(x => x.bank_questions)
+    .filter(Boolean);
+  if (questions.length === 0) throw new Error('ชุดข้อสอบนี้ยังไม่มีข้อสอบ');
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const inserted = await saveBankQuestions(supabase, questions.map(q => ({ ...q, subject_id: targetSubjectId })));
+
+  const { data: newSet, error: newSetError } = await supabase
+    .from('online_exam_sets')
+    .insert({ subject_id: targetSubjectId, title, created_by: user.id })
+    .select('id')
+    .single();
+  if (newSetError) throw newSetError;
+
+  const linkRows = inserted.map((q, i) => ({ exam_set_id: newSet.id, bank_question_id: q.id, seq: i + 1 }));
+  const { error: linkError } = await supabase.from('online_exam_set_questions').insert(linkRows);
+  if (linkError) throw linkError;
+
+  return newSet.id;
 }
 
 /**

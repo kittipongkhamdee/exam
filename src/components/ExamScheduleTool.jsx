@@ -64,6 +64,58 @@ function RefreshIcon(props) {
   );
 }
 
+function PrinterIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 9V3h12v6" />
+      <rect x="4" y="9" width="16" height="8" rx="1.5" />
+      <path d="M6 14h12v7H6z" />
+    </svg>
+  );
+}
+
+// Print-only sheet ("พิมพ์รายละเอียดรอบสอบ") so a proctoring teacher can
+// carry PIN + รหัสปลดล็อก + the exam window on paper instead of having to
+// log into the system during the exam — especially useful for an
+// admin-assigned proctor covering a room's exams who isn't the owning
+// teacher. Rendered hidden on screen (Tailwind's print: variants) and
+// shown only inside window.print()'s output; the rest of the page is
+// hidden the same way so only this sheet ends up on paper.
+function PrintableRoundSheet({ rounds }) {
+  return (
+    <div className="hidden print:block p-6">
+      <h1 className="text-lg font-bold mb-4">รายละเอียดรอบสอบสำหรับครูคุมสอบ</h1>
+      <div className="space-y-5">
+        {groupBySubject(rounds).map(group => (
+          <div key={group.name} className="break-inside-avoid">
+            <div className="font-bold text-sm mb-1">{group.name}</div>
+            <table className="w-full text-sm border border-gray-400 border-collapse mb-2">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-400 px-2 py-1 text-left">ช่วงเวลาสอบ</th>
+                  <th className="border border-gray-400 px-2 py-1 text-left">เวลาทำ/คน</th>
+                  <th className="border border-gray-400 px-2 py-1 text-left">PIN เข้าสอบ</th>
+                  <th className="border border-gray-400 px-2 py-1 text-left">รหัสปลดล็อก</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.rows.map(r => (
+                  <tr key={r.id}>
+                    <td className="border border-gray-400 px-2 py-1">{formatThai(r.opens_at)} – {formatThai(r.closes_at)}</td>
+                    <td className="border border-gray-400 px-2 py-1">{r.duration_minutes} นาที</td>
+                    <td className="border border-gray-400 px-2 py-1 font-mono font-bold">{r.pin}</td>
+                    <td className="border border-gray-400 px-2 py-1 font-mono font-bold">{r.unlock_pin}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function pad(n) { return String(n).padStart(2, '0'); }
 
 function toLocalInputValue(isoString) {
@@ -219,7 +271,8 @@ export default function ExamScheduleTool() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <>
+    <div className="max-w-5xl print:hidden">
       <div className="flex items-center gap-3 mb-1">
         <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-600 to-purple-500 text-white flex items-center justify-center shrink-0">
           <ClipboardIcon className="h-5 w-5" />
@@ -349,7 +402,14 @@ export default function ExamScheduleTool() {
       </div>
 
       <div className={card}>
-        <div className="font-semibold text-gray-900 mb-3">รอบสอบที่ตั้งไว้</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-semibold text-gray-900">รอบสอบที่ตั้งไว้</div>
+          {rounds.length > 0 && (
+            <button type="button" className={btnTiny} onClick={() => window.print()}>
+              <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์รายละเอียดรอบสอบ
+            </button>
+          )}
+        </div>
         {roundsLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!roundsLoading && rounds.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีรอบสอบ</div>}
         {rounds.length > 0 && (
@@ -407,5 +467,7 @@ export default function ExamScheduleTool() {
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
+    <PrintableRoundSheet rounds={rounds} />
+    </>
   );
 }

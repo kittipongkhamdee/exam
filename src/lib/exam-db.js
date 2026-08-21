@@ -477,9 +477,13 @@ export async function proctorUnlockAttempt(supabase, attemptId) {
  * @param {string} date 'YYYY-MM-DD'
  */
 export async function listProctorAssignmentsForDate(supabase, date) {
+  // teacher_id and created_by both FK to profiles(id), so the embed below
+  // must name the constraint explicitly (profiles!<fk name>) — otherwise
+  // PostgREST can't tell which relationship "profiles ( full_name )"
+  // should follow and rejects the query as ambiguous.
   const { data, error } = await supabase
     .from('online_exam_proctor_assignments')
-    .select('id, assign_date, grade_level, room, teacher_id, profiles ( full_name )')
+    .select('id, assign_date, grade_level, room, teacher_id, profiles!online_exam_proctor_assignments_teacher_id_fkey ( full_name )')
     .eq('assign_date', date)
     .order('grade_level', { ascending: true })
     .order('room', { ascending: true });

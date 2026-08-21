@@ -182,6 +182,7 @@ export async function listMyBankQuestions(supabase, opts = {}) {
  *   question_text: string, choices: string[], correct_choice: number,
  *   explanation?: string, source?: 'ai'|'manual', image_path?: string|null,
  * }>} questions
+ * @returns {Promise<Array<{id: string}>>} the newly inserted rows' ids, in the same order as `questions`
  */
 export async function saveBankQuestions(supabase, questions) {
   const { data: { user } } = await supabase.auth.getUser();
@@ -198,8 +199,9 @@ export async function saveBankQuestions(supabase, questions) {
     image_path: q.source === 'manual' ? (q.image_path || null) : null,
     created_by: user.id,
   }));
-  const { error } = await supabase.from('bank_questions').insert(rows);
+  const { data, error } = await supabase.from('bank_questions').insert(rows).select('id');
   if (error) throw error;
+  return data;
 }
 
 /**

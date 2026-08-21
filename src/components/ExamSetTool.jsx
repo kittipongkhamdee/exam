@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
-import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz } from '../lib/exam-db';
+import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject } from '../lib/exam-db';
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
 import { getConfigValue } from '../lib/config-db';
 import ConfirmDialog from './ConfirmDialog';
@@ -106,6 +106,69 @@ function PrintOptionsDialog({ open, initial, onCancel, onConfirm, submitting }) 
   );
 }
 
+// "คัดลอกไปอีกห้อง" — a ชุดข้อสอบ (and the bank questions it's built from)
+// belongs to one subject, which is itself scoped to one ห้อง, and a รอบสอบ
+// only admits students from that same ห้อง — so the same PIN/ชุดข้อสอบ
+// can't directly serve two rooms. This picks a different subject (another
+// ห้อง teaching the same course) to copy the whole set into, with no
+// retyping — see copyExamSetToSubject.
+function CopyExamSetDialog({ open, initial, subjectOptions, onCancel, onConfirm, submitting }) {
+  const [form, setForm] = useState(initial);
+  useEffect(() => { if (open) setForm(initial); }, [open, initial]);
+
+  if (!open) return null;
+
+  const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+  const labelCls = 'text-xs font-semibold text-gray-500';
+  const fieldCls = 'flex flex-col gap-1';
+
+  function update(key, value) {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+        <div className="font-semibold text-gray-900 mb-1">คัดลอกชุดข้อสอบไปอีกห้อง</div>
+        <p className="text-xs text-gray-500 mb-4">
+          คัดลอกข้อสอบทุกข้อในชุดนี้ไปที่วิชา/ห้องที่เลือก โดยไม่ต้องพิมพ์ใหม่ — ชุดต้นทางไม่มีการเปลี่ยนแปลง
+        </p>
+
+        <div className="space-y-3">
+          <div className={fieldCls}>
+            <label className={labelCls}>วิชา/ห้องปลายทาง</label>
+            <select className={inputCls} value={form.targetSubjectId} onChange={e => update('targetSubjectId', e.target.value)}>
+              <option value="">— เลือกวิชา/ห้อง —</option>
+              {subjectOptions.map(s => (
+                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
+              ))}
+            </select>
+            {subjectOptions.length === 0 && (
+              <div className="text-xs text-amber-600 mt-0.5">ยังไม่มีวิชาอื่นให้เลือกคัดลอกไป</div>
+            )}
+          </div>
+          <div className={fieldCls}>
+            <label className={labelCls}>ชื่อชุดข้อสอบใหม่</label>
+            <input type="text" className={inputCls} value={form.title} onChange={e => update('title', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="bg-gray-100 text-gray-900 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200 disabled:opacity-50" onClick={onCancel} disabled={submitting}>ยกเลิก</button>
+          <button
+            type="button"
+            className="bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50"
+            onClick={() => onConfirm(form)}
+            disabled={submitting || !form.targetSubjectId || !form.title.trim()}
+          >
+            {submitting ? 'กำลังคัดลอก...' : 'คัดลอกชุดข้อสอบ'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
 const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
 
@@ -179,6 +242,15 @@ function PrinterIcon(props) {
   );
 }
 
+function CopyIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+    </svg>
+  );
+}
+
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
@@ -224,6 +296,10 @@ export default function ExamSetTool() {
   const [printTarget, setPrintTarget] = useState(null); // full exam set (with questions) being printed, or null
   const [printForm, setPrintForm] = useState(null);
   const [printSubmitting, setPrintSubmitting] = useState(false);
+
+  const [copyTarget, setCopyTarget] = useState(null); // the exam set (list row) being copied, or null
+  const [copyForm, setCopyForm] = useState(null);
+  const [copySubmitting, setCopySubmitting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -415,6 +491,38 @@ export default function ExamSetTool() {
     }
   }
 
+  // "คัดลอกไปอีกห้อง": prefills the target-subject picker (every other
+  // subject, so the teacher can't accidentally "copy" a set onto itself)
+  // and the new set's title, defaulting to the same title as the source.
+  function openCopyDialog(set) {
+    setCopyTarget(set);
+    setCopyForm({ targetSubjectId: '', title: set.title });
+  }
+
+  async function confirmCopy(form) {
+    if (!copyTarget) return;
+    setCopySubmitting(true);
+    try {
+      await copyExamSetToSubject(supabase, {
+        examSetId: copyTarget.id,
+        targetSubjectId: form.targetSubjectId,
+        title: form.title.trim(),
+      });
+      setCopyTarget(null);
+      setCopyForm(null);
+      refreshSets();
+      const target = subjects.find(s => s.id === form.targetSubjectId);
+      Swal.fire({
+        icon: 'success', title: 'คัดลอกชุดข้อสอบแล้ว',
+        text: target ? `คัดลอกไปที่ ${target.subject_name} (ชั้น ${target.grade_level}/${target.room}) แล้ว — ไปตั้งรอบสอบ/PIN ของห้องนั้นต่อได้ที่ "จัดสอบ"` : undefined,
+      });
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'คัดลอกชุดข้อสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+      setCopySubmitting(false);
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -558,6 +666,9 @@ export default function ExamSetTool() {
                         <button className={btnTiny} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
                           <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังโหลด...' : 'พิมพ์ข้อสอบ (A4)'}
                         </button>
+                        <button className={btnTiny} onClick={() => openCopyDialog(s)}>
+                          <CopyIcon className="h-3.5 w-3.5" /> คัดลอกไปอีกห้อง
+                        </button>
                         <button className={btnTiny} onClick={() => startEdit(s)}>
                           <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
                         </button>
@@ -591,6 +702,15 @@ export default function ExamSetTool() {
         submitting={printSubmitting}
         onConfirm={confirmPrint}
         onCancel={() => { setPrintTarget(null); setPrintForm(null); }}
+      />
+
+      <CopyExamSetDialog
+        open={!!copyTarget && !!copyForm}
+        initial={copyForm}
+        subjectOptions={subjects.filter(s => s.id !== copyTarget?.subject_id)}
+        submitting={copySubmitting}
+        onConfirm={confirmCopy}
+        onCancel={() => { setCopyTarget(null); setCopyForm(null); }}
       />
     </div>
   );

@@ -95,7 +95,7 @@ export async function getExamSetWithQuestions(supabase, id) {
     .from('online_exam_sets')
     .select(`
       id, subject_id, title, printed_quiz_id,
-      subjects ( subject_name, grade_level, room ),
+      subjects ( subject_name, subject_code, grade_level, room ),
       online_exam_set_questions ( seq, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path ) )
     `)
     .eq('id', id)
@@ -111,6 +111,7 @@ export async function getExamSetWithQuestions(supabase, id) {
     title: data.title,
     printed_quiz_id: data.printed_quiz_id,
     subject_name: data.subjects?.subject_name,
+    subject_code: data.subjects?.subject_code,
     grade_level: data.subjects?.grade_level,
     room: data.subjects?.room,
     questions,

@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
 import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject } from '../lib/exam-db';
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
+import { generateExamQuestionPaperDocx } from '../lib/exam-docx';
 import { getConfigValue } from '../lib/config-db';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -54,6 +55,19 @@ function PrintOptionsDialog({ open, initial, onCancel, onConfirm, submitting }) 
         <p className="text-xs text-gray-500 mb-4">ปรับข้อมูลหัวกระดาษของข้อสอบชุดนี้ได้ตามต้องการ — ใช้ครั้งนี้ครั้งเดียว ไม่กระทบชุดข้อสอบอื่น</p>
 
         <div className="space-y-3">
+          <div className={fieldCls}>
+            <label className={labelCls}>รูปแบบไฟล์</label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input type="radio" name="printFormat" checked={form.format !== 'docx'} onChange={() => update('format', 'pdf')} />
+                PDF (พิมพ์ได้ทันที)
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input type="radio" name="printFormat" checked={form.format === 'docx'} onChange={() => update('format', 'docx')} />
+                Word (.docx — แก้ไขต่อได้)
+              </label>
+            </div>
+          </div>
           <div className={fieldCls}>
             <label className={labelCls}>ชื่อโรงเรียน/หน่วยงาน</label>
             <input type="text" className={inputCls} value={form.schoolName} onChange={e => update('schoolName', e.target.value)} placeholder="เช่น โรงเรียนตาเบาวิทยา อำเภอปราสาท จังหวัดสุรินทร์" />
@@ -104,7 +118,9 @@ function PrintOptionsDialog({ open, initial, onCancel, onConfirm, submitting }) 
             onClick={() => onConfirm(form)}
             disabled={submitting}
           >
-            {submitting ? 'กำลังสร้าง PDF...' : 'พิมพ์ข้อสอบ (A4)'}
+            {submitting
+              ? (form.format === 'docx' ? 'กำลังสร้างไฟล์ Word...' : 'กำลังสร้าง PDF...')
+              : (form.format === 'docx' ? 'ดาวน์โหลด Word (.docx)' : 'พิมพ์ข้อสอบ (A4)')}
           </button>
         </div>
       </div>
@@ -471,6 +487,7 @@ export default function ExamSetTool() {
       const totalScore = full.questions.reduce((sum, q) => sum + (q.points ?? 1), 0);
       setPrintTarget(full);
       setPrintForm({
+        format: 'pdf',
         schoolName: brandDefaults.name,
         examTitle: full.title,
         subjectCode: full.subject_code || '',
@@ -500,7 +517,7 @@ export default function ExamSetTool() {
         questions: full.questions,
         existingQuizId: full.printed_quiz_id,
       });
-      await generateExamQuestionPaperPdf(supabase, {
+      const genArgs = {
         title: full.title,
         subjectName: full.subject_name,
         subjectCode: form.subjectCode,
@@ -514,16 +531,28 @@ export default function ExamSetTool() {
         instructions: form.instructionsText.split('\n').map(s => s.trim()).filter(Boolean),
         columns: form.columns,
         logoDataUrl: form.includeLogo ? brandDefaults.logo : null,
-      });
+      };
+      if (form.format === 'docx') {
+        await generateExamQuestionPaperDocx(supabase, genArgs);
+      } else {
+        await generateExamQuestionPaperPdf(supabase, genArgs);
+      }
       setPrintTarget(null);
       setPrintForm(null);
       refreshSets();
       Swal.fire({
-        icon: 'success', title: 'พิมพ์ข้อสอบแล้ว',
-        text: 'ดาวน์โหลด PDF ข้อสอบแล้ว และตั้งเฉลยให้ในระบบตรวจข้อสอบ (OMR) ให้แล้ว — ไปที่ "กระดาษคำตอบ" เพื่อพิมพ์กระดาษคำตอบต่อได้เลย',
+        icon: 'success',
+        title: form.format === 'docx' ? 'ดาวน์โหลดไฟล์ Word แล้ว' : 'พิมพ์ข้อสอบแล้ว',
+        text: form.format === 'docx'
+          ? 'ดาวน์โหลดไฟล์ .docx แล้ว และตั้งเฉลยให้ในระบบตรวจข้อสอบ (OMR) ให้แล้ว — ไปที่ "กระดาษคำตอบ" เพื่อพิมพ์กระดาษคำตอบต่อได้เลย'
+          : 'ดาวน์โหลด PDF ข้อสอบแล้ว และตั้งเฉลยให้ในระบบตรวจข้อสอบ (OMR) ให้แล้ว — ไปที่ "กระดาษคำตอบ" เพื่อพิมพ์กระดาษคำตอบต่อได้เลย',
       });
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'พิมพ์ข้อสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+      Swal.fire({
+        icon: 'error',
+        title: form.format === 'docx' ? 'สร้างไฟล์ Word ไม่สำเร็จ' : 'พิมพ์ข้อสอบไม่สำเร็จ',
+        text: err.message || 'กรุณาลองใหม่อีกครั้ง',
+      });
     } finally {
       setPrintSubmitting(false);
     }

@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound } from '../lib/exam-db';
 import ItemAnalysisTable from './ItemAnalysisTable';
+import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
 
 function ReportIcon(props) {
   return (
@@ -51,6 +52,15 @@ function TargetIcon(props) {
   );
 }
 
+function DownloadIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 3v12m0 0-4-4m4 4 4-4" />
+      <path d="M4 19h16" />
+    </svg>
+  );
+}
+
 function formatThai(isoString) {
   if (!isoString) return '';
   return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
@@ -68,6 +78,7 @@ export default function ExamReportTool() {
   const label = 'text-xs font-semibold text-gray-500';
   const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
+  const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1.5';
   const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
 
   const { isAdmin } = useAuth();
@@ -137,6 +148,24 @@ export default function ExamReportTool() {
     } finally {
       setTogglingVisible(false);
     }
+  }
+
+  function analysisExportArgs() {
+    return {
+      fileTitle: `วิเคราะห์คุณภาพข้อสอบ-${report.exam_set_title}`,
+      title: report.exam_set_title,
+      subjectLine: `${report.subject_name} (ชั้น ${report.grade_level}/${report.room})`,
+      analysis: itemAnalysis,
+      rowLabels: (itemAnalysis?.questionTexts || []).map((text, i) => `ข้อ ${i + 1}${text ? ' — ' + text : ''}`),
+    };
+  }
+
+  function handleExportAnalysisExcel() {
+    exportItemAnalysisExcel(analysisExportArgs());
+  }
+
+  function handleExportAnalysisPdf() {
+    exportItemAnalysisPdf(analysisExportArgs());
   }
 
   const submittedRows = report ? report.rows.filter(r => r.status === 'submitted') : [];
@@ -251,8 +280,20 @@ export default function ExamReportTool() {
           </div>
 
           <div className={card}>
-            <div className="text-sm font-bold mb-3 flex items-center gap-1.5">
-              <TargetIcon className="h-4 w-4 text-gray-400" /> ผลการวิเคราะห์คุณภาพข้อสอบ
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div className="text-sm font-bold flex items-center gap-1.5">
+                <TargetIcon className="h-4 w-4 text-gray-400" /> ผลการวิเคราะห์คุณภาพข้อสอบ
+              </div>
+              {!loadingAnalysis && itemAnalysis && itemAnalysis.n >= 2 && (
+                <div className="flex items-center gap-2">
+                  <button type="button" className={btnTiny} onClick={handleExportAnalysisExcel}>
+                    <DownloadIcon className="h-3.5 w-3.5" /> Excel
+                  </button>
+                  <button type="button" className={btnTiny} onClick={handleExportAnalysisPdf}>
+                    <DownloadIcon className="h-3.5 w-3.5" /> PDF
+                  </button>
+                </div>
+              )}
             </div>
             {loadingAnalysis && <div className="text-sm text-gray-500">กำลังวิเคราะห์...</div>}
             {!loadingAnalysis && (

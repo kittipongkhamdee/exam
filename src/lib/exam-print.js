@@ -8,7 +8,7 @@
 //
 // Reuses the same canvas-then-rasterize approach as the OMR answer sheet:
 // jsPDF's own text() has no Thai font, so it would render Thai as garbage.
-// A <canvas> lets the browser's own font rendering (the "Prompt" family,
+// A <canvas> lets the browser's own font rendering (the "Sarabun" family,
 // loaded app-wide — see layout.js) draw Thai correctly; each page's canvas
 // then becomes one JPEG image embedded in the PDF, exactly like
 // OMRPrepareTool's downloadSheetHalfA4/handleGenerateClassPDF.
@@ -26,7 +26,7 @@ import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
-const FONT = '"Prompt", sans-serif';
+const FONT = '"Sarabun", sans-serif';
 const SCHOOL_FONT = `bold 15px ${FONT}`;
 const EXAM_TITLE_FONT = `bold 14px ${FONT}`;
 const SUBTITLE_FONT = `11px ${FONT}`;

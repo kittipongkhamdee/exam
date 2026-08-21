@@ -240,18 +240,18 @@ export default function OMRPrepareTool() {
   }
 
   // Canvas text does not automatically wait for a webfont to finish
-  // downloading — if we draw before Prompt is loaded, the canvas silently
+  // downloading — if we draw before Sarabun is loaded, the canvas silently
   // falls back to the browser default and never re-renders with the right
   // font even after it arrives. Explicitly load the specific weights used
   // (regular + bold) via the Font Loading API and only mark ready once both
-  // resolve, so the sheet always redraws with Prompt actually applied.
+  // resolve, so the sheet always redraws with Sarabun actually applied.
   useEffect(() => {
     (async () => {
       if (!document.fonts) { setFontReady(true); return; }
       try {
         await Promise.all([
-          document.fonts.load('10px "Prompt"'),
-          document.fonts.load('bold 10px "Prompt"'),
+          document.fonts.load('10px "Sarabun"'),
+          document.fonts.load('bold 10px "Sarabun"'),
         ]);
       } finally {
         setFontReady(true);

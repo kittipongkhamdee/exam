@@ -402,7 +402,7 @@ function drawSheet(canvas, opts, answers) {
     drawFiducials(ctx, pageW, pageH);
     ctx.fillStyle = '#000';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 16px "Prompt", sans-serif';
+    ctx.font = 'bold 16px "Sarabun", sans-serif';
     ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 8, MARGIN + 16);
 
     // Left box: name + class/room/no, two rows separated by a line.
@@ -414,17 +414,17 @@ function drawSheet(canvas, opts, answers) {
     ctx.moveTo(nameBoxX, nameBoxY + nameBoxH / 2);
     ctx.lineTo(nameBoxX + nameBoxW, nameBoxY + nameBoxH / 2);
     ctx.stroke();
-    ctx.font = '11px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+    ctx.font = '11px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
     ctx.fillText('ชื่อ-สกุล: ________________________________', nameBoxX + 8, nameBoxY + nameBoxH * 0.32 + 4);
     ctx.fillText('ชั้น/ห้อง: _______  เลขที่: _______', nameBoxX + 8, nameBoxY + nameBoxH * 0.82 + 4);
 
     // Right box: student ID grid, right-aligned to the page edge.
     ctx.strokeRect(layout.idBoxX, layout.headerBoxY, layout.idBoxW, layout.idBoxH);
-    ctx.font = 'bold 11px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+    ctx.font = 'bold 11px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
     ctx.fillText('เลขประจำตัวนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 10, layout.headerBoxY + 14);
 
     // Column headers 0-9 above the ID rows
-    ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#666';
+    ctx.font = 'bold 10px "Sarabun", sans-serif'; ctx.fillStyle = '#666';
     for (let v = 0; v <= 9; v++) {
       ctx.fillText(String(v), layout.idStartX + v * layout.idColGap - 3, layout.idStartY - 10);
     }
@@ -442,11 +442,11 @@ function drawSheet(canvas, opts, answers) {
       });
     });
 
-    ctx.font = '9px "Prompt", sans-serif'; ctx.fillStyle = '#555';
+    ctx.font = '9px "Sarabun", sans-serif'; ctx.fillStyle = '#555';
     ctx.fillText('คำชี้แจง: ใช้ดินสอ 2B ระบายวงกลมคำตอบให้เต็มวง ข้อละ 1 ตัวเลือก', MARGIN, layout.instructionY);
 
     // Column choice-letter headers, once per question column
-    ctx.font = 'bold 9px "Prompt", sans-serif';
+    ctx.font = 'bold 9px "Sarabun", sans-serif';
     for (let col = 0; col < layout.cols; col++) {
       const q0 = layout.questions.find(q => q.col === col);
       if (!q0) continue;
@@ -456,7 +456,7 @@ function drawSheet(canvas, opts, answers) {
       });
     }
 
-    ctx.font = '10px "Prompt", sans-serif';
+    ctx.font = '10px "Sarabun", sans-serif';
     layout.questions.forEach((q) => {
       ctx.fillStyle = '#000';
       ctx.fillText(String(q.index + 1) + '.', q.labelX, q.labelY + 3);
@@ -482,9 +482,9 @@ function drawSheet(canvas, opts, answers) {
     // ---------- ZipGrade-style full-page layout ----------
     ctx.fillStyle = '#000';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 18px "Prompt", sans-serif';
+    ctx.font = 'bold 18px "Sarabun", sans-serif';
     ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 18);
-    ctx.font = '11px "Prompt", sans-serif';
+    ctx.font = '11px "Sarabun", sans-serif';
     ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 36);
 
     // Name / Class / Date / Quiz header box, roughly matching the reference:
@@ -500,7 +500,7 @@ function drawSheet(canvas, opts, answers) {
     ctx.beginPath(); ctx.moveTo(boxX + labelW, boxY); ctx.lineTo(boxX + labelW, boxY + boxH); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(dateLabelX, boxY); ctx.lineTo(dateLabelX, boxY + boxH); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(dateLabelX - labelW, boxY); ctx.lineTo(dateLabelX - labelW, boxY + boxH); ctx.stroke();
-    ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#333';
+    ctx.font = 'bold 10px "Sarabun", sans-serif'; ctx.fillStyle = '#333';
     ctx.fillText('ชื่อ', boxX + 6, boxY + 15);
     ctx.fillText('ชั้น', boxX + 6, boxY + rowH2 + 15);
     ctx.fillText('วันที่', dateLabelX - labelW + 6, boxY + 15);
@@ -509,14 +509,14 @@ function drawSheet(canvas, opts, answers) {
     const headerBottom = layout.headerBottom;
 
     // Student ID grid header + digits
-    ctx.font = '10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+    ctx.font = '10px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
     ctx.fillText('รหัสนักเรียน', layout.idStartX, headerBottom + 16);
     layout.idGrid.forEach((digitCol) => {
       digitCol.forEach((cell) => {
         ctx.beginPath();
         ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
         ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
-        ctx.font = '8px "Prompt", sans-serif'; ctx.fillStyle = '#333';
+        ctx.font = '8px "Sarabun", sans-serif'; ctx.fillStyle = '#333';
         ctx.fillText(String(cell.value), cell.x - 3, cell.y + 3);
         const digitIndex = layout.idGrid.indexOf(digitCol);
         if (answers && answers.studentId && answers.studentId[digitIndex] === String(cell.value)) {
@@ -530,7 +530,7 @@ function drawSheet(canvas, opts, answers) {
     // Column choice-letter headers, once per question column, positioned
     // just above that column's first question row (columns 2 & 3 start
     // higher than column 1, which starts below the ID grid).
-    ctx.font = 'bold 10px "Prompt", sans-serif';
+    ctx.font = 'bold 10px "Sarabun", sans-serif';
     for (let col = 0; col < 3; col++) {
       const q0 = layout.questions.find(q => q.col === col);
       if (!q0) continue;
@@ -540,7 +540,7 @@ function drawSheet(canvas, opts, answers) {
       });
     }
 
-    ctx.font = '11px "Prompt", sans-serif';
+    ctx.font = '11px "Sarabun", sans-serif';
     layout.questions.forEach((q) => {
       ctx.fillStyle = '#000';
       ctx.fillText(String(q.index + 1), q.labelX, q.labelY + 4);
@@ -563,9 +563,9 @@ function drawSheet(canvas, opts, answers) {
   // ---------- Half-page layout (unchanged) ----------
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = 'bold 18px "Prompt", sans-serif';
+  ctx.font = 'bold 18px "Sarabun", sans-serif';
   ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 16);
-  ctx.font = '10px "Prompt", sans-serif';
+  ctx.font = '10px "Sarabun", sans-serif';
   ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 30);
 
   // Half-page header is a vertical stack: title, subject, then the name
@@ -600,21 +600,21 @@ function drawSheet(canvas, opts, answers) {
   const writeBoxesW = numIdDigits * writeBoxSize + (numIdDigits - 1) * writeBoxGap;
   const writeBoxStartX = layout.idBoxX + layout.idBoxW - writeBoxesW;
   const writeBoxY = MARGIN + MARKER + 16;
-  ctx.font = 'bold 10px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.font = 'bold 10px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
   ctx.fillText('เลขประจำตัวนักเรียน', writeBoxStartX, MARGIN + MARKER + 10);
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   for (let i = 0; i < numIdDigits; i++) {
     const bx = writeBoxStartX + i * (writeBoxSize + writeBoxGap);
     ctx.strokeRect(bx, writeBoxY, writeBoxSize, writeBoxSize);
     if (answers && answers.studentId && answers.studentId[i] != null) {
-      ctx.font = 'bold 12px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+      ctx.font = 'bold 12px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
       ctx.textAlign = 'center';
       ctx.fillText(String(answers.studentId[i]), bx + writeBoxSize / 2, writeBoxY + writeBoxSize - 5);
       ctx.textAlign = 'left';
     }
   }
 
-  ctx.font = '14px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.font = '14px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
   const idBoxRightEdge = layout.idBoxX - 10;
   const nameLineY = MARGIN + MARKER + 26;
   const classLineY = nameLineY + 20;
@@ -645,7 +645,7 @@ function drawSheet(canvas, opts, answers) {
   // capped at a fixed number of lines so it can never grow into the ID box
   // or down into the question grid, regardless of how much text is typed.
   if (opts.note) {
-    ctx.font = '12px "Prompt", sans-serif'; ctx.fillStyle = '#333';
+    ctx.font = '12px "Sarabun", sans-serif'; ctx.fillStyle = '#333';
     const noteMaxW = layout.idBoxX - MARGIN - 10;
     const noteLineH = 16;
     wrapText(ctx, opts.note, noteMaxW).slice(0, 8).forEach((ln, i) => {
@@ -659,10 +659,10 @@ function drawSheet(canvas, opts, answers) {
   // column = value), rather than printing the value inside every bubble.
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2;
   ctx.strokeRect(layout.idBoxX, layout.idBoxY, layout.idBoxW, layout.idBoxH);
-  ctx.font = 'bold 9px "Prompt", sans-serif'; ctx.fillStyle = '#000';
+  ctx.font = 'bold 9px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
   ctx.fillText('เลขประจำตัวนักเรียน (ฝนบรรทัดละ 1 ตัว)', layout.idBoxX + 8, layout.idBoxY + 12);
 
-  ctx.font = 'bold 9px "Prompt", sans-serif'; ctx.fillStyle = '#666';
+  ctx.font = 'bold 9px "Sarabun", sans-serif'; ctx.fillStyle = '#666';
   for (let v = 0; v <= 9; v++) {
     ctx.fillText(String(v), layout.idStartX + v * layout.idColGap - 3, layout.idStartY - 9);
   }
@@ -692,7 +692,7 @@ function drawSheet(canvas, opts, answers) {
   ctx.stroke();
 
   // Header row for choice letters (once per column)
-  ctx.font = 'bold 12px "Prompt", sans-serif';
+  ctx.font = 'bold 12px "Sarabun", sans-serif';
   for (let col = 0; col < layout.cols; col++) {
     letters.forEach((L, ci) => {
       const q0 = layout.questions.find(q => q.index === col * layout.perCol);
@@ -703,7 +703,7 @@ function drawSheet(canvas, opts, answers) {
     });
   }
 
-  ctx.font = '12px "Prompt", sans-serif';
+  ctx.font = '12px "Sarabun", sans-serif';
   layout.questions.forEach((q) => {
     ctx.fillStyle = '#000';
     ctx.fillText(String(q.index + 1).padStart(2, '0'), q.labelX, q.labelY + 4);
@@ -1180,7 +1180,7 @@ function drawGradedOverlay(warpedCanvas, { layout, graded }) {
       }
     });
 
-    ctx.font = 'bold 12px "Prompt", sans-serif';
+    ctx.font = 'bold 12px "Sarabun", sans-serif';
     ctx.fillStyle = g.correct ? '#00c853' : '#e53935';
     ctx.fillText(g.correct ? '✓' : '✗', q.labelX - 16, q.labelY + 4);
   });

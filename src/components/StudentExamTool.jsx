@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { getBankQuestionImageUrl } from '../lib/bank-db';
+import { attemptUnlockChannelName } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -437,6 +438,23 @@ export default function StudentExamTool() {
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, attempt?.attempt_id]);
+
+  // Closes the "หน้าจอถูกล็อก" prompt the moment the proctoring teacher
+  // unlocks from the live monitor (a different browser), instead of
+  // leaving the student stuck until they think to refresh — see
+  // proctorUnlockAttempt's broadcast in exam-db.js. Swal.close() resolves
+  // showLockModal's pending await like any other dismissal, so the same
+  // "set locked: false locally" step there runs unchanged; if no lock
+  // modal happens to be open when this fires, Swal.close() is just a
+  // harmless no-op.
+  useEffect(() => {
+    if (phase !== 'exam' || !attempt?.attempt_id) return;
+    const channel = supabase
+      .channel(attemptUnlockChannelName(attempt.attempt_id))
+      .on('broadcast', { event: 'unlocked' }, () => { Swal.close(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [phase, attempt?.attempt_id]);
 
   // Locking survives a refresh (see the migration) — start_exam_attempt

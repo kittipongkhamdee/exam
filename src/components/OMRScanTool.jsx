@@ -21,6 +21,7 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
 import { useAuth } from '../lib/AuthContext';
+import { formatStudentName } from '../lib/student-name';
 
 // Every quiz remembers the paper format it was printed with (omr_quizzes.paper_layout,
 // .cols — see omr-db.js/getQuizWithAnswerKey), so scanning warps/reads against the
@@ -520,7 +521,7 @@ export default function OMRScanTool() {
                     (scanned ? 'border-green-200 bg-green-50/50' : 'border-gray-200 hover:border-indigo-300')
                   }
                 >
-                  <span className="text-sm font-medium text-gray-900">{st.student_code} {st.prefix}{st.student_name}</span>
+                  <span className="text-sm font-medium text-gray-900">{st.student_code} {formatStudentName(st)}</span>
                   {scanned && <span className={pillOk}>สแกนแล้ว</span>}
                 </button>
               );
@@ -548,7 +549,7 @@ export default function OMRScanTool() {
         </div>
         {rapidMode && !studentId ? (
           matchedStudent ? (
-            <div className="font-semibold text-gray-900 mb-4">{matchedStudent.student_code} {matchedStudent.prefix}{matchedStudent.student_name}</div>
+            <div className="font-semibold text-gray-900 mb-4">{matchedStudent.student_code} {formatStudentName(matchedStudent)}</div>
           ) : scanResult && !scanResult.error ? (
             <div className={pillBad + ' px-3 py-2 text-sm block mb-4'}>
               ไม่พบนักเรียนที่มีรหัสตรงกับ &ldquo;{scanResult.decodedId}&rdquo; ในห้องนี้ — เลือกนักเรียนเอง
@@ -559,7 +560,7 @@ export default function OMRScanTool() {
             </div>
           )
         ) : (
-          <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {selectedStudent?.prefix}{selectedStudent?.student_name}</div>
+          <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {formatStudentName(selectedStudent)}</div>
         )}
 
         {!scanImage && (
@@ -621,7 +622,7 @@ export default function OMRScanTool() {
                 </div>
                 {effectiveStudent && scannedStudentIds.has(effectiveStudent.id) && !savedResultId && (
                   <div className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
-                    ⚠ {effectiveStudent.prefix}{effectiveStudent.student_name} เคยถูกสแกนแล้ว — บันทึกซ้ำจะเพิ่มผลใหม่อีกรายการ
+                    ⚠ {formatStudentName(effectiveStudent)} เคยถูกสแกนแล้ว — บันทึกซ้ำจะเพิ่มผลใหม่อีกรายการ
                   </div>
                 )}
 
@@ -658,7 +659,7 @@ export default function OMRScanTool() {
           <div className="max-h-52 overflow-y-auto">
             {roster.map(r => (
               <div key={r.id} className="flex justify-between items-center text-xs py-1.5 border-b border-gray-100 last:border-b-0">
-                <span>{r.students?.student_code} {r.students?.prefix}{r.students?.student_name}</span>
+                <span>{r.students?.student_code} {formatStudentName(r.students)}</span>
                 <span className="flex items-center gap-2">
                   <span>{r.total_correct}/{selectedQuiz.numQuestions} ({r.score}%)</span>
                   {r.photo_path && <button className={btnTiny} onClick={() => handleViewPhoto(r.photo_path)}>ดูรูป</button>}

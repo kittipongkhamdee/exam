@@ -15,6 +15,7 @@ import { choiceLetters } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz, getItemAnalysisForQuiz } from '../lib/omr-db';
 import ItemAnalysisTable from './ItemAnalysisTable';
+import { formatStudentName } from '../lib/student-name';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -214,7 +215,7 @@ export default function OMRReportTool() {
       ['รหัส', 'ชื่อ-สกุล', 'ถูก', `จาก ${selectedQuiz.numQuestions} ข้อ`, 'คะแนน (%)', 'วันที่สแกน'],
       ...sortedResults.map(r => [
         r.students?.student_code || '',
-        `${r.students?.prefix || ''}${r.students?.student_name || ''}`,
+        formatStudentName(r.students),
         r.total_correct,
         selectedQuiz.numQuestions,
         r.score,
@@ -318,7 +319,7 @@ export default function OMRReportTool() {
                   {sortedResults.map(r => (
                     <tr key={r.id} className="border-b border-gray-100 last:border-b-0">
                       <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{r.students?.student_code}</td>
-                      <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{r.students?.prefix}{r.students?.student_name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{formatStudentName(r.students)}</td>
                       <td className="px-4 py-2.5 text-right text-gray-500">{r.total_correct}/{selectedQuiz.numQuestions}</td>
                       <td className={"px-4 py-2.5 text-right font-bold " + scoreColor(r.score)}>{r.score}%</td>
                       <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{new Date(r.scanned_at).toLocaleString('th-TH')}</td>

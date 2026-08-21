@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, deleteQuiz } from '@/lib/omr-db';
 import { getConfigValue, setConfigValue } from '@/lib/config-db';
+import { formatStudentName } from '@/lib/student-name';
 import {
   listProctorAssignmentsForDate, saveProctorAssignment, deleteProctorAssignment,
   listGradeRoomOptions, listAllTeachers, listExamAuditLog, EXAM_AUDIT_ACTION_LABEL,
@@ -182,7 +183,7 @@ function ScanPhotosPanel() {
                   <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-b-0">
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 truncate">
-                        {p.students?.student_code} {p.students?.prefix}{p.students?.student_name}
+                        {p.students?.student_code} {formatStudentName(p.students)}
                       </div>
                       <div className="text-xs text-gray-500 truncate">
                         {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} (ชั้น {p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
@@ -198,7 +199,7 @@ function ScanPhotosPanel() {
                         onClick={() => setConfirmTarget({
                           id: p.id,
                           photoPath: p.photo_path,
-                          label: `${p.students?.student_code || ''} ${p.students?.prefix || ''}${p.students?.student_name || ''}`.trim(),
+                          label: `${p.students?.student_code || ''} ${formatStudentName(p.students)}`.trim(),
                         })}
                         disabled={deletingId === p.id}
                       >

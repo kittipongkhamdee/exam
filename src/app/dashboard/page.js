@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listMyQuizzes, listMyRecentScanActivity, getMyScanStats } from '@/lib/omr-db';
 import { listMyExamSets, listMyExamRounds } from '@/lib/exam-db';
+import { formatStudentName } from '@/lib/student-name';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5';
 
@@ -207,7 +208,7 @@ function RecentActivityCard({ data, loading }) {
             >
               <div className="min-w-0">
                 <div className="text-sm font-medium text-gray-900 truncate">
-                  {r.students?.prefix}{r.students?.student_name}
+                  {formatStudentName(r.students)}
                 </div>
                 <div className="text-xs text-gray-500 truncate">
                   {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} (ชั้น {r.omr_quizzes?.subjects?.grade_level}/{r.omr_quizzes?.subjects?.room})

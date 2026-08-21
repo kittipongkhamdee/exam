@@ -59,6 +59,7 @@
 
 import { createQuiz, deleteQuiz } from './omr-db';
 import { analyzeItems } from './item-analysis';
+import { formatStudentName } from './student-name';
 
 /**
  * List this teacher's ชุดข้อสอบ, each with its subject and question count.
@@ -291,7 +292,7 @@ export async function getRoundReport(supabase, roundId) {
     return {
       student_id: s.id,
       student_code: s.student_code,
-      student_name: `${s.prefix || ''}${s.student_name}`,
+      student_name: formatStudentName(s),
       status,
       started_at: attempt?.started_at ?? null,
       submitted_at: attempt?.submitted_at ?? null,
@@ -374,7 +375,7 @@ export async function getRoundMonitor(supabase, roundId) {
     return {
       student_id: s.id,
       student_code: s.student_code,
-      student_name: `${s.prefix || ''}${s.student_name}`,
+      student_name: formatStudentName(s),
       status,
       attempt_id: attempt?.id ?? null,
       started_at: attempt?.started_at ?? null,

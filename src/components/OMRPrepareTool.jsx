@@ -17,6 +17,7 @@ import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters,
 import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
+import { formatStudentName } from '../lib/student-name';
 
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
@@ -373,7 +374,7 @@ export default function OMRPrepareTool() {
       function drawStudent(student, seatNumber) {
         drawSheet(canvas, {
           title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols,
-          studentName: `${student.prefix || ''}${student.student_name}`,
+          studentName: formatStudentName(student),
           studentClass: classLabel,
           studentNumber: seatNumber,
         }, { studentId: studentIdDigits(student.student_code) });
@@ -677,7 +678,7 @@ export default function OMRPrepareTool() {
             <div className="max-h-60 overflow-y-auto">
               {roster.map(r => (
                 <div key={r.id} className="flex justify-between items-center text-sm py-1.5 border-b border-gray-100 last:border-b-0">
-                  <span>{r.students?.student_code} {r.students?.prefix}{r.students?.student_name}</span>
+                  <span>{r.students?.student_code} {formatStudentName(r.students)}</span>
                   <span className="flex items-center gap-2">
                     <span>{r.total_correct}/{numQuestions} ({r.score}%)</span>
                     {r.photo_path && <button className={btnTiny} onClick={() => handleViewPhoto(r.photo_path)}>ดูรูป</button>}

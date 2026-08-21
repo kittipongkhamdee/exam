@@ -5,11 +5,14 @@
 // content in-between. Also acts as the auth gate: renders a login form
 // until a Supabase session exists.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { getConfigValue } from '../lib/config-db';
+
+const DEFAULT_APP_NAME = 'ระบบสอบวัดผล';
 
 const NAV_GROUPS = [
   {
@@ -54,6 +57,33 @@ export default function DashboardShell({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
 
+  // exam_app_name/exam_app_description/exam_app_logo — this app's own
+  // config keys, deliberately separate from the shared config.school_name/
+  // config.logo_url the sibling ปพ.5-family app already uses on this same
+  // project (see the settings page's BrandingPanel). Only fetched once
+  // logged in, since the login screen keeps its own fixed branding.
+  const [brandName, setBrandName] = useState('');
+  const [brandDescription, setBrandDescription] = useState('');
+  const [brandLogo, setBrandLogo] = useState('');
+
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      try {
+        const [n, d, l] = await Promise.all([
+          getConfigValue(supabase, 'exam_app_name'),
+          getConfigValue(supabase, 'exam_app_description'),
+          getConfigValue(supabase, 'exam_app_logo'),
+        ]);
+        setBrandName(n || '');
+        setBrandDescription(d || '');
+        setBrandLogo(l || '');
+      } catch {
+        // best-effort — fall back to defaults
+      }
+    })();
+  }, [session?.user?.id]);
+
   function toggleSidebar() {
     if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
       setDesktopCollapsed(v => !v);
@@ -97,7 +127,14 @@ export default function DashboardShell({ children }) {
       >
         <div className="w-64 h-full flex flex-col">
           <div className="flex items-center gap-2 px-5 h-16 border-b border-gray-200">
-            <span className="text-lg font-bold text-gray-900">ระบบสอบวัดผล</span>
+            {brandLogo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogo} alt="" className="h-8 w-8 rounded object-contain shrink-0" />
+            )}
+            <div className="min-w-0">
+              <div className="text-lg font-bold text-gray-900 truncate">{brandName || DEFAULT_APP_NAME}</div>
+              {brandDescription && <div className="text-[11px] text-gray-400 truncate">{brandDescription}</div>}
+            </div>
           </div>
           <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
             {groups.map((group, i) => (
@@ -132,7 +169,13 @@ export default function DashboardShell({ children }) {
           >
             <HamburgerIcon />
           </button>
-          <span className={"font-semibold text-gray-800 " + (desktopCollapsed ? '' : 'md:hidden')}>ระบบสอบวัดผล</span>
+          <span className={"font-semibold text-gray-800 inline-flex items-center gap-2 " + (desktopCollapsed ? '' : 'md:hidden')}>
+            {brandLogo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogo} alt="" className="h-6 w-6 rounded object-contain" />
+            )}
+            {brandName || DEFAULT_APP_NAME}
+          </span>
           <div className="ml-auto">
             <button
               type="button"

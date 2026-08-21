@@ -685,3 +685,40 @@ export async function getItemAnalysisForRound(supabase, roundId) {
 
   return { questionIds, questionTexts, ...analyzeItems(itemMatrix) };
 }
+
+// ---------------------------------------------------------------------
+// Admin-facing "log ระบบการสอบ" — a read of the platform-wide audit_log
+// table (id, actor_id, actor_name, action, detail, created_at), which
+// this app didn't create — it's shared infrastructure already provisioned
+// for the whole Supabase project (RLS already admin-only SELECT, already
+// open INSERT), previously unused by anything. The five exam RPCs
+// (start_exam_attempt, record_exam_violation, unlock_exam_attempt,
+// proctor_unlock_exam_attempt, submit_exam_attempt) each call the
+// SECURITY DEFINER log_exam_event() helper to write into it — see the
+// add_exam_audit_logging migration. Actions are prefixed 'exam_' so this
+// filters to just this app's events even if something else on the
+// platform starts writing other kinds of rows here later.
+
+export const EXAM_AUDIT_ACTION_LABEL = {
+  exam_login: 'เข้าสอบ',
+  exam_violation: 'สลับหน้าจอ (ล็อก)',
+  exam_violation_exceeded: 'สลับหน้าจอเกินกำหนด (ส่งอัตโนมัติ)',
+  exam_unlock_pin: 'ปลดล็อกด้วยรหัส',
+  exam_unlock_proctor: 'ปลดล็อกจากมอนิเตอร์',
+  exam_submit: 'ส่งข้อสอบ',
+};
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ limit?: number }} [opts]
+ */
+export async function listExamAuditLog(supabase, opts = {}) {
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select('id, actor_id, actor_name, action, detail, created_at')
+    .like('action', 'exam_%')
+    .order('created_at', { ascending: false })
+    .limit(opts.limit ?? 200);
+  if (error) throw error;
+  return data;
+}

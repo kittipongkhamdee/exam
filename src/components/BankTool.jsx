@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion, uploadBankQuestionImage, getBankQuestionImageUrl, deleteBankQuestionImage } from '../lib/bank-db';
+import { downloadBankQuestionTemplate, parseBankQuestionCsv } from '../lib/bank-import';
 import ConfirmDialog from './ConfirmDialog';
 
 const DIFFICULTIES = [
@@ -94,6 +95,24 @@ function XIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function UploadIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 16V4M7 9l5-5 5 5" />
+      <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+function DownloadIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 4v12M7 11l5 5 5-5" />
+      <path d="M4 20h16" />
     </svg>
   );
 }
@@ -208,6 +227,8 @@ export default function BankTool() {
   const [generateError, setGenerateError] = useState(null);
   const [draftQuestions, setDraftQuestions] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [importErrors, setImportErrors] = useState([]);
+  const importInputRef = useRef(null);
 
   const [bankQuestions, setBankQuestions] = useState([]);
   const [bankLoading, setBankLoading] = useState(true);
@@ -373,6 +394,39 @@ export default function BankTool() {
       image_url: null,
       _key: `manual-${Date.now()}`,
     }]);
+  }
+
+  // Reads an uploaded CSV (see bank-import.js for the expected column
+  // format, matching downloadBankQuestionTemplate()'s template) and appends
+  // whatever rows parsed cleanly onto the same draft list the AI/manual
+  // flows fill — so review, edit, and "บันทึกเข้าคลังทั้งหมด" all just work
+  // on imported rows too, no separate save path needed. Rows that fail
+  // validation (missing question, too few choices, bad answer number) are
+  // reported instead of imported; a header-format mismatch or an empty file
+  // surfaces as an error list rather than throwing.
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !subjectId) return;
+    setImportErrors([]);
+    try {
+      const text = await file.text();
+      const { questions, errors } = parseBankQuestionCsv(text);
+      if (questions.length > 0) {
+        setDraftQuestions(prev => [
+          ...prev,
+          ...questions.map((q, i) => ({
+            ...q,
+            subject_id: subjectId,
+            indicator_id: indicatorIds.length === 1 ? indicatorIds[0] : null,
+            _key: `import-${Date.now()}-${i}`,
+          })),
+        ]);
+      }
+      setImportErrors(errors);
+    } catch {
+      setImportErrors(['อ่านไฟล์ไม่สำเร็จ — ตรวจสอบว่าเป็นไฟล์ CSV ที่ถูกต้อง']);
+    }
   }
 
   function updateDraft(key, patch) {
@@ -629,7 +683,26 @@ export default function BankTool() {
           <button type="button" className={btnSecondary} disabled={!subjectId} onClick={handleAddManual}>
             <PencilIcon className="h-4 w-4" /> เพิ่มข้อสอบเอง
           </button>
+          <button type="button" className={btnSecondary} disabled={!subjectId} onClick={() => importInputRef.current?.click()}>
+            <UploadIcon className="h-4 w-4" /> นำเข้าจากไฟล์ CSV
+          </button>
+          <input ref={importInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
+          <button type="button" className={btnSecondary} onClick={downloadBankQuestionTemplate}>
+            <DownloadIcon className="h-4 w-4" /> ดาวน์โหลดแบบฟอร์มนำเข้า
+          </button>
         </div>
+        {!subjectId && <div className="text-xs text-gray-400 mt-2">เลือกวิชาก่อนจึงจะนำเข้าไฟล์ได้</div>}
+        {importErrors.length > 0 && (
+          <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">
+            <div className="font-semibold mb-1">พบปัญหาในไฟล์ที่นำเข้า (แถวที่ผ่านการตรวจสอบจะถูกเพิ่มไว้ในร่างด้านล่างแล้ว):</div>
+            <ul className="list-disc list-inside space-y-0.5">
+              {importErrors.map((err, i) => <li key={i}>{err}</li>)}
+            </ul>
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-2">
+          รูปแบบไฟล์ CSV: คอลัมน์ คำถาม, ตัวเลือกที่ 1-6 (กรอกอย่างน้อย 2 ข้อ), เฉลย (เลขข้อที่ถูก), คำอธิบายเฉลย (ไม่บังคับ), ระดับความยาก (ง่าย/ปานกลาง/ยาก) — ดาวน์โหลดแบบฟอร์มด้านบนเพื่อดูตัวอย่าง
+        </p>
       </div>
 
       {draftQuestions.length > 0 && (

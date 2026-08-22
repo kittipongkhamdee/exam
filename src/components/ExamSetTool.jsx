@@ -305,6 +305,7 @@ export default function ExamSetTool() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [pointsById, setPointsById] = useState({}); // { [bank_question_id]: points }
+  const [bulkPoints, setBulkPoints] = useState(1);
   const [editingSetId, setEditingSetId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -429,6 +430,15 @@ export default function ExamSetTool() {
   function updatePoints(id, value) {
     const n = Math.max(0.01, Number(value) || 1);
     setPointsById(prev => ({ ...prev, [id]: n }));
+  }
+
+  function applyPointsToAll(rawValue) {
+    const points = Math.max(0.01, Number(rawValue) || 1);
+    setPointsById(prev => {
+      const next = { ...prev };
+      for (const id of selectedIds) next[id] = points;
+      return next;
+    });
   }
 
   function removeSelected(id) {
@@ -679,6 +689,17 @@ export default function ExamSetTool() {
 
             <div>
               <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ, รวม {totalPoints} คะแนน)</label>
+              {selectedQuestions.length > 0 && (
+                <div className="flex items-center gap-2 mt-1.5 mb-2 flex-wrap">
+                  <label className="text-xs font-semibold text-gray-500">กำหนดคะแนนเท่ากันทุกข้อ</label>
+                  <input
+                    type="number" min="0.01" step="any" value={bulkPoints}
+                    onChange={e => setBulkPoints(e.target.value)}
+                    className="w-16 px-1.5 py-1 border border-gray-300 rounded text-xs text-center"
+                  />
+                  <button type="button" className={btnTiny} onClick={() => applyPointsToAll(bulkPoints)}>ใช้กับทุกข้อ</button>
+                </div>
+              )}
               {selectedQuestions.length === 0 ? (
                 <div className="text-sm text-gray-500 mt-2">ยังไม่ได้เลือกข้อสอบ</div>
               ) : (

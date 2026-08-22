@@ -498,6 +498,26 @@ export async function getRoomMonitor(supabase, { date, gradeLevel, room }) {
 }
 
 /**
+ * Every รอบสอบ opening on a given date, across every ชั้น/ห้อง and every
+ * teacher's subjects — the "ตารางคุมสอบ" duty-schedule board any signed-in
+ * teacher can check (who's proctoring what, where, and when today), not
+ * just an admin or the room's own assigned proctor. Goes through the
+ * list_exam_day_schedule RPC for the same reason getRoomMonitor does (a
+ * SECURITY DEFINER function sidesteps the RLS-recursion guard on
+ * online_exam_rounds/sets) — its authorization is deliberately just "is
+ * this caller signed in at all", the loosest of the three proctor-facing
+ * RPCs, since PIN/รหัสปลดล็อก are meant to stay only off-limits to
+ * students, not to other staff.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} date 'YYYY-MM-DD'
+ */
+export async function listExamDaySchedule(supabase, date) {
+  const { data, error } = await supabase.rpc('list_exam_day_schedule', { p_date: date });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
  * Every รอบสอบ the current user is allowed to watch live: their own
  * (created via subjects ownership) plus any they're an admin-assigned
  * proctor for, plus everything if they're an admin — RLS decides which

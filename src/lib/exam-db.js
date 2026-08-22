@@ -443,7 +443,7 @@ export async function getRoundMonitor(supabase, roundId) {
 
   const { data: attempts, error: attemptsError } = await supabase
     .from('online_exam_attempts')
-    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, score, violation_count, locked')
+    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, score, violation_count, locked, location_lat, location_lng')
     .eq('round_id', roundId);
   if (attemptsError) throw attemptsError;
 
@@ -465,6 +465,8 @@ export async function getRoundMonitor(supabase, roundId) {
       score: attempt?.score ?? null,
       violation_count: attempt?.violation_count ?? 0,
       locked: attempt?.locked ?? false,
+      location_lat: attempt?.location_lat ?? null,
+      location_lng: attempt?.location_lng ?? null,
     };
   });
 
@@ -590,6 +592,44 @@ export async function getAttemptLockStatus(supabase, attemptId) {
   const { data, error } = await supabase.rpc('get_attempt_lock_status', { p_attempt_id: attemptId });
   if (error) throw error;
   return !!data;
+}
+
+// Proximity-check feature: a student's browser reports its own one-time
+// location at exam start (if the admin has this on and the student grants
+// the permission prompt — never required, never re-requested mid-exam),
+// purely so the live monitor can flag students sitting closer together
+// than the admin's configured minimum, for the proctoring teacher to judge
+// (they know who genuinely lives next door) — not an automatic block. A
+// SECURITY DEFINER RPC for the same reason as the other student-facing
+// exam RPCs: the anon key students use has no RLS write access to
+// online_exam_attempts, and knowing the attempt_id is the authorization
+// (see record_exam_violation/unlock_exam_attempt).
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} attemptId
+ * @param {number} lat
+ * @param {number} lng
+ */
+export async function saveAttemptLocation(supabase, attemptId, lat, lng) {
+  const { error } = await supabase.rpc('save_exam_attempt_location', { p_attempt_id: attemptId, p_lat: lat, p_lng: lng });
+  if (error) throw error;
+}
+
+/**
+ * Locks an attempt from the live monitor on the proctoring teacher's own
+ * judgment (e.g. a proximity-check flag they've decided is genuinely
+ * suspicious) — same "locked" flag and authorization pattern as
+ * proctorUnlockAttempt, just the opposite direction. The locked student's
+ * own browser picks this up via its continuous lock-status poll (see
+ * StudentExamTool.jsx) and shows the same "หน้าจอถูกล็อก" prompt as a
+ * screen-switch violation, needing the round's unlock PIN (or another
+ * proctor unlock) to continue.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} attemptId
+ */
+export async function proctorLockAttempt(supabase, attemptId) {
+  const { error } = await supabase.rpc('proctor_lock_exam_attempt', { p_attempt_id: attemptId });
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------
@@ -831,6 +871,7 @@ export const EXAM_AUDIT_ACTION_LABEL = {
   exam_violation_exceeded: 'สลับหน้าจอเกินกำหนด (ส่งอัตโนมัติ)',
   exam_unlock_pin: 'ปลดล็อกด้วยรหัส',
   exam_unlock_proctor: 'ปลดล็อกจากมอนิเตอร์',
+  exam_lock_proctor: 'บล็อกจากมอนิเตอร์ (ตำแหน่งผิดปกติ)',
   exam_submit: 'ส่งข้อสอบ',
   exam_attempt_reset: 'รีเซ็ตให้สอบใหม่',
 };

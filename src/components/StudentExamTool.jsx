@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { getBankQuestionImageUrl } from '../lib/bank-db';
-import { getAttemptLockStatus } from '../lib/exam-db';
+import { getAttemptLockStatus, saveAttemptLocation } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
 import { getConfigValue } from '../lib/config-db';
 import { formatThaiDateTime } from '../lib/format';
@@ -477,27 +477,37 @@ export default function StudentExamTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, attempt?.attempt_id]);
 
-  // Closes the "หน้าจอถูกล็อก" prompt the moment the proctoring teacher
-  // unlocks from the live monitor (a different browser), instead of
-  // leaving the student stuck until they think to refresh — see
-  // getAttemptLockStatus in exam-db.js. Polls rather than subscribing to a
-  // Realtime channel, and only while actually locked (rare and
-  // short-lived), so a student who never trips a violation never opens a
-  // connection at all. Swal.close() resolves showLockModal's pending
-  // await like any other dismissal, so the same "set locked: false
+  // Polls the attempt's locked status for the whole exam, not just while
+  // already locked — a lock can now arrive two ways from the live monitor
+  // (a different browser): the proctoring teacher unlocking a violation
+  // lock as before, or the teacher newly locking this attempt themselves
+  // (proctorLockAttempt in exam-db.js — e.g. acting on a proximity-check
+  // flag they've judged genuinely suspicious). Polls slowly (25s) while
+  // unlocked, since a remote lock is rare, and quickly (4s) once actually
+  // locked, so the "หน้าจอถูกล็อก" prompt closes promptly the moment a
+  // teacher unlocks — matches the low-connection-cost reasoning from the
+  // unlock-only version this replaces (still no persistent Realtime
+  // channel, just a REST poll). Swal.close() resolves showLockModal's
+  // pending await like any other dismissal, so the same "set locked: false
   // locally" step there runs unchanged; if no lock modal happens to be
   // open when this fires, Swal.close() is just a harmless no-op.
   useEffect(() => {
-    if (phase !== 'exam' || !attempt?.attempt_id || !attempt?.locked) return;
+    if (phase !== 'exam' || !attempt?.attempt_id) return;
     const interval = setInterval(async () => {
       try {
-        const stillLocked = await getAttemptLockStatus(supabase, attempt.attempt_id);
-        if (!stillLocked) Swal.close();
+        const nowLocked = await getAttemptLockStatus(supabase, attempt.attempt_id);
+        if (nowLocked && !attempt.locked) {
+          setAttempt(prev => (prev ? { ...prev, locked: true } : prev));
+          showLockModal(attempt.attempt_id, attempt.violation_count, attempt.max_violations);
+        } else if (!nowLocked && attempt.locked) {
+          Swal.close();
+        }
       } catch {
         // best-effort — a failed poll just retries on the next tick
       }
-    }, 4000);
+    }, attempt.locked ? 4000 : 25000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, attempt?.attempt_id, attempt?.locked]);
 
   // Locking survives a refresh (see the migration) — start_exam_attempt
@@ -510,6 +520,35 @@ export default function StudentExamTool() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+
+  // Optional, admin-toggled proximity check: reports this device's own
+  // location once at exam start — never re-requested, never continuously
+  // tracked — purely so the live monitor can flag students sitting closer
+  // together than the admin's configured minimum for the proctoring
+  // teacher to judge (see ExamMonitorTool.jsx and saveAttemptLocation in
+  // exam-db.js). Entirely best-effort and silent: a denied/unavailable
+  // permission, an unsupported browser, or a fetch/save failure all just
+  // skip the feature — this must never block or interrupt the exam itself.
+  const locationCapturedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'exam' || !attempt?.attempt_id || locationCapturedRef.current) return;
+    locationCapturedRef.current = true;
+    (async () => {
+      try {
+        const enabled = await getConfigValue(supabase, 'exam_proximity_check_enabled');
+        if (enabled !== 'true' || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            saveAttemptLocation(supabase, attempt.attempt_id, pos.coords.latitude, pos.coords.longitude).catch(() => {});
+          },
+          () => {}, // denied/unavailable — nothing to do, exam proceeds normally
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+      } catch {
+        // best-effort — a config-fetch failure just skips the feature silently
+      }
+    })();
+  }, [phase, attempt?.attempt_id]);
 
   // Shown once per manual login (not the silent refresh-resume path — see
   // handleLogin vs. the resume useEffect below) so a student can't miss

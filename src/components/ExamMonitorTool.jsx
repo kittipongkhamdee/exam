@@ -19,15 +19,49 @@
 // without a manual refresh. A card flipping to "locked" also fires a short
 // beep + toast so a proctor watching several rooms doesn't have to stare at
 // the grid.
+//
+// Optional proximity check (admin-toggled, Settings → ตรวจสอบตำแหน่งนักเรียน):
+// if a student's browser reported a one-time location at exam start, this
+// flags — never auto-blocks — any pair sitting closer together than the
+// admin's configured minimum, on a small map and a toast, leaving the
+// actual "บล็อก" call to the proctoring teacher (see proctorLockAttempt).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
+import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabaseClient';
 import {
   getRoundMonitor, getRoomMonitor, listMonitorableRounds,
-  proctorUnlockAttempt, listProctorAssignmentsForDate,
+  proctorUnlockAttempt, proctorLockAttempt, listProctorAssignmentsForDate,
 } from '../lib/exam-db';
+import { getConfigValue } from '../lib/config-db';
+import { distanceMeters } from '../lib/geo';
 import { formatGradeRoom, formatThaiDateTime, formatThaiTime } from '../lib/format';
+
+const DEFAULT_PROXIMITY_MIN_DISTANCE_M = 15;
+
+// Every pair of located students in one monitor whose reported positions
+// are closer than minDistanceM — a soft signal for the proctoring teacher
+// to judge (they know who genuinely lives next door), never an automatic
+// block. O(n²) over one รอบสอบ's roster (a class, not 200 students) is
+// trivial, so this runs client-side on every refresh rather than needing
+// its own server-side job.
+function computeProximityFlags(rows, minDistanceM) {
+  const located = rows.filter(r => r.location_lat != null && r.location_lng != null);
+  const flaggedIds = new Set();
+  const pairs = [];
+  for (let i = 0; i < located.length; i++) {
+    for (let j = i + 1; j < located.length; j++) {
+      const d = distanceMeters(located[i].location_lat, located[i].location_lng, located[j].location_lat, located[j].location_lng);
+      if (d < minDistanceM) {
+        flaggedIds.add(located[i].attempt_id);
+        flaggedIds.add(located[j].attempt_id);
+        pairs.push({ a: located[i], b: located[j], distanceM: d });
+      }
+    }
+  }
+  return { flaggedIds, pairs };
+}
 
 function MonitorIcon(props) {
   return (
@@ -103,7 +137,61 @@ function playAlertBeep() {
   }
 }
 
-function StudentCard({ row, onUnlock, unlocking }) {
+// Leaflet + OpenStreetMap (both free, no API key) rather than a paid
+// provider — this app already leans on free-tier infrastructure
+// throughout. Leaflet touches `window`, so it's imported dynamically
+// inside the effect (client-only lifecycle) rather than at module scope,
+// keeping this component safe under Next.js's SSR pass. Markers redraw on
+// every relevant data change rather than being individually diffed — a
+// รอบสอบ's roster is a class (tens of students), not 200, so the redraw
+// cost is trivial.
+function ProximityMap({ rows, flaggedIds }) {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
+
+  const located = rows.filter(r => r.location_lat != null && r.location_lng != null);
+  const locatedKey = located.map(r => `${r.attempt_id}:${r.location_lat}:${r.location_lng}:${flaggedIds.has(r.attempt_id)}`).join(',');
+
+  useEffect(() => {
+    if (!containerRef.current || located.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const L = (await import('leaflet')).default;
+      if (cancelled) return;
+      if (!mapRef.current) {
+        mapRef.current = L.map(containerRef.current, { zoomControl: true, attributionControl: false });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapRef.current);
+      }
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = located.map(r => {
+        const isFlagged = flaggedIds.has(r.attempt_id);
+        const marker = L.circleMarker([r.location_lat, r.location_lng], {
+          radius: 8, weight: 2,
+          color: isFlagged ? '#dc2626' : '#4f46e5',
+          fillColor: isFlagged ? '#f87171' : '#818cf8',
+          fillOpacity: 0.9,
+        }).addTo(mapRef.current);
+        marker.bindTooltip(`${r.student_name} (${r.student_code})`);
+        return marker;
+      });
+      const bounds = located.map(r => [r.location_lat, r.location_lng]);
+      if (bounds.length > 1) mapRef.current.fitBounds(bounds, { padding: [30, 30] });
+      else mapRef.current.setView(bounds[0], 17);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locatedKey]);
+
+  useEffect(() => () => {
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+  }, []);
+
+  if (located.length === 0) return null;
+  return <div ref={containerRef} className="h-64 rounded-lg overflow-hidden border border-gray-200 mt-3" />;
+}
+
+function StudentCard({ row, flagged, onUnlock, onLock, unlocking, locking }) {
   let cls = 'bg-gray-50 border-gray-200 text-gray-500';
   let statusLabel = 'ยังไม่เข้าสอบ';
   if (row.status === 'submitted') {
@@ -116,6 +204,7 @@ function StudentCard({ row, onUnlock, unlocking }) {
     cls = 'bg-sky-50 border-sky-200 text-sky-700';
     statusLabel = 'กำลังทำ';
   }
+  if (flagged && !row.locked) cls = 'bg-amber-50 border-amber-300 text-amber-700';
 
   return (
     <div className={'rounded-lg border px-3 py-2.5 text-sm ' + cls}>
@@ -130,6 +219,9 @@ function StudentCard({ row, onUnlock, unlocking }) {
       {row.violation_count > 0 && (
         <div className="mt-1 text-xs font-bold text-red-600">สลับหน้าจอ {row.violation_count} ครั้ง</div>
       )}
+      {flagged && !row.locked && (
+        <div className="mt-1 text-xs font-bold text-amber-700">⚠ ตำแหน่งใกล้เพื่อนเกินกำหนด</div>
+      )}
       {row.locked && (
         <button
           type="button"
@@ -140,12 +232,23 @@ function StudentCard({ row, onUnlock, unlocking }) {
           <LockIcon className="h-3.5 w-3.5" /> {unlocking ? 'กำลังปลดล็อก...' : 'ปลดล็อก'}
         </button>
       )}
+      {flagged && !row.locked && row.status === 'in_progress' && (
+        <button
+          type="button"
+          className="mt-2 w-full inline-flex items-center justify-center gap-1 bg-amber-600 text-white text-xs font-bold px-2 py-1.5 rounded-md hover:bg-amber-700 disabled:opacity-50"
+          disabled={locking}
+          onClick={() => onLock(row.attempt_id)}
+        >
+          <LockIcon className="h-3.5 w-3.5" /> {locking ? 'กำลังบล็อก...' : 'บล็อก (ตำแหน่งผิดปกติ)'}
+        </button>
+      )}
     </div>
   );
 }
 
-function RoundMonitorCard({ monitor, onUnlockDone }) {
+function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
   const [unlockingId, setUnlockingId] = useState(null);
+  const [lockingId, setLockingId] = useState(null);
 
   async function handleUnlock(attemptId) {
     setUnlockingId(attemptId);
@@ -159,9 +262,29 @@ function RoundMonitorCard({ monitor, onUnlockDone }) {
     }
   }
 
+  async function handleLock(attemptId) {
+    const confirmed = await Swal.fire({
+      icon: 'warning', title: 'ยืนยันบล็อกนักเรียนคนนี้?',
+      text: 'นักเรียนจะถูกล็อกหน้าจอทันที ต้องขอรหัสปลดล็อกจากครูจึงจะทำต่อได้',
+      showCancelButton: true, confirmButtonText: 'บล็อก', cancelButtonText: 'ยกเลิก', confirmButtonColor: '#d97706',
+    });
+    if (!confirmed.isConfirmed) return;
+    setLockingId(attemptId);
+    try {
+      await proctorLockAttempt(supabase, attemptId);
+      onUnlockDone();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'บล็อกไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+      setLockingId(null);
+    }
+  }
+
   const submitted = monitor.rows.filter(r => r.status === 'submitted').length;
   const locked = monitor.rows.filter(r => r.locked).length;
   const inProgress = monitor.rows.filter(r => r.status === 'in_progress' && !r.locked).length;
+
+  const { flaggedIds, pairs } = useMemo(() => computeProximityFlags(monitor.rows, minDistance), [monitor.rows, minDistance]);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
@@ -176,11 +299,30 @@ function RoundMonitorCard({ monitor, onUnlockDone }) {
           <span className="font-bold text-green-700">{submitted}<span className="text-gray-500 font-normal"> ส่งแล้ว</span></span>
           <span className="font-bold text-sky-700">{inProgress}<span className="text-gray-500 font-normal"> กำลังทำ</span></span>
           {locked > 0 && <span className="font-bold text-red-600">{locked}<span className="text-gray-500 font-normal"> ถูกล็อก</span></span>}
+          {pairs.length > 0 && <span className="font-bold text-amber-700">{flaggedIds.size}<span className="text-gray-500 font-normal"> ตำแหน่งใกล้กัน</span></span>}
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+
+      {pairs.length > 0 && (
+        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs">
+          <div className="font-bold text-amber-800 mb-1">⚠ นักเรียนต่อไปนี้อยู่ใกล้กันน้อยกว่า {minDistance} เมตร — ตรวจสอบเอง ระบบไม่ได้บล็อกอัตโนมัติ</div>
+          <div className="space-y-0.5 text-amber-700">
+            {pairs.map((p, i) => (
+              <div key={i}>{p.a.student_name} ↔ {p.b.student_name} (~{Math.round(p.distanceM)} ม.)</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ProximityMap rows={monitor.rows} flaggedIds={flaggedIds} />
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mt-3">
         {monitor.rows.map(row => (
-          <StudentCard key={row.student_id} row={row} onUnlock={handleUnlock} unlocking={unlockingId === row.attempt_id} />
+          <StudentCard
+            key={row.student_id} row={row} flagged={flaggedIds.has(row.attempt_id)}
+            onUnlock={handleUnlock} onLock={handleLock}
+            unlocking={unlockingId === row.attempt_id} locking={lockingId === row.attempt_id}
+          />
         ))}
       </div>
     </div>
@@ -208,7 +350,10 @@ export default function ExamMonitorTool() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [proximityMinDistance, setProximityMinDistance] = useState(DEFAULT_PROXIMITY_MIN_DISTANCE_M);
+
   const lockedByAttempt = useRef(new Map());
+  const flaggedPairsSeen = useRef(new Set());
 
   useEffect(() => {
     (async () => {
@@ -216,6 +361,12 @@ export default function ExamMonitorTool() {
         setRounds(await listMonitorableRounds(supabase));
       } catch {
         // best-effort
+      }
+      try {
+        const stored = await getConfigValue(supabase, 'exam_proximity_min_distance_m');
+        if (stored) setProximityMinDistance(Number(stored) || DEFAULT_PROXIMITY_MIN_DISTANCE_M);
+      } catch {
+        // best-effort — falls back to the default already set
       }
     })();
   }, []);
@@ -254,6 +405,25 @@ export default function ExamMonitorTool() {
     }
   }, []);
 
+  // Toasts once per newly-appearing too-close pair (not on every refresh
+  // re-render, and not re-firing for a pair the teacher's already seen),
+  // same "seen before" tracking idea as noteViolations above.
+  const noteProximityFlags = useCallback((monitors) => {
+    for (const m of monitors) {
+      const { pairs } = computeProximityFlags(m.rows, proximityMinDistance);
+      for (const p of pairs) {
+        const key = [p.a.attempt_id, p.b.attempt_id].sort().join('|');
+        if (flaggedPairsSeen.current.has(key)) continue;
+        flaggedPairsSeen.current.add(key);
+        playAlertBeep();
+        Swal.fire({
+          toast: true, position: 'top-end', timer: 5000, showConfirmButton: false,
+          icon: 'warning', title: `${p.a.student_name} ↔ ${p.b.student_name} อยู่ใกล้กันเกินกำหนด`,
+        });
+      }
+    }
+  }, [proximityMinDistance]);
+
   const refreshRoundMode = useCallback(async (id) => {
     if (!id) { setRoundMonitor(null); return; }
     setLoading(true);
@@ -261,13 +431,14 @@ export default function ExamMonitorTool() {
     try {
       const m = await getRoundMonitor(supabase, id);
       noteViolations([m]);
+      noteProximityFlags([m]);
       setRoundMonitor(m);
     } catch (err) {
       setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
     } finally {
       setLoading(false);
     }
-  }, [noteViolations]);
+  }, [noteViolations, noteProximityFlags]);
 
   const refreshRoomMode = useCallback(async (d, key) => {
     if (!key) { setRoomMonitors([]); return; }
@@ -277,13 +448,14 @@ export default function ExamMonitorTool() {
     try {
       const ms = await getRoomMonitor(supabase, { date: d, gradeLevel, room });
       noteViolations(ms);
+      noteProximityFlags(ms);
       setRoomMonitors(ms);
     } catch (err) {
       setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
     } finally {
       setLoading(false);
     }
-  }, [noteViolations]);
+  }, [noteViolations, noteProximityFlags]);
 
   useEffect(() => { if (mode === 'round') refreshRoundMode(roundId); }, [mode, roundId, refreshRoundMode]);
   useEffect(() => { if (mode === 'room') refreshRoomMode(date, gradeRoomKey); }, [mode, date, gradeRoomKey, refreshRoomMode]);
@@ -393,7 +565,7 @@ export default function ExamMonitorTool() {
       {error && <div className={card}><div className="text-sm text-red-600">{error}</div></div>}
 
       {!loading && mode === 'round' && roundMonitor && (
-        <RoundMonitorCard monitor={roundMonitor} onUnlockDone={() => refreshRoundMode(roundId)} />
+        <RoundMonitorCard monitor={roundMonitor} minDistance={proximityMinDistance} onUnlockDone={() => refreshRoundMode(roundId)} />
       )}
 
       {!loading && mode === 'room' && gradeRoomKey && roomMonitors.length === 0 && (
@@ -401,7 +573,7 @@ export default function ExamMonitorTool() {
       )}
 
       {!loading && mode === 'room' && roomMonitors.map(m => (
-        <RoundMonitorCard key={m.id} monitor={m} onUnlockDone={() => refreshRoomMode(date, gradeRoomKey)} />
+        <RoundMonitorCard key={m.id} monitor={m} minDistance={proximityMinDistance} onUnlockDone={() => refreshRoomMode(date, gradeRoomKey)} />
       ))}
     </div>
   );

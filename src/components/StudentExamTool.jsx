@@ -858,6 +858,9 @@ export default function StudentExamTool() {
           <h1 className="text-lg font-bold text-gray-900">รอบสอบนี้ต้องแชร์ตำแหน่งก่อนเข้าสอบ</h1>
           <p className="mt-2 text-sm text-gray-500">
             กรุณากดอนุญาตเมื่อเบราว์เซอร์ขอสิทธิ์เข้าถึงตำแหน่ง — ใช้เพื่อตรวจสอบเบื้องต้นเท่านั้น เข้าสอบไม่ได้จนกว่าจะแชร์ตำแหน่งสำเร็จ
+            {attempt?.proximity_min_distance_m != null && (
+              <> — <strong className="text-gray-700">นักเรียนที่นั่งอยู่ใกล้กันน้อยกว่า {attempt.proximity_min_distance_m} เมตร อาจถูกครูตรวจสอบ</strong></>
+            )}
           </p>
           {locatingError && (
             <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-left">{locatingError}</div>

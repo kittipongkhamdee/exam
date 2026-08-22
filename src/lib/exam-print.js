@@ -120,9 +120,9 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth)
 /**
  * Draws the top-of-page letterhead and returns the y where question columns
  * can start. The first page gets the full letterhead (logo, school name,
- * exam title, subject/score/time line, boxed คำชี้แจง rules, an answer-
- * method note, a name/class/number blank, and a rule); continuation pages
- * just get a short "(ต่อ)" line so the two-column body has more room.
+ * exam title, subject/score/time line, boxed คำชี้แจง rules, and a rule);
+ * continuation pages just get a short "(ต่อ)" line so the two-column body
+ * has more room.
  */
 function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle, isFirstPage }) {
   let y = MARGIN;
@@ -175,12 +175,6 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       y += boxH + 15;
     }
 
-    ctx.font = INSTRUCTION_FONT; ctx.fillStyle = '#555';
-    ctx.fillText('คำชี้แจง: เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว แล้วระบายคำตอบลงในกระดาษคำตอบที่แจก', MARGIN, y + 10);
-    y += 20;
-    ctx.font = INSTRUCTION_FONT; ctx.fillStyle = '#333';
-    ctx.fillText('ชื่อ-สกุล: ____________________________  ชั้น/ห้อง: __________  เลขที่: ______', MARGIN, y + 15);
-    y += 28;
     ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(MARGIN, y); ctx.lineTo(PAGE_W - MARGIN, y); ctx.stroke();
     y += 20;

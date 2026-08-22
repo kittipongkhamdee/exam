@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { getBankQuestionImageUrl } from '../lib/bank-db';
-import { attemptUnlockChannelName } from '../lib/exam-db';
+import { getAttemptLockStatus } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
 import { getConfigValue } from '../lib/config-db';
 import { formatThaiDateTime } from '../lib/format';
@@ -480,19 +480,25 @@ export default function StudentExamTool() {
   // Closes the "หน้าจอถูกล็อก" prompt the moment the proctoring teacher
   // unlocks from the live monitor (a different browser), instead of
   // leaving the student stuck until they think to refresh — see
-  // proctorUnlockAttempt's broadcast in exam-db.js. Swal.close() resolves
-  // showLockModal's pending await like any other dismissal, so the same
-  // "set locked: false locally" step there runs unchanged; if no lock
-  // modal happens to be open when this fires, Swal.close() is just a
-  // harmless no-op.
+  // getAttemptLockStatus in exam-db.js. Polls rather than subscribing to a
+  // Realtime channel, and only while actually locked (rare and
+  // short-lived), so a student who never trips a violation never opens a
+  // connection at all. Swal.close() resolves showLockModal's pending
+  // await like any other dismissal, so the same "set locked: false
+  // locally" step there runs unchanged; if no lock modal happens to be
+  // open when this fires, Swal.close() is just a harmless no-op.
   useEffect(() => {
-    if (phase !== 'exam' || !attempt?.attempt_id) return;
-    const channel = supabase
-      .channel(attemptUnlockChannelName(attempt.attempt_id))
-      .on('broadcast', { event: 'unlocked' }, () => { Swal.close(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [phase, attempt?.attempt_id]);
+    if (phase !== 'exam' || !attempt?.attempt_id || !attempt?.locked) return;
+    const interval = setInterval(async () => {
+      try {
+        const stillLocked = await getAttemptLockStatus(supabase, attempt.attempt_id);
+        if (!stillLocked) Swal.close();
+      } catch {
+        // best-effort — a failed poll just retries on the next tick
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [phase, attempt?.attempt_id, attempt?.locked]);
 
   // Locking survives a refresh (see the migration) — start_exam_attempt
   // returns locked:true on resume if a prior violation was never cleared,

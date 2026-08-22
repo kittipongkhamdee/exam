@@ -208,7 +208,7 @@ export async function saveBankQuestions(supabase, questions) {
  * Update one saved bank question's editable fields.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} id
- * @param {{ question_text: string, choices: string[], correct_choice: number, explanation?: string, image_path?: string|null }} patch
+ * @param {{ question_text: string, choices: string[], correct_choice: number, explanation?: string, image_path?: string|null, difficulty?: string }} patch
  */
 export async function updateBankQuestion(supabase, id, patch) {
   const { error } = await supabase.from('bank_questions').update({
@@ -218,6 +218,7 @@ export async function updateBankQuestion(supabase, id, patch) {
     correct_choice: patch.correct_choice,
     explanation: patch.explanation || '',
     image_path: patch.image_path || null,
+    difficulty: patch.difficulty || 'medium',
   }).eq('id', id);
   if (error) throw error;
 }

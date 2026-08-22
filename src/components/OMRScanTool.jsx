@@ -14,6 +14,7 @@
 // All OMR image-processing logic lives in ../lib/omr-core.js.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
   findFiducialsWithOrientation, readBubbles, drawGradedOverlay, choiceLetters,
@@ -198,59 +199,84 @@ export default function OMRScanTool() {
     setScanStage('processing');
     const { pageW, pageH, layoutStyle, cols } = pageOptsForQuiz(selectedQuiz);
     const img = new Image();
+    // Without this, a corrupt/truncated capture (a flaky camera write, a
+    // bad upload) left scanStage stuck on "processing" forever — img.onload
+    // simply never fires, and nothing else ever calls setScanStage('done').
+    img.onerror = () => {
+      setScanResult({ error: 'เปิดรูปภาพไม่สำเร็จ — ไฟล์อาจเสียหาย ลองถ่าย/เลือกรูปใหม่อีกครั้ง' });
+      setScanStage('done');
+    };
     img.onload = () => {
       setTimeout(() => {
-        const srcCanvas = document.createElement('canvas');
-        srcCanvas.width = img.width; srcCanvas.height = img.height;
-        srcCanvas.getContext('2d').drawImage(img, 0, 0);
+        // The same "stuck on processing forever" failure mode applies to
+        // any unexpected throw in here (a malformed image passing onload
+        // but failing to decode inside canvas/omr-core, etc.) — catch it
+        // and surface an error instead of a silently frozen screen.
+        try {
+          const srcCanvas = document.createElement('canvas');
+          srcCanvas.width = img.width; srcCanvas.height = img.height;
+          srcCanvas.getContext('2d').drawImage(img, 0, 0);
 
-        // Live camera captures can come out rotated relative to how the
-        // photo visually looked (a getUserMedia quirk on some devices) —
-        // findFiducialsWithOrientation tries all 4 quarter-turns and picks
-        // whichever one actually decodes cleanly, so a rotated capture is
-        // corrected transparently instead of producing a skewed,
-        // wrongly-graded read.
-        const readOpts = {
-          numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
-          idDigits: selectedQuiz.idDigits, layoutStyle, cols,
-        };
-        const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
+          // Live camera captures can come out rotated relative to how the
+          // photo visually looked (a getUserMedia quirk on some devices) —
+          // findFiducialsWithOrientation tries all 4 quarter-turns and picks
+          // whichever one actually decodes cleanly, so a rotated capture is
+          // corrected transparently instead of producing a skewed,
+          // wrongly-graded read.
+          const readOpts = {
+            numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
+            idDigits: selectedQuiz.idDigits, layoutStyle, cols,
+          };
+          const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
 
-        if (!best) {
-          setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' });
+          if (!best) {
+            setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' });
+            setScanStage('done');
+            return;
+          }
+
+          const warped = best.warped;
+          const { responses, studentId: decodedId, layout } = readBubbles(warped, { ...readOpts, pageW, pageH });
+
+          let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;
+          const graded = responses.map(r => {
+            const entry = selectedQuiz.answerKey[r.question];
+            const keyChoices = entry?.choices || [];
+            const points = entry?.points ?? 1;
+            totalPoints += points;
+            // Must also exclude r.ambiguous (an unclear bubble the reader
+            // couldn't confidently resolve to one choice) — otherwise a
+            // question the reader flagged "ambiguous" could still score as
+            // correct here if r.choice happened to match a key choice,
+            // while every other place that grades the same responses
+            // (ScannedResultDetail below, getItemAnalysisForQuiz in
+            // omr-db.js) already treats ambiguous as wrong. That mismatch
+            // meant the score shown right after scanning could silently
+            // differ from the score shown on revisiting the same result.
+            const isCorrect = !r.blank && !r.ambiguous && keyChoices.includes(r.choice);
+            if (isCorrect) { correct++; earnedPoints += points; }
+            if (r.blank) blank++;
+            if (r.ambiguous) ambiguous++;
+            return { ...r, correct: isCorrect, keyChoices, points };
+          });
+
+          // Build the reviewable graded overlay now (while the warped canvas
+          // and layout are on hand) so it's ready to preview and, if the
+          // teacher has opted in, upload on save — see resetScan/handleSaveScanResult.
+          const gradedCanvas = drawGradedOverlay(warped, { layout, graded });
+          gradedCanvasRef.current = gradedCanvas;
+          setGradedImageUrl(gradedCanvas.toDataURL('image/png'));
+
+          setScanResult({
+            decodedId, graded, correct, total: selectedQuiz.numQuestions, blank, ambiguous,
+            earnedPoints, totalPoints,
+            score: totalPoints ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : 0,
+          });
           setScanStage('done');
-          return;
+        } catch {
+          setScanResult({ error: 'ประมวลผลรูปภาพไม่สำเร็จ ลองถ่าย/เลือกรูปใหม่อีกครั้ง' });
+          setScanStage('done');
         }
-
-        const warped = best.warped;
-        const { responses, studentId: decodedId, layout } = readBubbles(warped, { ...readOpts, pageW, pageH });
-
-        let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;
-        const graded = responses.map(r => {
-          const entry = selectedQuiz.answerKey[r.question];
-          const keyChoices = entry?.choices || [];
-          const points = entry?.points ?? 1;
-          totalPoints += points;
-          const isCorrect = !r.blank && keyChoices.includes(r.choice);
-          if (isCorrect) { correct++; earnedPoints += points; }
-          if (r.blank) blank++;
-          if (r.ambiguous) ambiguous++;
-          return { ...r, correct: isCorrect, keyChoices, points };
-        });
-
-        // Build the reviewable graded overlay now (while the warped canvas
-        // and layout are on hand) so it's ready to preview and, if the
-        // teacher has opted in, upload on save — see resetScan/handleSaveScanResult.
-        const gradedCanvas = drawGradedOverlay(warped, { layout, graded });
-        gradedCanvasRef.current = gradedCanvas;
-        setGradedImageUrl(gradedCanvas.toDataURL('image/png'));
-
-        setScanResult({
-          decodedId, graded, correct, total: selectedQuiz.numQuestions, blank, ambiguous,
-          earnedPoints, totalPoints,
-          score: totalPoints ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : 0,
-        });
-        setScanStage('done');
       }, 200);
     };
     img.src = imgSrc;
@@ -260,6 +286,10 @@ export default function OMRScanTool() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => {
+      setScanResult({ error: 'อ่านไฟล์รูปภาพไม่สำเร็จ ลองเลือกไฟล์ใหม่อีกครั้ง' });
+      setScanStage('done');
+    };
     reader.onload = (ev) => {
       setScanImage(ev.target.result);
       setGradedImageUrl(null);
@@ -373,8 +403,12 @@ export default function OMRScanTool() {
   }
 
   async function handleDeleteResult(id, photoPath) {
-    await deleteScanResult(supabase, id, photoPath);
-    refreshRoster(selectedQuiz.id);
+    try {
+      await deleteScanResult(supabase, id, photoPath);
+      refreshRoster(selectedQuiz.id);
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'ลบผลสแกนไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    }
   }
 
   async function handleViewPhoto(photoPath) {

@@ -12,6 +12,7 @@
 // pipeline lives in OMRScanTool.jsx, not here.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
@@ -323,8 +324,12 @@ export default function OMRPrepareTool() {
   }
 
   async function handleDeleteResult(id, photoPath) {
-    await deleteScanResult(supabase, id, photoPath);
-    refreshRoster(quizId);
+    try {
+      await deleteScanResult(supabase, id, photoPath);
+      refreshRoster(quizId);
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'ลบผลสแกนไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    }
   }
 
   async function handleViewPhoto(photoPath) {

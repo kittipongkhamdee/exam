@@ -206,7 +206,6 @@ export default function StudentExamTool() {
   const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted' | 'result'
   const [pin, setPin] = useState(savedSession?.pin || '');
   const [studentCode, setStudentCode] = useState(savedSession?.studentCode || '');
-  const [loginError, setLoginError] = useState(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
 
@@ -629,7 +628,6 @@ export default function StudentExamTool() {
   }
 
   async function login(pinVal, studentCodeVal, opts = {}) {
-    setLoginError(null);
     setLoggingIn(true);
     try {
       const { data, error } = await supabase.rpc('start_exam_attempt', {
@@ -669,9 +667,15 @@ export default function StudentExamTool() {
       setPhase('exam');
     } catch (err) {
       const code = err?.message?.trim();
-      setLoginError(ERROR_MESSAGES[code] || 'เข้าสอบไม่สำเร็จ กรุณาตรวจสอบ PIN และเลขประจำตัวนักเรียน');
       clearSession();
       setPhase('login');
+      Swal.fire({
+        icon: 'error',
+        title: 'เข้าสอบไม่สำเร็จ',
+        text: ERROR_MESSAGES[code] || 'กรุณาตรวจสอบ PIN และเลขประจำตัวนักเรียน',
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#4f46e5',
+      });
     } finally {
       setLoggingIn(false);
     }
@@ -716,7 +720,6 @@ export default function StudentExamTool() {
     setAttempt(null);
     setPin('');
     setStudentCode('');
-    setLoginError(null);
     setPhase('login');
   }
 
@@ -798,7 +801,6 @@ export default function StudentExamTool() {
                 placeholder="เลขประจำตัวนักเรียน"
               />
             </div>
-            {loginError && <div className="text-sm text-red-600">{loginError}</div>}
             <button type="submit" className={btn} disabled={loggingIn}>
               {loggingIn ? 'กำลังตรวจสอบ...' : 'เข้าสอบ'}
             </button>

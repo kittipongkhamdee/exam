@@ -150,16 +150,18 @@ function ClockIcon(props) {
 
 // The school/system logo when the admin has uploaded one (Settings →
 // ชื่อระบบ คำอธิบาย และโลโก้), falling back to the same clock badge as
-// before when there isn't one — img over the plain badge background so a
-// non-square logo still sits centered without distortion.
+// before when there isn't one. The uploaded logo is typically its own
+// already-designed badge with a transparent background, so it's shown
+// plain (no gradient/shadow box behind it, which would otherwise show
+// through the transparent parts) — only the clock-icon fallback gets the
+// colored badge treatment.
 function LogoBadge({ logoUrl, animate }) {
+  if (logoUrl) {
+    return <img src={logoUrl} alt="" className={'h-14 w-14 object-contain mb-3' + (animate ? ' animate-pulse' : '')} />;
+  }
   return (
-    <div className={'h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3 overflow-hidden' + (animate ? ' animate-pulse' : '')}>
-      {logoUrl ? (
-        <img src={logoUrl} alt="" className="h-full w-full object-cover" />
-      ) : (
-        <ClockIcon className="h-7 w-7 text-white" />
-      )}
+    <div className={'h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3' + (animate ? ' animate-pulse' : '')}>
+      <ClockIcon className="h-7 w-7 text-white" />
     </div>
   );
 }

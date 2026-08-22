@@ -237,7 +237,7 @@ export async function listMyExamRounds(supabase, opts = {}) {
   const { data, error } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, auto_reveal_results, schedule_type, created_at,
+      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, auto_reveal_results, require_location, schedule_type, created_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .in('exam_set_id', examSetIds)
@@ -249,9 +249,9 @@ export async function listMyExamRounds(supabase, opts = {}) {
 /**
  * Create or update a รอบสอบ.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc', autoRevealResults?: boolean }} args
+ * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc', autoRevealResults?: boolean, requireLocation?: boolean }} args
  */
-export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType, autoRevealResults }) {
+export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType, autoRevealResults, requireLocation }) {
   const { data: { user } } = await supabase.auth.getUser();
   const row = {
     exam_set_id: examSetId,
@@ -262,6 +262,7 @@ export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, o
     duration_minutes: durationMinutes,
     schedule_type: scheduleType || 'adhoc',
     auto_reveal_results: !!autoRevealResults,
+    require_location: !!requireLocation,
   };
   if (id) {
     const { error } = await supabase.from('online_exam_rounds').update(row).eq('id', id);

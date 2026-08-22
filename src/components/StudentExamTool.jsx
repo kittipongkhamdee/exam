@@ -140,6 +140,15 @@ function AlertIcon(props) {
   );
 }
 
+function MapPinIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
 function ClockIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -204,7 +213,7 @@ export default function StudentExamTool() {
   const [inAppBrowser] = useState(() => detectInAppBrowser());
   const [linkCopied, setLinkCopied] = useState(false);
   const [savedSession] = useState(() => (typeof window !== 'undefined' ? loadSession() : null));
-  const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'exam' | 'submitted' | 'result'
+  const [phase, setPhase] = useState(savedSession ? 'resuming' : 'login'); // 'login' | 'resuming' | 'locating' | 'exam' | 'submitted' | 'result'
   const [pin, setPin] = useState(savedSession?.pin || '');
   const [studentCode, setStudentCode] = useState(savedSession?.studentCode || '');
   const [loggingIn, setLoggingIn] = useState(false);
@@ -521,34 +530,54 @@ export default function StudentExamTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Optional, admin-toggled proximity check: reports this device's own
-  // location once at exam start — never re-requested, never continuously
-  // tracked — purely so the live monitor can flag students sitting closer
-  // together than the admin's configured minimum for the proctoring
-  // teacher to judge (see ExamMonitorTool.jsx and saveAttemptLocation in
-  // exam-db.js). Entirely best-effort and silent: a denied/unavailable
-  // permission, an unsupported browser, or a fetch/save failure all just
-  // skip the feature — this must never block or interrupt the exam itself.
-  const locationCapturedRef = useRef(false);
-  useEffect(() => {
-    if (phase !== 'exam' || !attempt?.attempt_id || locationCapturedRef.current) return;
-    locationCapturedRef.current = true;
-    (async () => {
-      try {
-        const enabled = await getConfigValue(supabase, 'exam_proximity_check_enabled');
-        if (enabled !== 'true' || !navigator.geolocation) return;
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            saveAttemptLocation(supabase, attempt.attempt_id, pos.coords.latitude, pos.coords.longitude).catch(() => {});
-          },
-          () => {}, // denied/unavailable — nothing to do, exam proceeds normally
-          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+  // Per-รอบสอบ, teacher-toggled (ExamScheduleTool's "บังคับแชร์ตำแหน่งก่อนเข้าสอบ")
+  // proximity-check requirement: when the round demands it, phase gates on
+  // 'locating' until the location is captured and saved — see login()
+  // below deciding that transition from start_exam_attempt's returned
+  // require_location/has_location, and the phase === 'locating' screen
+  // near the end of this component. Deliberately a hard requirement (no
+  // silent skip) per how this round was configured; requestLocation is
+  // re-triggerable so a student who denied by accident, or whose GPS
+  // fix failed, isn't permanently stuck without at least a retry path.
+  const [locatingError, setLocatingError] = useState(null);
+  const [locatingBusy, setLocatingBusy] = useState(false);
+
+  function requestLocation() {
+    if (!attempt?.attempt_id) return;
+    setLocatingError(null);
+    setLocatingBusy(true);
+    if (!navigator.geolocation) {
+      setLocatingBusy(false);
+      setLocatingError('อุปกรณ์หรือเบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง — ลองเปลี่ยนเบราว์เซอร์หรืออุปกรณ์');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await saveAttemptLocation(supabase, attempt.attempt_id, pos.coords.latitude, pos.coords.longitude);
+          setPhase('exam');
+        } catch (err) {
+          setLocatingError(err.message || 'บันทึกตำแหน่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        } finally {
+          setLocatingBusy(false);
+        }
+      },
+      (err) => {
+        setLocatingBusy(false);
+        setLocatingError(
+          err.code === 1
+            ? 'คุณปฏิเสธการแชร์ตำแหน่ง — เปิดสิทธิ์ตำแหน่งให้เว็บนี้ในการตั้งค่าเบราว์เซอร์ (ไอคอนแม่กุญแจข้างที่อยู่เว็บ) แล้วกดลองใหม่'
+            : 'ระบุตำแหน่งไม่สำเร็จ — ตรวจสอบว่าเปิด GPS/บริการตำแหน่งของอุปกรณ์แล้ว แล้วลองใหม่'
         );
-      } catch {
-        // best-effort — a config-fetch failure just skips the feature silently
-      }
-    })();
-  }, [phase, attempt?.attempt_id]);
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
+  useEffect(() => {
+    if (phase === 'locating') requestLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   // Shown once per manual login (not the silent refresh-resume path — see
   // handleLogin vs. the resume useEffect below) so a student can't miss
@@ -710,7 +739,7 @@ export default function StudentExamTool() {
       setAttempt(data);
       setAnswers(loadDraft(data.attempt_id));
       setNow(Date.now());
-      setPhase('exam');
+      setPhase(data.require_location && !data.has_location ? 'locating' : 'exam');
     } catch (err) {
       const code = err?.message?.trim();
       clearSession();
@@ -814,6 +843,31 @@ export default function StudentExamTool() {
         <div className="flex flex-col items-center text-center">
           <LogoBadge logoUrl={logoUrl} animate />
           <p className="text-sm text-gray-500">กำลังเข้าสอบต่อ...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'locating') {
+    return (
+      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+        <div className={card + ' w-full max-w-sm text-center'}>
+          <div className="h-14 w-14 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
+            <MapPinIcon className="h-8 w-8" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900">รอบสอบนี้ต้องแชร์ตำแหน่งก่อนเข้าสอบ</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            กรุณากดอนุญาตเมื่อเบราว์เซอร์ขอสิทธิ์เข้าถึงตำแหน่ง — ใช้เพื่อตรวจสอบเบื้องต้นเท่านั้น เข้าสอบไม่ได้จนกว่าจะแชร์ตำแหน่งสำเร็จ
+          </p>
+          {locatingError && (
+            <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-left">{locatingError}</div>
+          )}
+          <button type="button" className={btn + ' mt-4'} disabled={locatingBusy} onClick={requestLocation}>
+            {locatingBusy ? 'กำลังขอตำแหน่ง...' : 'ลองอีกครั้ง'}
+          </button>
+          <button type="button" onClick={handleLogout} className="mt-3 text-[11px] text-gray-400 hover:text-gray-600 underline">
+            ออกจากระบบ
+          </button>
         </div>
       </div>
     );

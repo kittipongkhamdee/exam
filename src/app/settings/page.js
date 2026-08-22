@@ -515,17 +515,16 @@ function ExamSecurityPanel() {
   );
 }
 
-// Reads/writes public.config's exam_proximity_check_enabled/
-// exam_proximity_min_distance_m rows — read client-side by StudentExamTool
-// (the enabled flag only, via a narrow anon-read RLS policy) to decide
-// whether to ask a student's browser for its one-time location at exam
-// start, and by ExamMonitorTool (both values, as any signed-in teacher) to
-// flag students sitting closer together than this minimum. Deliberately a
-// system-wide toggle, not per-รอบสอบ — matches max_exam_violations above.
+// Reads/writes public.config's exam_proximity_min_distance_m row — the
+// system-wide minimum-distance threshold ExamMonitorTool flags on. Whether
+// this feature runs at all is a per-รอบสอบ choice now ("บังคับแชร์ตำแหน่ง
+// ก่อนเข้าสอบ" in ExamScheduleTool, stored as online_exam_rounds.
+// require_location), not a global switch here — a teacher scheduling an
+// in-school exam shouldn't have to fight a system-wide toggle meant for
+// at-home exams.
 const DEFAULT_PROXIMITY_MIN_DISTANCE_M = 15;
 
 function ExamProximityCheckPanel() {
-  const [enabled, setEnabled] = useState(false);
   const [minDistance, setMinDistance] = useState(String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -535,12 +534,8 @@ function ExamProximityCheckPanel() {
   useEffect(() => {
     (async () => {
       try {
-        const [storedEnabled, storedDistance] = await Promise.all([
-          getConfigValue(supabase, 'exam_proximity_check_enabled'),
-          getConfigValue(supabase, 'exam_proximity_min_distance_m'),
-        ]);
-        setEnabled(storedEnabled === 'true');
-        setMinDistance(storedDistance || String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
+        const stored = await getConfigValue(supabase, 'exam_proximity_min_distance_m');
+        setMinDistance(stored || String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
       } catch (err) {
         setError(err.message || 'โหลดค่าไม่สำเร็จ');
       } finally {
@@ -559,10 +554,7 @@ function ExamProximityCheckPanel() {
     setSaved(false);
     setError(null);
     try {
-      await Promise.all([
-        setConfigValue(supabase, 'exam_proximity_check_enabled', enabled ? 'true' : 'false'),
-        setConfigValue(supabase, 'exam_proximity_min_distance_m', String(n)),
-      ]);
+      await setConfigValue(supabase, 'exam_proximity_min_distance_m', String(n));
       setSaved(true);
     } catch (err) {
       setError(err.message || 'บันทึกไม่สำเร็จ');
@@ -580,22 +572,12 @@ function ExamProximityCheckPanel() {
         <div className="font-semibold text-gray-900">ตรวจสอบตำแหน่งนักเรียน (สอบที่บ้าน)</div>
       </div>
       <p className="mt-1 text-sm text-gray-500 mb-4">
-        เมื่อเปิดไว้ นักเรียนจะถูกขออนุญาตแชร์ตำแหน่งครั้งเดียวตอนเริ่มสอบ (ไม่บังคับ ปฏิเสธได้ ไม่กระทบการสอบ) — ถ้านักเรียนสองคนขึ้นไปในรอบสอบเดียวกันอยู่ใกล้กันน้อยกว่าระยะที่กำหนด ระบบจะขึ้นป้ายเตือนในหน้าคุมสอบให้ครูตรวจสอบเอง ไม่ได้บล็อกการสอบอัตโนมัติ (ครูเป็นผู้ตัดสินใจบล็อกเองถ้าเห็นว่าผิดปกติจริง)
+        เปิด/ปิดฟีเจอร์นี้ต่อรอบสอบได้ที่หน้า &quot;จัดสอบ&quot; ("บังคับแชร์ตำแหน่งก่อนเข้าสอบ") — เมื่อเปิดไว้ นักเรียนต้องอนุญาตแชร์ตำแหน่งจึงจะเข้าสอบได้ ถ้านักเรียนสองคนขึ้นไปในรอบสอบเดียวกันอยู่ใกล้กันน้อยกว่าระยะที่ตั้งไว้ด้านล่างนี้ ระบบจะขึ้นป้ายเตือนในหน้าคุมสอบให้ครูตรวจสอบเอง ไม่ได้บล็อกการสอบอัตโนมัติ (ครูเป็นผู้ตัดสินใจบล็อกเองถ้าเห็นว่าผิดปกติจริง)
       </p>
       {loading ? (
         <div className="text-sm text-gray-500">กำลังโหลด...</div>
       ) : (
         <>
-          <label className="flex items-center gap-3 cursor-pointer select-none mb-3">
-            <span
-              role="switch" aria-checked={enabled}
-              onClick={() => { setEnabled(v => !v); setSaved(false); }}
-              className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " + (enabled ? 'bg-indigo-600' : 'bg-gray-300')}
-            >
-              <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (enabled ? 'translate-x-6' : 'translate-x-1')} />
-            </span>
-            <span className="text-sm text-gray-700">เปิดใช้งานการตรวจสอบตำแหน่ง</span>
-          </label>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">แจ้งเตือนเมื่อห่างกันน้อยกว่า</label>
             <input

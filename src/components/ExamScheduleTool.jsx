@@ -229,6 +229,7 @@ export default function ExamScheduleTool() {
   const [unlockPin, setUnlockPin] = useState(() => generatePin());
   const [scheduleType, setScheduleType] = useState('adhoc');
   const [autoRevealResults, setAutoRevealResults] = useState(false);
+  const [requireLocation, setRequireLocation] = useState(false);
   const [editingRoundId, setEditingRoundId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -284,6 +285,7 @@ export default function ExamScheduleTool() {
     setUnlockPin(generatePin());
     setScheduleType('adhoc');
     setAutoRevealResults(false);
+    setRequireLocation(false);
     setFormError(null);
   }
 
@@ -297,6 +299,7 @@ export default function ExamScheduleTool() {
     setUnlockPin(r.unlock_pin);
     setScheduleType(r.schedule_type || 'adhoc');
     setAutoRevealResults(!!r.auto_reveal_results);
+    setRequireLocation(!!r.require_location);
     setFormError(null);
   }
 
@@ -321,6 +324,7 @@ export default function ExamScheduleTool() {
         durationMinutes: Number(durationMinutes),
         scheduleType,
         autoRevealResults,
+        requireLocation,
       });
       resetForm();
       refreshRounds();
@@ -457,6 +461,16 @@ export default function ExamScheduleTool() {
               </p>
             </div>
 
+            <div className={field + ' mt-3'}>
+              <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={requireLocation} onChange={e => setRequireLocation(e.target.checked)} />
+                บังคับแชร์ตำแหน่งก่อนเข้าสอบ (สำหรับสอบที่บ้าน)
+              </label>
+              <p className="text-xs text-gray-400 mt-0.5">
+                นักเรียนต้องกดอนุญาตแชร์ตำแหน่งก่อนจึงจะเริ่มทำข้อสอบได้ — ถ้าปฏิเสธหรืออุปกรณ์หา GPS ไม่ได้ จะเข้าสอบไม่ได้เด็ดขาด (ต้องลองใหม่จนกว่าจะสำเร็จ) ใช้ระยะห่างขั้นต่ำที่ตั้งไว้ที่หน้าตั้งค่า — ปกติเปิดเฉพาะรอบที่ให้นักเรียนสอบจากที่บ้าน ไม่จำเป็นสำหรับรอบที่สอบในโรงเรียน
+              </p>
+            </div>
+
             {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -511,6 +525,9 @@ export default function ExamScheduleTool() {
                             <span className="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: {r.unlock_pin}</span>
                             {r.auto_reveal_results && (
                               <span className={pill + ' bg-emerald-50 text-emerald-700'}>เผยผลอัตโนมัติ</span>
+                            )}
+                            {r.require_location && (
+                              <span className={pill + ' bg-rose-50 text-rose-700'}>บังคับแชร์ตำแหน่ง</span>
                             )}
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">

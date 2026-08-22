@@ -89,7 +89,7 @@ function ScheduleTable({ rows, className }) {
 // pills) that only makes sense on a monitor.
 function PrintableSchedule({ date, groups }) {
   return (
-    <div className="hidden print:block p-6">
+    <div className="hidden print:block print:font-sans p-6">
       <h1 className="text-lg font-bold mb-1">ตารางคุมสอบ</h1>
       <p className="text-sm text-gray-600 mb-4">วันที่ {formatThaiDate(date)}</p>
       {groups.length === 0 ? (

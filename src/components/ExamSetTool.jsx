@@ -13,6 +13,7 @@ import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, sy
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
 import { generateExamQuestionPaperDocx } from '../lib/exam-docx';
 import { getConfigValue } from '../lib/config-db';
+import { formatGradeRoom } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 function defaultInstructions(numQuestions, totalScore) {
@@ -165,7 +166,7 @@ function CopyExamSetDialog({ open, initial, subjectOptions, onCancel, onConfirm,
             <select className={inputCls} value={form.targetSubjectId} onChange={e => update('targetSubjectId', e.target.value)}>
               <option value="">— เลือกวิชา/ห้อง —</option>
               {subjectOptions.map(s => (
-                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
+                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
               ))}
             </select>
             {subjectOptions.length === 0 && (
@@ -279,7 +280,7 @@ function CopyIcon(props) {
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
-    const key = `${item.subjects?.subject_name} (ชั้น ${item.subjects?.grade_level}/${item.subjects?.room})`;
+    const key = `${item.subjects?.subject_name} (ชั้น ${formatGradeRoom(item.subjects?.grade_level, item.subjects?.room)})`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
@@ -581,7 +582,7 @@ export default function ExamSetTool() {
       const target = subjects.find(s => s.id === form.targetSubjectId);
       Swal.fire({
         icon: 'success', title: 'คัดลอกชุดข้อสอบแล้ว',
-        text: target ? `คัดลอกไปที่ ${target.subject_name} (ชั้น ${target.grade_level}/${target.room}) แล้ว — ไปตั้งรอบสอบ/PIN ของห้องนั้นต่อได้ที่ "จัดสอบ"` : undefined,
+        text: target ? `คัดลอกไปที่ ${target.subject_name} (ชั้น ${formatGradeRoom(target.grade_level, target.room)}) แล้ว — ไปตั้งรอบสอบ/PIN ของห้องนั้นต่อได้ที่ "จัดสอบ"` : undefined,
       });
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'คัดลอกชุดข้อสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
@@ -624,7 +625,7 @@ export default function ExamSetTool() {
             <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSelectedIds([]); }}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
-                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
+                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
               ))}
             </select>
           </div>

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound } from '../lib/exam-db';
+import { formatGradeRoom } from '../lib/format';
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
 
@@ -154,7 +155,7 @@ export default function ExamReportTool() {
     return {
       fileTitle: `วิเคราะห์คุณภาพข้อสอบ-${report.exam_set_title}`,
       title: report.exam_set_title,
-      subjectLine: `${report.subject_name} (ชั้น ${report.grade_level}/${report.room})`,
+      subjectLine: `${report.subject_name} (ชั้น ${formatGradeRoom(report.grade_level, report.room)})`,
       analysis: itemAnalysis,
       rowLabels: (itemAnalysis?.questionTexts || []).map((text, i) => `ข้อ ${i + 1}${text ? ' — ' + text : ''}`),
     };
@@ -201,7 +202,7 @@ export default function ExamReportTool() {
               <option value="">— เลือกรอบสอบ —</option>
               {rounds.map(r => (
                 <option key={r.id} value={r.id}>
-                  {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {r.online_exam_sets?.subjects?.grade_level}/{r.online_exam_sets?.subjects?.room}) · {formatThai(r.opens_at)}
+                  {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThai(r.opens_at)}
                   {viewAllTeachers && ` · ครู ${r.teacherName || '(ไม่ระบุชื่อ)'}`}
                 </option>
               ))}
@@ -220,7 +221,7 @@ export default function ExamReportTool() {
               <div>
                 <div className="font-semibold text-gray-900">{report.exam_set_title}</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {report.subject_name} (ชั้น {report.grade_level}/{report.room}) · {formatThai(report.opens_at)} – {formatThai(report.closes_at)}
+                  {report.subject_name} (ชั้น {formatGradeRoom(report.grade_level, report.room)}) · {formatThai(report.opens_at)} – {formatThai(report.closes_at)}
                 </div>
               </div>
               <button type="button" className={btn} onClick={handleToggleVisible} disabled={togglingVisible}>

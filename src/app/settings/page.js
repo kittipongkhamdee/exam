@@ -13,6 +13,7 @@ import {
   listGradeRoomOptions, listAllTeachers, listExamAuditLog, EXAM_AUDIT_ACTION_LABEL,
 } from '@/lib/exam-db';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { formatGradeRoom } from '@/lib/format';
 
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
 
@@ -187,7 +188,7 @@ function ScanPhotosPanel() {
                         {p.students?.student_code} {formatStudentName(p.students)}
                       </div>
                       <div className="text-xs text-gray-500 truncate">
-                        {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} (ชั้น {p.omr_quizzes?.subjects?.grade_level}/{p.omr_quizzes?.subjects?.room})
+                        {p.omr_quizzes?.title} · {p.omr_quizzes?.subjects?.subject_name} (ชั้น {formatGradeRoom(p.omr_quizzes?.subjects?.grade_level, p.omr_quizzes?.subjects?.room)})
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -291,7 +292,7 @@ function QuizzesPanel() {
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 truncate">{i + 1}. {q.title}</div>
                       <div className="text-xs text-gray-500 truncate">
-                        {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                        {q.subjects?.subject_name} (ชั้น {formatGradeRoom(q.subjects?.grade_level, q.subjects?.room)}) · {q.num_questions} ข้อ
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -597,7 +598,7 @@ function ExamProctorAssignmentPanel() {
             <option value="">— เลือกชั้น/ห้อง —</option>
             {gradeRoomOptions.map(o => (
               <option key={`${o.grade_level}|${o.room}`} value={`${o.grade_level}|${o.room}`}>
-                ชั้น {o.grade_level}/{o.room}
+                ชั้น {formatGradeRoom(o.grade_level, o.room)}
               </option>
             ))}
           </select>
@@ -633,7 +634,7 @@ function ExamProctorAssignmentPanel() {
             {assignments.map(a => (
               <div key={a.id} className="flex items-center justify-between gap-3 text-sm px-3 py-2">
                 <div>
-                  <span className="font-semibold text-gray-900">ชั้น {a.grade_level}/{a.room}</span>
+                  <span className="font-semibold text-gray-900">ชั้น {formatGradeRoom(a.grade_level, a.room)}</span>
                   <span className="text-gray-500"> — {a.profiles?.full_name || '(ไม่ระบุชื่อ)'}</span>
                 </div>
                 <button className={btnTiny} onClick={() => handleRemove(a.id)}>ลบ</button>

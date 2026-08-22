@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion, uploadBankQuestionImage, getBankQuestionImageUrl, deleteBankQuestionImage } from '../lib/bank-db';
 import { downloadBankQuestionTemplate, parseBankQuestionCsv } from '../lib/bank-import';
+import { formatGradeRoom } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 const DIFFICULTIES = [
@@ -132,7 +133,7 @@ function useExpandedGroups() {
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
-    const key = `${item.subjects?.subject_name} (ชั้น ${item.subjects?.grade_level}/${item.subjects?.room})`;
+    const key = `${item.subjects?.subject_name} (ชั้น ${formatGradeRoom(item.subjects?.grade_level, item.subjects?.room)})`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
@@ -560,7 +561,7 @@ export default function BankTool() {
             <select className={inputCls} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
-                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
+                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
               ))}
             </select>
           </div>

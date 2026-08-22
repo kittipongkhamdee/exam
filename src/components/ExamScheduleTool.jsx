@@ -18,6 +18,7 @@ import { flushSync } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { listMyExamSets, listMyExamRounds, saveExamRound, deleteExamRound, generatePin } from '../lib/exam-db';
 import { qrSvgPath } from '../lib/qr';
+import { formatGradeRoom } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 function QrCode({ value, className }) {
@@ -151,7 +152,7 @@ function PrintableStudentSigns({ rounds, active, origin }) {
                 เข้าสอบออนไลน์
               </div>
               <h1 className="text-2xl font-extrabold text-gray-900 mb-1">
-                {subj?.subject_name} (ชั้น {subj?.grade_level}/{subj?.room})
+                {subj?.subject_name} (ชั้น {formatGradeRoom(subj?.grade_level, subj?.room)})
               </h1>
               <p className="text-sm text-gray-500 mb-6">
                 {r.online_exam_sets?.title}<br />
@@ -212,7 +213,7 @@ function groupBySubject(rounds) {
   const groups = new Map();
   for (const r of rounds) {
     const subj = r.online_exam_sets?.subjects;
-    const key = `${r.online_exam_sets?.title || ''} — ${subj?.subject_name} (ชั้น ${subj?.grade_level}/${subj?.room})`;
+    const key = `${r.online_exam_sets?.title || ''} — ${subj?.subject_name} (ชั้น ${formatGradeRoom(subj?.grade_level, subj?.room)})`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(r);
   }
@@ -381,7 +382,7 @@ export default function ExamScheduleTool() {
                   <option value="">— เลือกชุดข้อสอบ —</option>
                   {examSets.map(s => (
                     <option key={s.id} value={s.id}>
-                      {s.title} — {s.subjects?.subject_name} (ชั้น {s.subjects?.grade_level}/{s.subjects?.room}) · {s.question_count} ข้อ
+                      {s.title} — {s.subjects?.subject_name} (ชั้น {formatGradeRoom(s.subjects?.grade_level, s.subjects?.room)}) · {s.question_count} ข้อ
                     </option>
                   ))}
                 </select>

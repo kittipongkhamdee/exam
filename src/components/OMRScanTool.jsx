@@ -22,6 +22,7 @@ import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
 import { useAuth } from '../lib/AuthContext';
 import { formatStudentName } from '../lib/student-name';
+import { formatGradeRoom } from '../lib/format';
 
 // Every quiz remembers the paper format it was printed with (omr_quizzes.paper_layout,
 // .cols — see omr-db.js/getQuizWithAnswerKey), so scanning warps/reads against the
@@ -488,7 +489,7 @@ export default function OMRScanTool() {
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-gray-900 truncate">{i + 1}. {q.title}</div>
                 <div className="text-sm text-gray-500 mt-0.5 truncate">
-                  {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                  {q.subjects?.subject_name} (ชั้น {formatGradeRoom(q.subjects?.grade_level, q.subjects?.room)}) · {q.num_questions} ข้อ
                 </div>
               </div>
               <ChevronRightIcon className="h-4 w-4 text-gray-300 shrink-0" />
@@ -513,7 +514,7 @@ export default function OMRScanTool() {
         )}
         <h2 className="text-base font-semibold mb-3 mt-4">เลือกนักเรียนเจ้าของกระดาษคำตอบ</h2>
         {students.length === 0 ? (
-          <div className="text-sm text-gray-500">ไม่พบนักเรียนของวิชานี้ (ชั้น {selectedQuiz.gradeLevel}/{selectedQuiz.room})</div>
+          <div className="text-sm text-gray-500">ไม่พบนักเรียนของวิชานี้ (ชั้น {formatGradeRoom(selectedQuiz.gradeLevel, selectedQuiz.room)})</div>
         ) : (
           <div className="space-y-1.5">
             {students.map(st => {
@@ -689,7 +690,7 @@ function QuizHeader({ quiz, onChangeQuiz, scannedCount, totalCount }) {
         </div>
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 truncate">{quiz.title}</div>
-          <div className="text-xs text-gray-500">{quiz.subjectName} (ชั้น {quiz.gradeLevel}/{quiz.room}) · สแกนแล้ว {scannedCount}/{totalCount}</div>
+          <div className="text-xs text-gray-500">{quiz.subjectName} (ชั้น {formatGradeRoom(quiz.gradeLevel, quiz.room)}) · สแกนแล้ว {scannedCount}/{totalCount}</div>
         </div>
       </div>
       <button className="text-xs font-semibold text-indigo-600 shrink-0" onClick={onChangeQuiz}>เปลี่ยนชุดข้อสอบ</button>

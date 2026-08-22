@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { listMyQuizzes, listMyRecentScanActivity, getMyScanStats } from '@/lib/omr-db';
 import { listMyExamSets, listMyExamRounds } from '@/lib/exam-db';
 import { formatStudentName } from '@/lib/student-name';
+import { formatGradeRoom } from '@/lib/format';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5';
 
@@ -211,7 +212,7 @@ function RecentActivityCard({ data, loading }) {
                   {formatStudentName(r.students)}
                 </div>
                 <div className="text-xs text-gray-500 truncate">
-                  {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} (ชั้น {r.omr_quizzes?.subjects?.grade_level}/{r.omr_quizzes?.subjects?.room})
+                  {r.omr_quizzes?.title} · {r.omr_quizzes?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.omr_quizzes?.subjects?.grade_level, r.omr_quizzes?.subjects?.room)})
                 </div>
               </div>
               <div className={"text-sm font-bold shrink-0 " + scoreColor(r.score)}>{r.score}%</div>
@@ -321,7 +322,7 @@ function ExamActivityCard({ data, loading }) {
               <div className="min-w-0">
                 <div className="text-sm font-medium text-gray-900 truncate">{r.online_exam_sets?.title}</div>
                 <div className="text-xs text-gray-500 truncate">
-                  {r.online_exam_sets?.subjects?.subject_name} (ชั้น {r.online_exam_sets?.subjects?.grade_level}/{r.online_exam_sets?.subjects?.room}) · {formatThaiDateTime(r.opens_at)}
+                  {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThaiDateTime(r.opens_at)}
                 </div>
               </div>
               <span className={'text-xs font-bold shrink-0 px-2 py-0.5 rounded-full ' + (r.isActive ? ROUND_STATUS.active.cls : ROUND_STATUS.upcoming.cls)}>

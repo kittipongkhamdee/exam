@@ -745,7 +745,7 @@ export default function ExamSetTool() {
                         <div className="font-medium text-gray-900">{s.title}</div>
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 flex-wrap max-w-full shrink-0">
                         <button className={btnTiny} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
                           <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังโหลด...' : 'พิมพ์ข้อสอบ (A4)'}
                         </button>

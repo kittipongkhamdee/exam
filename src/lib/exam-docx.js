@@ -223,13 +223,9 @@ export async function generateExamQuestionPaperDocx(supabase, {
     ...letterheadChildren({ schoolName, examTitle, subjectLine, scoreTimeLine, logo }),
     ...instructionsBox(instructions),
     new Paragraph({
-      spacing: { before: 100 },
-      children: [new TextRun({ text: 'คำชี้แจง: เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว แล้วระบายคำตอบลงในกระดาษคำตอบที่แจก', size: '10.5pt', color: '555555' })],
-    }),
-    new Paragraph({
-      spacing: { before: 80, after: 80 },
+      spacing: { before: 100, after: 80 },
       border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC', space: 4 } },
-      children: [new TextRun({ text: 'ชื่อ-สกุล: ____________________________  ชั้น/ห้อง: __________  เลขที่: ______', size: '10.5pt' })],
+      children: [],
     }),
   ];
 

@@ -16,8 +16,8 @@
 // (rather than "ปรับปรุงหรือตัดทิ้ง") to mirror the item-analysis report
 // format already in use at the school.
 
-const DIFFICULTY_MIN = 0.20;
-const DIFFICULTY_MAX = 0.80;
+export const DIFFICULTY_MIN = 0.20;
+export const DIFFICULTY_MAX = 0.80;
 const DISCRIMINATION_MIN = 0.20;
 
 function mean(arr) {
@@ -90,4 +90,30 @@ export function analyzeItems(itemMatrix) {
   }
 
   return { items, kr20, n: numStudents };
+}
+
+// Automatic 1-5 star rating for a bank question, from its (possibly
+// multi-administration, sample-weighted) average difficulty p and
+// discrimination r — no teacher-set override, purely computed from the
+// same numbers already shown in ผลการวิเคราะห์คุณภาพข้อสอบ. The r
+// breakpoints follow the classical-test-theory discrimination scale
+// (Ebel, 1979: ≥0.40 excellent · 0.30-0.39 good · 0.20-0.29 fair ·
+// 0.10-0.19 poor · <0.10 discard); a difficulty outside the "ใช้ได้"
+// range (too easy/too hard) caps the result at 3 stars even when
+// discrimination alone would score higher, since a well-discriminating
+// item nobody gets right (or everybody does) still isn't a good item for
+// a typical test. Returns null when there's no discrimination data yet
+// (question never administered to ≥2 graded students).
+export function starRatingFromStats(avgP, avgR) {
+  if (avgR === null || avgR === undefined) return null;
+  let stars;
+  if (avgR >= 0.40) stars = 5;
+  else if (avgR >= 0.30) stars = 4;
+  else if (avgR >= 0.20) stars = 3;
+  else if (avgR >= 0.10) stars = 2;
+  else stars = 1;
+  if (avgP !== null && avgP !== undefined && (avgP < DIFFICULTY_MIN || avgP > DIFFICULTY_MAX)) {
+    stars = Math.min(stars, 3);
+  }
+  return stars;
 }

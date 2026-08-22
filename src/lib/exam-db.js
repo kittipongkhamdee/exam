@@ -58,7 +58,7 @@
 // these tables' own policies), not raw table RLS.
 
 import { createQuiz, deleteQuiz } from './omr-db';
-import { analyzeItems } from './item-analysis';
+import { analyzeItems, starRatingFromStats } from './item-analysis';
 import { formatStudentName } from './student-name';
 import { saveBankQuestions } from './bank-db';
 
@@ -851,6 +851,137 @@ export async function getItemAnalysisForRound(supabase, roundId) {
   );
 
   return { questionIds, questionTexts, ...analyzeItems(itemMatrix) };
+}
+
+/**
+ * Per-bank_question_id usage/quality stats for the คลังข้อสอบ list: how
+ * many รอบสอบ have used the question, plus an automatic 1-5 star rating
+ * (see starRatingFromStats in item-analysis.js) computed from its
+ * difficulty/discrimination pooled — sample-size-weighted — across every
+ * รอบสอบ that administered it and had ≥2 submitted attempts (the same
+ * minimum ItemAnalysisTable itself requires before showing a verdict).
+ * RLS on every table queried here already scopes rows to the caller's own
+ * subjects (or admin), so this never needs an explicit teacher filter —
+ * same reasoning as getItemAnalysisForRound above.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string[]} questionIds
+ * @returns {Promise<Record<string, { usageCount: number, sampleN: number, avgP: number|null, avgR: number|null, stars: number|null }>>}
+ */
+export async function getBankQuestionQualityStats(supabase, questionIds) {
+  const stats = {};
+  for (const qid of questionIds) stats[qid] = { usageCount: 0, sampleN: 0, avgP: null, avgR: null, stars: null };
+  if (!questionIds || questionIds.length === 0) return stats;
+
+  const { data: setQs, error: e1 } = await supabase
+    .from('online_exam_set_questions')
+    .select('bank_question_id, exam_set_id')
+    .in('bank_question_id', questionIds);
+  if (e1) throw e1;
+  if (!setQs || setQs.length === 0) return stats;
+
+  const setIdsByQuestion = new Map();
+  const allSetIds = new Set();
+  for (const row of setQs) {
+    if (!setIdsByQuestion.has(row.bank_question_id)) setIdsByQuestion.set(row.bank_question_id, new Set());
+    setIdsByQuestion.get(row.bank_question_id).add(row.exam_set_id);
+    allSetIds.add(row.exam_set_id);
+  }
+
+  const { data: rounds, error: e2 } = await supabase
+    .from('online_exam_rounds')
+    .select('id, exam_set_id')
+    .in('exam_set_id', [...allSetIds]);
+  if (e2) throw e2;
+
+  const roundsBySet = new Map();
+  for (const r of rounds || []) {
+    if (!roundsBySet.has(r.exam_set_id)) roundsBySet.set(r.exam_set_id, []);
+    roundsBySet.get(r.exam_set_id).push(r.id);
+  }
+  for (const [qid, setIds] of setIdsByQuestion) {
+    let count = 0;
+    for (const sid of setIds) count += (roundsBySet.get(sid) || []).length;
+    stats[qid].usageCount = count;
+  }
+  if (!rounds || rounds.length === 0) return stats;
+
+  const roundIds = rounds.map(r => r.id);
+  const { data: attempts, error: e3 } = await supabase
+    .from('online_exam_attempts')
+    .select('id, round_id')
+    .in('round_id', roundIds)
+    .not('submitted_at', 'is', null);
+  if (e3) throw e3;
+
+  const attemptsByRound = new Map();
+  for (const a of attempts || []) {
+    if (!attemptsByRound.has(a.round_id)) attemptsByRound.set(a.round_id, []);
+    attemptsByRound.get(a.round_id).push(a.id);
+  }
+
+  const qualifyingRounds = rounds.filter(r => (attemptsByRound.get(r.id)?.length || 0) >= 2);
+  if (qualifyingRounds.length === 0) return stats;
+
+  const qualifyingSetIds = [...new Set(qualifyingRounds.map(r => r.exam_set_id))];
+  const { data: allSetQs, error: e4 } = await supabase
+    .from('online_exam_set_questions')
+    .select('exam_set_id, seq, bank_question_id')
+    .in('exam_set_id', qualifyingSetIds)
+    .order('seq', { ascending: true });
+  if (e4) throw e4;
+
+  const questionsBySet = new Map();
+  for (const row of allSetQs || []) {
+    if (!questionsBySet.has(row.exam_set_id)) questionsBySet.set(row.exam_set_id, []);
+    questionsBySet.get(row.exam_set_id).push(row.bank_question_id);
+  }
+
+  const qualifyingAttemptIds = qualifyingRounds.flatMap(r => attemptsByRound.get(r.id) || []);
+  const { data: answers, error: e5 } = await supabase
+    .from('online_exam_answers')
+    .select('attempt_id, bank_question_id, is_correct')
+    .in('attempt_id', qualifyingAttemptIds);
+  if (e5) throw e5;
+
+  const byAttemptThenQuestion = new Map();
+  for (const a of answers || []) {
+    if (!byAttemptThenQuestion.has(a.attempt_id)) byAttemptThenQuestion.set(a.attempt_id, new Map());
+    byAttemptThenQuestion.get(a.attempt_id).set(a.bank_question_id, a.is_correct ? 1 : 0);
+  }
+
+  const targetSet = new Set(questionIds);
+  const accum = new Map();
+
+  for (const round of qualifyingRounds) {
+    const qids = questionsBySet.get(round.exam_set_id) || [];
+    const attemptIds = attemptsByRound.get(round.id) || [];
+    const itemMatrix = qids.map(qid => attemptIds.map(aid => byAttemptThenQuestion.get(aid)?.get(qid) ?? 0));
+    const { items } = analyzeItems(itemMatrix);
+    const n = attemptIds.length;
+    qids.forEach((qid, i) => {
+      if (!targetSet.has(qid)) return;
+      if (!accum.has(qid)) accum.set(qid, { n: 0, sumPN: 0, pWeight: 0, sumRN: 0, rWeight: 0 });
+      const acc = accum.get(qid);
+      const it = items[i];
+      acc.n += n;
+      if (it.p !== null) { acc.sumPN += it.p * n; acc.pWeight += n; }
+      if (it.r !== null) { acc.sumRN += it.r * n; acc.rWeight += n; }
+    });
+  }
+
+  for (const [qid, acc] of accum) {
+    const avgP = acc.pWeight > 0 ? acc.sumPN / acc.pWeight : null;
+    const avgR = acc.rWeight > 0 ? acc.sumRN / acc.rWeight : null;
+    stats[qid] = {
+      usageCount: stats[qid].usageCount,
+      sampleN: acc.n,
+      avgP,
+      avgR,
+      stars: starRatingFromStats(avgP, avgR),
+    };
+  }
+
+  return stats;
 }
 
 // ---------------------------------------------------------------------

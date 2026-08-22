@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion, uploadBankQuestionImage, getBankQuestionImageUrl, deleteBankQuestionImage } from '../lib/bank-db';
+import { getBankQuestionQualityStats } from '../lib/exam-db';
 import { downloadBankQuestionTemplate, parseBankQuestionCsv } from '../lib/bank-import';
 import { formatGradeRoom } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
@@ -119,6 +120,22 @@ function DownloadIcon(props) {
 }
 
 const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
+
+// 1-5 star rating computed automatically from the question's pooled
+// difficulty/discrimination across every รอบสอบ it's been used in (see
+// getBankQuestionQualityStats/starRatingFromStats) — nothing here is
+// teacher-editable, it just visualizes the number the backend computed.
+function StarRating({ stars }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" title={`${stars}/5 ดาว จากค่าความยาก/อำนาจจำแนกที่วัดได้จริง`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <svg key={i} viewBox="0 0 24 24" className={'h-3.5 w-3.5 ' + (i < stars ? 'fill-amber-400' : 'fill-gray-200')}>
+          <path d="M12 2.5l2.9 6.2 6.8.7-5.1 4.6 1.5 6.7L12 17.3l-6.1 3.4 1.5-6.7-5.1-4.6 6.8-.7L12 2.5z" />
+        </svg>
+      ))}
+    </span>
+  );
+}
 
 function useExpandedGroups() {
   const [expanded, setExpanded] = useState(new Set());
@@ -233,6 +250,7 @@ export default function BankTool() {
 
   const [bankQuestions, setBankQuestions] = useState([]);
   const [bankLoading, setBankLoading] = useState(true);
+  const [qualityStats, setQualityStats] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, toggleGroup] = useExpandedGroups();
@@ -244,16 +262,34 @@ export default function BankTool() {
 
   const selectedSubject = subjects.find(s => s.id === subjectId) || null;
 
+  // Best-effort and independent of the bank list load itself — a slow or
+  // failed stats query should never block the question list from showing,
+  // it just means the star/usage badges stay off for this refresh.
+  const refreshQualityStats = useCallback(async (questions) => {
+    const ids = questions.map(q => q.id);
+    if (ids.length === 0) {
+      setQualityStats({});
+      return;
+    }
+    try {
+      setQualityStats(await getBankQuestionQualityStats(supabase, ids));
+    } catch {
+      // best-effort
+    }
+  }, []);
+
   const refreshBank = useCallback(async () => {
     setBankLoading(true);
     try {
-      setBankQuestions(await listMyBankQuestions(supabase));
+      const list = await listMyBankQuestions(supabase);
+      setBankQuestions(list);
+      refreshQualityStats(list);
     } catch {
       // best-effort — the generator above still works
     } finally {
       setBankLoading(false);
     }
-  }, []);
+  }, [refreshQualityStats]);
 
   useEffect(() => {
     (async () => {
@@ -875,6 +911,14 @@ export default function BankTool() {
                               {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
                               <span>{q.num_choices} ตัวเลือก</span>
                             </div>
+                            {qualityStats[q.id] && (qualityStats[q.id].stars !== null || qualityStats[q.id].usageCount > 0) && (
+                              <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                {qualityStats[q.id].stars !== null && <StarRating stars={qualityStats[q.id].stars} />}
+                                {qualityStats[q.id].usageCount > 0 && (
+                                  <span className={pill + ' bg-sky-50 text-sky-700'}>ใช้ไปแล้ว {qualityStats[q.id].usageCount} รอบสอบ</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

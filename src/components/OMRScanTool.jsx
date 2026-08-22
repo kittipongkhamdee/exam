@@ -16,13 +16,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
-  findFiducialsWithOrientation, readBubbles, drawGradedOverlay,
+  findFiducialsWithOrientation, readBubbles, drawGradedOverlay, choiceLetters,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
 import { useAuth } from '../lib/AuthContext';
 import { formatStudentName } from '../lib/student-name';
-import { formatGradeRoom } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
 
 // Every quiz remembers the paper format it was printed with (omr_quizzes.paper_layout,
 // .cols — see omr-db.js/getQuizWithAnswerKey), so scanning warps/reads against the
@@ -106,6 +106,14 @@ export default function OMRScanTool() {
   const [saveResultError, setSaveResultError] = useState(null);
   const [savedResultId, setSavedResultId] = useState(null);
 
+  // Tapping an already-scanned student normally shows their existing
+  // result (score, per-question breakdown, saved photo) instead of the
+  // capture screen — showRescan is the escape hatch back to capturing a
+  // fresh photo (e.g. a misread sheet), scoped to just this student pick
+  // so it doesn't leak into the next one (reset inside resetScan).
+  const [showRescan, setShowRescan] = useState(false);
+  const [existingPhotoUrl, setExistingPhotoUrl] = useState(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -165,6 +173,7 @@ export default function OMRScanTool() {
     setScanStage('idle');
     setSavedResultId(null);
     setSaveResultError(null);
+    setShowRescan(false);
   }
 
   function pickStudent(id) {
@@ -385,6 +394,23 @@ export default function OMRScanTool() {
     ? matchStudentByDecodedId(students, scanResult.decodedId, selectedQuiz.idDigits)
     : null;
   const effectiveStudent = selectedStudent || matchedStudent;
+  // Most recent saved result for the picked student, if any — roster is
+  // already ordered newest-first (listScanResultsForQuiz), and a student
+  // can have more than one row (rescans intentionally add a new result
+  // rather than overwrite), so this is "what to show by default", not
+  // "the only result that exists".
+  const existingResult = selectedStudent ? (roster.find(r => r.students?.id === selectedStudent.id) || null) : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setExistingPhotoUrl(null);
+    if (!existingResult?.photo_path) return;
+    getScanPhotoUrl(supabase, existingResult.photo_path)
+      .then(url => { if (!cancelled) setExistingPhotoUrl(url); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [existingResult?.id, existingResult?.photo_path]);
+
   const gradeLevels = [...new Set(quizzes.map(q => q.subjects?.grade_level).filter(Boolean))];
   const filteredQuizzes = quizzes.filter(q => {
     if (gradeFilter && q.subjects?.grade_level !== gradeFilter) return false;
@@ -570,20 +596,35 @@ export default function OMRScanTool() {
           <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {formatStudentName(selectedStudent)}</div>
         )}
 
-        {!scanImage && (
-          <div className="flex flex-col gap-2">
-            <button className={btn + ' py-4 text-base inline-flex items-center justify-center gap-2'} onClick={openCamera}>
-              <CameraIcon className="h-5 w-5" /> ถ่ายภาพกระดาษคำตอบ
-            </button>
-            <button className={btnSecondary + ' inline-flex items-center justify-center gap-2'} onClick={() => fileInputRef.current.click()}>
-              <UploadIcon className="h-4 w-4" /> อัปโหลดรูปถ่าย
-            </button>
-            <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-          </div>
-        )}
-        {cameraError && <div className="text-xs text-red-600 mt-2">{cameraError}</div>}
+        {!scanImage && existingResult && !showRescan ? (
+          <ScannedResultDetail
+            result={existingResult}
+            quiz={selectedQuiz}
+            photoUrl={existingPhotoUrl}
+            onRescan={() => setShowRescan(true)}
+            onDelete={() => handleDeleteResult(existingResult.id, existingResult.photo_path)}
+          />
+        ) : (
+          <>
+            {!scanImage && (
+              <div className="flex flex-col gap-2">
+                <button className={btn + ' py-4 text-base inline-flex items-center justify-center gap-2'} onClick={openCamera}>
+                  <CameraIcon className="h-5 w-5" /> {existingResult ? 'สแกนซ้ำ' : 'ถ่ายภาพกระดาษคำตอบ'}
+                </button>
+                <button className={btnSecondary + ' inline-flex items-center justify-center gap-2'} onClick={() => fileInputRef.current.click()}>
+                  <UploadIcon className="h-4 w-4" /> อัปโหลดรูปถ่าย
+                </button>
+                {existingResult && (
+                  <button type="button" className="text-xs font-semibold text-gray-500 mt-1" onClick={() => setShowRescan(false)}>
+                    ← กลับไปดูผลเดิม
+                  </button>
+                )}
+                <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              </div>
+            )}
+            {cameraError && <div className="text-xs text-red-600 mt-2">{cameraError}</div>}
 
-        {cameraOpen && (
+            {cameraOpen && (
           <div className="mt-2">
             <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-black">
               <video ref={videoRef} playsInline muted className="w-full block" />
@@ -600,7 +641,7 @@ export default function OMRScanTool() {
 
         {scanImage && (
           <div className="mt-2">
-            <div className={imgwrap + ' max-w-[220px] mb-3'}>
+            <div className={imgwrap + ' mb-3'} style={{ width: 220 }}>
               <img src={gradedImageUrl || scanImage} alt="ภาพกระดาษคำตอบ" />
             </div>
 
@@ -655,6 +696,8 @@ export default function OMRScanTool() {
             )}
           </div>
         )}
+          </>
+        )}
       </div>
 
       <div className={card}>
@@ -676,6 +719,75 @@ export default function OMRScanTool() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Shown in place of the capture buttons when the picked student already
+// has a saved result — the score/photo/per-question breakdown a teacher
+// actually wants when re-opening someone already marked "สแกนแล้ว", instead
+// of being dropped straight back into "ถ่ายภาพกระดาษคำตอบ" as if nothing
+// had been scanned yet. `result` is one row from listScanResultsForQuiz
+// (aggregate total_correct/score + raw per-question `responses`, no stored
+// earnedPoints/totalPoints), so the points-weighted total is recomputed
+// here from `responses` against quiz.answerKey exactly like runScan does
+// for a live scan.
+function ScannedResultDetail({ result, quiz, photoUrl, onRescan, onDelete }) {
+  const letters = choiceLetters(quiz.choiceScheme, quiz.numChoices);
+  const byQuestion = new Map((result.responses || []).map(r => [r.question, r]));
+  let earnedPoints = 0, totalPoints = 0, blank = 0, ambiguous = 0;
+  const items = Array.from({ length: quiz.numQuestions }, (_, qi) => {
+    const resp = byQuestion.get(qi);
+    const entry = quiz.answerKey[qi];
+    const correctChoices = entry?.choices || [];
+    const points = entry?.points ?? 1;
+    totalPoints += points;
+    const isCorrect = !!resp && !resp.blank && !resp.ambiguous && correctChoices.includes(resp.choice);
+    if (isCorrect) earnedPoints += points;
+    if (!resp || resp.blank) blank++;
+    if (resp?.ambiguous) ambiguous++;
+    return {
+      qi,
+      isCorrect,
+      chosenLabel: resp && !resp.blank && resp.choice != null ? (letters[resp.choice] ?? '?') : '-',
+      correctLabel: correctChoices.map(c => letters[c] ?? '?').join('/'),
+    };
+  });
+
+  return (
+    <div>
+      {photoUrl && (
+        <div className={imgwrap + ' mb-3'} style={{ width: 220 }}>
+          <img src={photoUrl} alt="ภาพกระดาษคำตอบที่สแกน" />
+        </div>
+      )}
+      <div className="grid grid-cols-4 gap-2 mb-3">
+        <div className={stat}><div className={statN}>{earnedPoints}/{totalPoints}</div><div className={statL}>คะแนน ({result.score}%)</div></div>
+        <div className={stat}><div className={statN}>{result.total_correct}/{quiz.numQuestions}</div><div className={statL}>ข้อถูก</div></div>
+        <div className={stat}><div className={statN}>{blank}</div><div className={statL}>ไม่ตอบ</div></div>
+        <div className={stat}><div className={statN}>{ambiguous}</div><div className={statL}>ไม่ชัด</div></div>
+      </div>
+      <div className="text-xs text-gray-500 mb-2">สแกนเมื่อ {formatThaiDateTime(result.scanned_at)}</div>
+      <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5 mb-4">
+        {items.map(it => (
+          <div
+            key={it.qi}
+            className={"rounded-lg border text-center py-1.5 " + (it.isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50')}
+          >
+            <div className="text-[10px] text-gray-500">ข้อ {it.qi + 1}</div>
+            <div className={"text-sm font-bold " + (it.isCorrect ? 'text-green-700' : 'text-red-600')}>{it.chosenLabel}</div>
+            {!it.isCorrect && <div className="text-[9px] text-gray-500">เฉลย {it.correctLabel}</div>}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button className={btnSecondary + ' inline-flex items-center justify-center gap-2'} onClick={onRescan}>
+          <RefreshIcon className="h-4 w-4" /> สแกนซ้ำ
+        </button>
+        <button className={btnSecondary + ' inline-flex items-center justify-center gap-2 text-red-600'} onClick={onDelete}>
+          ลบผลนี้
+        </button>
       </div>
     </div>
   );

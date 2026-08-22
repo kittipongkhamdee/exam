@@ -414,6 +414,15 @@ function ShieldIcon(props) {
   );
 }
 
+function MapPinIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
 function UsersIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -494,6 +503,108 @@ function ExamSecurityPanel() {
               onChange={e => { setValue(e.target.value); setSaved(false); }}
             />
             <span className="text-sm text-gray-700">ครั้ง</span>
+            <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+          {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+          {saved && <div className="text-sm text-green-600 mt-2">บันทึกแล้ว</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Reads/writes public.config's exam_proximity_check_enabled/
+// exam_proximity_min_distance_m rows — read client-side by StudentExamTool
+// (the enabled flag only, via a narrow anon-read RLS policy) to decide
+// whether to ask a student's browser for its one-time location at exam
+// start, and by ExamMonitorTool (both values, as any signed-in teacher) to
+// flag students sitting closer together than this minimum. Deliberately a
+// system-wide toggle, not per-รอบสอบ — matches max_exam_violations above.
+const DEFAULT_PROXIMITY_MIN_DISTANCE_M = 15;
+
+function ExamProximityCheckPanel() {
+  const [enabled, setEnabled] = useState(false);
+  const [minDistance, setMinDistance] = useState(String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [storedEnabled, storedDistance] = await Promise.all([
+          getConfigValue(supabase, 'exam_proximity_check_enabled'),
+          getConfigValue(supabase, 'exam_proximity_min_distance_m'),
+        ]);
+        setEnabled(storedEnabled === 'true');
+        setMinDistance(storedDistance || String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
+      } catch (err) {
+        setError(err.message || 'โหลดค่าไม่สำเร็จ');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function handleSave() {
+    const n = Number(minDistance);
+    if (!Number.isFinite(n) || n < 1) {
+      setError('กรอกระยะห่างเป็นเมตร ตั้งแต่ 1 ขึ้นไป');
+      return;
+    }
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await Promise.all([
+        setConfigValue(supabase, 'exam_proximity_check_enabled', enabled ? 'true' : 'false'),
+        setConfigValue(supabase, 'exam_proximity_min_distance_m', String(n)),
+      ]);
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-rose-500 to-pink-500 text-white flex items-center justify-center shrink-0">
+          <MapPinIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">ตรวจสอบตำแหน่งนักเรียน (สอบที่บ้าน)</div>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        เมื่อเปิดไว้ นักเรียนจะถูกขออนุญาตแชร์ตำแหน่งครั้งเดียวตอนเริ่มสอบ (ไม่บังคับ ปฏิเสธได้ ไม่กระทบการสอบ) — ถ้านักเรียนสองคนขึ้นไปในรอบสอบเดียวกันอยู่ใกล้กันน้อยกว่าระยะที่กำหนด ระบบจะขึ้นป้ายเตือนในหน้าคุมสอบให้ครูตรวจสอบเอง ไม่ได้บล็อกการสอบอัตโนมัติ (ครูเป็นผู้ตัดสินใจบล็อกเองถ้าเห็นว่าผิดปกติจริง)
+      </p>
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : (
+        <>
+          <label className="flex items-center gap-3 cursor-pointer select-none mb-3">
+            <span
+              role="switch" aria-checked={enabled}
+              onClick={() => { setEnabled(v => !v); setSaved(false); }}
+              className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " + (enabled ? 'bg-indigo-600' : 'bg-gray-300')}
+            >
+              <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (enabled ? 'translate-x-6' : 'translate-x-1')} />
+            </span>
+            <span className="text-sm text-gray-700">เปิดใช้งานการตรวจสอบตำแหน่ง</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">แจ้งเตือนเมื่อห่างกันน้อยกว่า</label>
+            <input
+              type="number" min={1} step={1}
+              className="w-20 px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={minDistance}
+              onChange={e => { setMinDistance(e.target.value); setSaved(false); }}
+            />
+            <span className="text-sm text-gray-700">เมตร</span>
             <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>
               {saving ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
@@ -914,6 +1025,7 @@ function SettingsContent() {
       <ScanPhotosPanel />
       <AISettingsPanel />
       <ExamSecurityPanel />
+      <ExamProximityCheckPanel />
       <ExamProctorAssignmentPanel />
       <ExamAuditLogPanel />
     </div>

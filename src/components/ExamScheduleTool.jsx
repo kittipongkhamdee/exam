@@ -13,10 +13,22 @@
 // whether that's a manual submit or the client's own auto-submit on
 // timeout, with no teacher action needed.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { listMyExamSets, listMyExamRounds, saveExamRound, deleteExamRound, generatePin } from '../lib/exam-db';
+import { qrSvgPath } from '../lib/qr';
 import ConfirmDialog from './ConfirmDialog';
+
+function QrCode({ value, className }) {
+  const { d, size } = useMemo(() => qrSvgPath(value), [value]);
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} className={className} shapeRendering="crispEdges">
+      <rect width={size} height={size} fill="#fff" />
+      <path d={d} fill="#141413" />
+    </svg>
+  );
+}
 
 function ClipboardIcon(props) {
   return (
@@ -81,9 +93,9 @@ function PrinterIcon(props) {
 // teacher. Rendered hidden on screen (Tailwind's print: variants) and
 // shown only inside window.print()'s output; the rest of the page is
 // hidden the same way so only this sheet ends up on paper.
-function PrintableRoundSheet({ rounds }) {
+function PrintableRoundSheet({ rounds, active }) {
   return (
-    <div className="hidden print:block p-6">
+    <div className={active ? 'hidden print:block p-6' : 'hidden'}>
       <h1 className="text-lg font-bold mb-4">รายละเอียดรอบสอบสำหรับครูคุมสอบ</h1>
       <div className="space-y-5">
         {groupBySubject(rounds).map(group => (
@@ -112,6 +124,64 @@ function PrintableRoundSheet({ rounds }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Print-only sign ("ป้าย QR เข้าสอบ") meant to be posted at the front of
+// the room or handed to students — one full A4 page per รอบสอบ, with a QR
+// code to the exam entry page and the PIN large enough to read from a
+// desk. Deliberately never includes รหัสปลดล็อก (that one's proctor-only,
+// see PrintableRoundSheet above) since this sheet is meant for students to
+// see directly.
+function PrintableStudentSigns({ rounds, active, origin }) {
+  const takeUrl = origin ? `${origin}/take` : '';
+  const takeUrlDisplay = takeUrl.replace(/^https?:\/\//, '');
+  return (
+    <div style={active ? undefined : { display: 'none' }}>
+      {rounds.map((r, i) => {
+        const subj = r.online_exam_sets?.subjects;
+        return (
+          <div
+            key={r.id}
+            className={'hidden print:flex items-center justify-center min-h-screen p-10' + (i < rounds.length - 1 ? ' break-after-page' : '')}
+          >
+            <div className="w-full max-w-md rounded-3xl border-2 border-gray-300 p-10 text-center">
+              <div className="inline-block text-xs font-bold tracking-widest uppercase text-indigo-700 bg-indigo-50 rounded-full px-3 py-1 mb-3">
+                เข้าสอบออนไลน์
+              </div>
+              <h1 className="text-2xl font-extrabold text-gray-900 mb-1">
+                {subj?.subject_name} (ชั้น {subj?.grade_level}/{subj?.room})
+              </h1>
+              <p className="text-sm text-gray-500 mb-6">
+                {r.online_exam_sets?.title}<br />
+                {formatThai(r.opens_at)} – {formatThai(r.closes_at)}
+              </p>
+
+              {takeUrl && (
+                <div className="inline-flex p-4 border border-gray-300 rounded-2xl mb-3">
+                  <QrCode value={takeUrl} className="h-56 w-56" />
+                </div>
+              )}
+              <div className="text-xs text-gray-500 mb-6">
+                สแกน QR หรือเข้า <span className="font-mono">{takeUrlDisplay}</span>
+              </div>
+
+              <div className="pt-6 border-t border-dashed border-gray-300">
+                <div className="text-xs text-gray-500 mb-1">รหัส PIN เข้าสอบ</div>
+                <div className="text-4xl font-extrabold tracking-[0.3em] font-mono text-gray-900">{r.pin}</div>
+              </div>
+
+              <div className="mt-6 text-left text-xs text-gray-600 space-y-1.5">
+                <div>1. สแกน QR ด้านบน หรือเข้าลิงก์เว็บไซต์</div>
+                <div>2. กรอกรหัส PIN: <b className="font-mono">{r.pin}</b></div>
+                <div>3. กรอกเลขประจำตัวนักเรียน</div>
+                <div>4. เริ่มทำข้อสอบภายในเวลา {r.duration_minutes} นาที</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -179,6 +249,20 @@ export default function ExamScheduleTool() {
   const [roundsLoading, setRoundsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [printMode, setPrintMode] = useState(null);
+  const [origin, setOrigin] = useState('');
+
+  useEffect(() => { setOrigin(window.location.origin); }, []);
+
+  function triggerPrint(mode) {
+    // flushSync forces the printMode state (and the sheet it swaps in) to
+    // actually commit to the DOM before window.print() reads it —
+    // window.print() blocks synchronously, so a normal setState here would
+    // still be queued/un-rendered by the time the print dialog opens,
+    // printing whichever sheet was already showing (or nothing).
+    flushSync(() => setPrintMode(mode));
+    window.print();
+  }
 
   const refreshRounds = useCallback(async () => {
     setRoundsLoading(true);
@@ -405,9 +489,14 @@ export default function ExamScheduleTool() {
         <div className="flex items-center justify-between mb-3">
           <div className="font-semibold text-gray-900">รอบสอบที่ตั้งไว้</div>
           {rounds.length > 0 && (
-            <button type="button" className={btnTiny} onClick={() => window.print()}>
-              <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์รายละเอียดรอบสอบ
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={btnTiny} onClick={() => triggerPrint('proctor')}>
+                <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์รายละเอียดรอบสอบ (ครูคุมสอบ)
+              </button>
+              <button type="button" className={btnTiny} onClick={() => triggerPrint('student')}>
+                <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR เข้าสอบ (แจกนักเรียน)
+              </button>
+            </div>
           )}
         </div>
         {roundsLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
@@ -467,7 +556,8 @@ export default function ExamScheduleTool() {
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
-    <PrintableRoundSheet rounds={rounds} />
+    <PrintableRoundSheet rounds={rounds} active={printMode === 'proctor'} />
+    <PrintableStudentSigns rounds={rounds} active={printMode === 'student'} origin={origin} />
     </>
   );
 }

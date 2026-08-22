@@ -46,6 +46,57 @@ function LockIcon(props) {
   );
 }
 
+function PrinterIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 9V3h12v6" />
+      <rect x="4" y="9" width="16" height="8" rx="1.5" />
+      <path d="M6 14h12v7H6z" />
+    </svg>
+  );
+}
+
+// Print-only sheet ("พิมพ์ตารางคุมสอบ") for the assigned proctor of a
+// ชั้น/ห้อง — every วิชา examined in that room that day, not just the
+// current teacher's own, since a room-mode proctor is covering the whole
+// room regardless of who set each exam up (mirrors what roomMonitors
+// itself already shows on screen; this just adds the PIN/รหัสปลดล็อก a
+// proctor needs on paper without staying logged into the monitor page).
+function PrintableRoomSchedule({ date, gradeLevel, room, monitors }) {
+  return (
+    <div className="hidden print:block p-6">
+      <h1 className="text-lg font-bold mb-1">ตารางคุมสอบ ชั้น {gradeLevel}/{room}</h1>
+      <p className="text-sm text-gray-600 mb-4">วันที่ {formatThaiDate(date)}</p>
+      {monitors.length === 0 ? (
+        <p className="text-sm text-gray-500">ไม่มีรอบสอบในวันที่เลือก</p>
+      ) : (
+        <table className="w-full text-sm border border-gray-400 border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border border-gray-400 px-2 py-1 text-left">เวลาสอบ</th>
+              <th className="border border-gray-400 px-2 py-1 text-left">วิชา</th>
+              <th className="border border-gray-400 px-2 py-1 text-left">เวลาทำ/คน</th>
+              <th className="border border-gray-400 px-2 py-1 text-left">PIN เข้าสอบ</th>
+              <th className="border border-gray-400 px-2 py-1 text-left">รหัสปลดล็อก</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monitors.map(m => (
+              <tr key={m.id}>
+                <td className="border border-gray-400 px-2 py-1">{formatTime(m.opens_at)} – {formatTime(m.closes_at)}</td>
+                <td className="border border-gray-400 px-2 py-1">{m.exam_set_title} — {m.subject_name}</td>
+                <td className="border border-gray-400 px-2 py-1">{m.duration_minutes} นาที</td>
+                <td className="border border-gray-400 px-2 py-1 font-mono font-bold">{m.pin}</td>
+                <td className="border border-gray-400 px-2 py-1 font-mono font-bold">{m.unlock_pin}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function formatThai(isoString) {
   if (!isoString) return '';
   return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
@@ -58,6 +109,11 @@ function formatTime(isoString) {
 
 function todayBangkok() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+}
+
+function formatThaiDate(dateStr) {
+  if (!dateStr) return '';
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('th-TH', { dateStyle: 'long' });
 }
 
 function playAlertBeep() {
@@ -285,8 +341,11 @@ export default function ExamMonitorTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleRoundIds.join(',')]);
 
+  const [selectedGradeLevel, selectedRoom] = gradeRoomKey ? gradeRoomKey.split('|') : ['', ''];
+
   return (
-    <div className="max-w-6xl">
+    <>
+    <div className="max-w-6xl print:hidden">
       <div className="flex items-center gap-3 mb-1">
         <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-rose-600 to-red-500 text-white flex items-center justify-center shrink-0">
           <MonitorIcon className="h-5 w-5" />
@@ -297,13 +356,20 @@ export default function ExamMonitorTool() {
         </div>
       </div>
 
-      <div className="flex gap-2 mt-5 mb-1">
-        <button type="button" className={modeBtn + ' ' + (mode === 'round' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700')} onClick={() => setMode('round')}>
-          รายรอบ
-        </button>
-        <button type="button" className={modeBtn + ' ' + (mode === 'room' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700')} onClick={() => setMode('room')}>
-          ชั้น/ห้อง
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-5 mb-1">
+        <div className="flex gap-2">
+          <button type="button" className={modeBtn + ' ' + (mode === 'round' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700')} onClick={() => setMode('round')}>
+            รายรอบ
+          </button>
+          <button type="button" className={modeBtn + ' ' + (mode === 'room' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700')} onClick={() => setMode('room')}>
+            ชั้น/ห้อง
+          </button>
+        </div>
+        {mode === 'room' && gradeRoomKey && roomMonitors.length > 0 && (
+          <button type="button" className="bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1" onClick={() => window.print()}>
+            <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ตารางคุมสอบ
+          </button>
+        )}
       </div>
 
       {mode === 'round' ? (
@@ -365,5 +431,9 @@ export default function ExamMonitorTool() {
         <RoundMonitorCard key={m.id} monitor={m} onUnlockDone={() => refreshRoomMode(date, gradeRoomKey)} />
       ))}
     </div>
+    {mode === 'room' && gradeRoomKey && (
+      <PrintableRoomSchedule date={date} gradeLevel={selectedGradeLevel} room={selectedRoom} monitors={roomMonitors} />
+    )}
+    </>
   );
 }

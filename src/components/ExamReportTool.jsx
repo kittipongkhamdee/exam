@@ -11,10 +11,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
-import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound } from '../lib/exam-db';
+import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound, resetExamAttempt } from '../lib/exam-db';
 import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
+import ConfirmDialog from './ConfirmDialog';
 
 function ReportIcon(props) {
   return (
@@ -62,6 +63,15 @@ function DownloadIcon(props) {
   );
 }
 
+function RefreshIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M20 11a8 8 0 0 0-14.6-4.6M4 13a8 8 0 0 0 14.6 4.6" />
+      <path d="M4 4v5h5M20 20v-5h-5" />
+    </svg>
+  );
+}
+
 const STATUS_LABEL = {
   submitted: { label: 'ส่งแล้ว', cls: 'bg-green-50 text-green-700' },
   in_progress: { label: 'กำลังทำ', cls: 'bg-amber-50 text-amber-700' },
@@ -88,6 +98,8 @@ export default function ExamReportTool() {
   const [error, setError] = useState(null);
   const [itemAnalysis, setItemAnalysis] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null); // { attempt_id, student_name } | null
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -143,6 +155,20 @@ export default function ExamReportTool() {
       await refreshReport(report.id);
     } finally {
       setTogglingVisible(false);
+    }
+  }
+
+  async function handleResetAttempt() {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      await resetExamAttempt(supabase, resetTarget.attempt_id);
+      setResetTarget(null);
+      await refreshReport(roundId);
+    } catch (err) {
+      setError(err.message || 'รีเซ็ตไม่สำเร็จ');
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -249,7 +275,8 @@ export default function ExamReportTool() {
                     <th className="pb-2 pr-3 font-semibold">สถานะ</th>
                     <th className="pb-2 pr-3 font-semibold">ส่งเมื่อ</th>
                     <th className="pb-2 pr-3 font-semibold">คะแนน</th>
-                    <th className="pb-2 font-semibold">สลับหน้าจอ</th>
+                    <th className="pb-2 pr-3 font-semibold">สลับหน้าจอ</th>
+                    <th className="pb-2 font-semibold"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -268,8 +295,18 @@ export default function ExamReportTool() {
                                 : `${r.total_correct}/${r.total_questions} (${r.score}%)`)
                             : '—'}
                         </td>
-                        <td className="py-2">
+                        <td className="py-2 pr-3">
                           {r.violation_count > 0 ? <span className={pill + ' bg-red-50 text-red-600'}>{r.violation_count} ครั้ง</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-2">
+                          {r.attempt_id && (
+                            <button
+                              type="button" className={btnTiny}
+                              onClick={() => setResetTarget({ attempt_id: r.attempt_id, student_name: r.student_name })}
+                            >
+                              <RefreshIcon className="h-3.5 w-3.5" /> รีเซ็ตให้สอบใหม่
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -310,6 +347,17 @@ export default function ExamReportTool() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={!!resetTarget}
+        title="ยืนยันรีเซ็ตให้สอบใหม่"
+        message={resetTarget ? `ลบการสอบครั้งนี้ของ "${resetTarget.student_name}"? นักเรียนจะกรอก PIN + เลขประจำตัวเดิมเพื่อเริ่มสอบใหม่ทั้งหมดได้ทันที คะแนน/คำตอบเดิมจะหายถาวร` : ''}
+        confirmLabel="รีเซ็ตให้สอบใหม่"
+        danger
+        loading={resetting}
+        onConfirm={handleResetAttempt}
+        onCancel={() => setResetTarget(null)}
+      />
     </div>
   );
 }

@@ -21,6 +21,13 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'คลังข้อสอบ',
+    items: [
+      { href: '/bank', label: 'คลังข้อสอบ', icon: BankIcon, adminOnly: false },
+      { href: '/exam', label: 'จัดข้อสอบ', icon: SheetIcon, adminOnly: false },
+    ],
+  },
+  {
     label: 'กระดาษคำตอบ',
     items: [
       { href: '/omr/prepare', label: 'กระดาษคำตอบ', icon: SheetIcon, adminOnly: false },
@@ -31,8 +38,6 @@ const NAV_GROUPS = [
   {
     label: 'สอบออนไลน์',
     items: [
-      { href: '/bank', label: 'คลังข้อสอบ', icon: BankIcon, adminOnly: false },
-      { href: '/exam', label: 'ข้อสอบ', icon: SheetIcon, adminOnly: false },
       { href: '/exam/schedule', label: 'จัดสอบ', icon: ClipboardIcon, adminOnly: false },
       { href: '/exam/monitor', label: 'คุมสอบ', icon: MonitorIcon, adminOnly: false },
       { href: '/exam/duty-schedule', label: 'ตารางคุมสอบ', icon: CalendarIcon, adminOnly: false },

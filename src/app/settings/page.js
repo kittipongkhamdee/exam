@@ -515,16 +515,21 @@ function ExamSecurityPanel() {
   );
 }
 
-// Reads/writes public.config's exam_proximity_min_distance_m row — the
-// system-wide minimum-distance threshold ExamMonitorTool flags on. Whether
-// this feature runs at all is a per-รอบสอบ choice now ("บังคับแชร์ตำแหน่ง
-// ก่อนเข้าสอบ" in ExamScheduleTool, stored as online_exam_rounds.
-// require_location), not a global switch here — a teacher scheduling an
-// in-school exam shouldn't have to fight a system-wide toggle meant for
-// at-home exams.
+// Reads/writes public.config's exam_proximity_check_enabled/
+// exam_proximity_min_distance_m rows. enabled is the admin's system-wide
+// master switch — start_exam_attempt ANDs it with each round's own
+// require_location before deciding whether to actually gate a student's
+// entry (see the migration), so flipping this off immediately stops
+// enforcement everywhere without having to touch every round, and
+// ExamScheduleTool only shows its per-รอบสอบ "บังคับแชร์ตำแหน่งก่อนเข้าสอบ"
+// checkbox at all when this is on — a teacher scheduling an in-school exam
+// isn't offered a control that wouldn't do anything. Missing config row
+// (nothing ever saved) defaults to enabled, matching how this behaved
+// before this master switch existed.
 const DEFAULT_PROXIMITY_MIN_DISTANCE_M = 15;
 
 function ExamProximityCheckPanel() {
+  const [enabled, setEnabled] = useState(true);
   const [minDistance, setMinDistance] = useState(String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -534,8 +539,12 @@ function ExamProximityCheckPanel() {
   useEffect(() => {
     (async () => {
       try {
-        const stored = await getConfigValue(supabase, 'exam_proximity_min_distance_m');
-        setMinDistance(stored || String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
+        const [storedEnabled, storedDistance] = await Promise.all([
+          getConfigValue(supabase, 'exam_proximity_check_enabled'),
+          getConfigValue(supabase, 'exam_proximity_min_distance_m'),
+        ]);
+        setEnabled(storedEnabled !== 'false');
+        setMinDistance(storedDistance || String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
       } catch (err) {
         setError(err.message || 'โหลดค่าไม่สำเร็จ');
       } finally {
@@ -554,7 +563,10 @@ function ExamProximityCheckPanel() {
     setSaved(false);
     setError(null);
     try {
-      await setConfigValue(supabase, 'exam_proximity_min_distance_m', String(n));
+      await Promise.all([
+        setConfigValue(supabase, 'exam_proximity_check_enabled', enabled ? 'true' : 'false'),
+        setConfigValue(supabase, 'exam_proximity_min_distance_m', String(n)),
+      ]);
       setSaved(true);
     } catch (err) {
       setError(err.message || 'บันทึกไม่สำเร็จ');
@@ -572,12 +584,22 @@ function ExamProximityCheckPanel() {
         <div className="font-semibold text-gray-900">ตรวจสอบตำแหน่งนักเรียน (สอบที่บ้าน)</div>
       </div>
       <p className="mt-1 text-sm text-gray-500 mb-4">
-        เปิด/ปิดฟีเจอร์นี้ต่อรอบสอบได้ที่หน้า &quot;จัดสอบ&quot; ("บังคับแชร์ตำแหน่งก่อนเข้าสอบ") — เมื่อเปิดไว้ นักเรียนต้องอนุญาตแชร์ตำแหน่งจึงจะเข้าสอบได้ ถ้านักเรียนสองคนขึ้นไปในรอบสอบเดียวกันอยู่ใกล้กันน้อยกว่าระยะที่ตั้งไว้ด้านล่างนี้ ระบบจะขึ้นป้ายเตือนในหน้าคุมสอบให้ครูตรวจสอบเอง ไม่ได้บล็อกการสอบอัตโนมัติ (ครูเป็นผู้ตัดสินใจบล็อกเองถ้าเห็นว่าผิดปกติจริง)
+        สวิตช์นี้คุมทั้งระบบ — ถ้าปิด ครูจะไม่เห็นตัวเลือก &quot;บังคับแชร์ตำแหน่งก่อนเข้าสอบ&quot; ที่หน้า &quot;จัดสอบ&quot; เลย และรอบสอบที่เคยตั้งไว้ก็จะไม่บังคับอีกต่อไป ถ้าเปิดไว้ ครูจะเลือกเปิด/ปิดเป็นรายรอบสอบได้เอง — เมื่อรอบไหนเปิดใช้ นักเรียนต้องอนุญาตแชร์ตำแหน่งจึงจะเข้าสอบได้ ถ้านักเรียนสองคนขึ้นไปในรอบสอบเดียวกันอยู่ใกล้กันน้อยกว่าระยะที่ตั้งไว้ด้านล่างนี้ ระบบจะขึ้นป้ายเตือนในหน้าคุมสอบให้ครูตรวจสอบเอง ไม่ได้บล็อกการสอบอัตโนมัติ
       </p>
       {loading ? (
         <div className="text-sm text-gray-500">กำลังโหลด...</div>
       ) : (
         <>
+          <label className="flex items-center gap-3 cursor-pointer select-none mb-3">
+            <span
+              role="switch" aria-checked={enabled}
+              onClick={() => { setEnabled(v => !v); setSaved(false); }}
+              className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " + (enabled ? 'bg-indigo-600' : 'bg-gray-300')}
+            >
+              <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (enabled ? 'translate-x-6' : 'translate-x-1')} />
+            </span>
+            <span className="text-sm text-gray-700">เปิดใช้งานฟีเจอร์นี้ทั้งระบบ</span>
+          </label>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">แจ้งเตือนเมื่อห่างกันน้อยกว่า</label>
             <input

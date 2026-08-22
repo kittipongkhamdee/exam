@@ -95,7 +95,7 @@ export default function DashboardShell({ children }) {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-gray-500 font-serif">
+      <div className="flex flex-1 items-center justify-center text-sm text-gray-500 font-prompt">
         กำลังตรวจสอบสถานะเข้าสู่ระบบ...
       </div>
     );
@@ -103,7 +103,7 @@ export default function DashboardShell({ children }) {
 
   if (!session) {
     return (
-      <div className="flex flex-1 font-serif">
+      <div className="flex flex-1 font-prompt">
         <LoginForm />
       </div>
     );
@@ -114,7 +114,7 @@ export default function DashboardShell({ children }) {
     .filter(group => group.items.length > 0);
 
   return (
-    <div className="flex flex-1 min-h-screen font-serif">
+    <div className="flex flex-1 min-h-screen font-prompt">
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div

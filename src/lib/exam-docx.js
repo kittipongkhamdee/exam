@@ -21,6 +21,7 @@ import {
 } from 'docx';
 import { choiceLetters } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
+import { formatGradeRoom } from './format';
 
 const PAGE_MARGIN = '10mm';
 const NO_BORDERS = {
@@ -210,7 +211,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
     loadLogo(logoDataUrl),
   ]);
 
-  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${gradeLevel}/${room}`;
+  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${formatGradeRoom(gradeLevel, room)}`;
   const scoreTimeLine = [
     Number.isFinite(totalScore) && totalScore > 0 ? `คะแนนเต็ม ${totalScore} คะแนน` : '',
     Number(durationMinutes) > 0 ? `เวลา ${durationMinutes} นาที` : '',

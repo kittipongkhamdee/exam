@@ -17,6 +17,7 @@ import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz, getItemAna
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { formatStudentName } from '../lib/student-name';
 import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
+import { formatGradeRoom } from '../lib/format';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -173,7 +174,7 @@ export default function OMRReportTool() {
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-gray-900 truncate">{i + 1}. {q.title}</div>
                 <div className="text-sm text-gray-500 mt-0.5 truncate">
-                  {q.subjects?.subject_name} (ชั้น {q.subjects?.grade_level}/{q.subjects?.room}) · {q.num_questions} ข้อ
+                  {q.subjects?.subject_name} (ชั้น {formatGradeRoom(q.subjects?.grade_level, q.subjects?.room)}) · {q.num_questions} ข้อ
                 </div>
               </div>
               <ChevronRightIcon className="h-4 w-4 text-gray-300 shrink-0" />
@@ -239,7 +240,7 @@ export default function OMRReportTool() {
     return {
       fileTitle: `วิเคราะห์คุณภาพข้อสอบ-${selectedQuiz.title}`,
       title: selectedQuiz.title,
-      subjectLine: `${selectedQuiz.subjectName} (ชั้น ${selectedQuiz.gradeLevel}/${selectedQuiz.room}) · ${selectedQuiz.numQuestions} ข้อ`,
+      subjectLine: `${selectedQuiz.subjectName} (ชั้น ${formatGradeRoom(selectedQuiz.gradeLevel, selectedQuiz.room)}) · ${selectedQuiz.numQuestions} ข้อ`,
       analysis: itemAnalysis,
       rowLabels: Array.from({ length: selectedQuiz.numQuestions }, (_, i) => `ข้อ ${i + 1}`),
     };
@@ -267,7 +268,7 @@ export default function OMRReportTool() {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 truncate">{selectedQuiz.title}</h1>
             <div className="text-sm text-gray-500 mt-0.5 truncate">
-              {selectedQuiz.subjectName} (ชั้น {selectedQuiz.gradeLevel}/{selectedQuiz.room}) · {selectedQuiz.numQuestions} ข้อ
+              {selectedQuiz.subjectName} (ชั้น {formatGradeRoom(selectedQuiz.gradeLevel, selectedQuiz.room)}) · {selectedQuiz.numQuestions} ข้อ
             </div>
           </div>
         </div>

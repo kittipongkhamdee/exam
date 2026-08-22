@@ -27,6 +27,7 @@ import {
   getRoundMonitor, getRoomMonitor, listMonitorableRounds,
   proctorUnlockAttempt, listProctorAssignmentsForDate,
 } from '../lib/exam-db';
+import { formatGradeRoom } from '../lib/format';
 
 function MonitorIcon(props) {
   return (
@@ -73,7 +74,7 @@ function showRoomScheduleDialog({ gradeLevel, room, monitors }) {
         </div>
       `).join('')}</div>`;
   return Swal.fire({
-    title: `ตารางคุมสอบ ชั้น ${gradeLevel}/${room}`,
+    title: `ตารางคุมสอบ ชั้น ${formatGradeRoom(gradeLevel, room)}`,
     html: rowsHtml,
     width: 480,
     confirmButtonText: 'ปิด',
@@ -178,7 +179,7 @@ function RoundMonitorCard({ monitor, onUnlockDone }) {
         <div>
           <div className="font-semibold text-gray-900">{monitor.exam_set_title}</div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {monitor.subject_name} (ชั้น {monitor.grade_level}/{monitor.room}) · {formatTime(monitor.opens_at)} – {formatTime(monitor.closes_at)}
+            {monitor.subject_name} (ชั้น {formatGradeRoom(monitor.grade_level, monitor.room)}) · {formatTime(monitor.opens_at)} – {formatTime(monitor.closes_at)}
           </div>
         </div>
         <div className="flex flex-wrap gap-3 text-xs">
@@ -365,7 +366,7 @@ export default function ExamMonitorTool() {
                 <option value="">— เลือกรอบสอบ —</option>
                 {rounds.map(r => (
                   <option key={r.id} value={r.id}>
-                    {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {r.online_exam_sets?.subjects?.grade_level}/{r.online_exam_sets?.subjects?.room}) · {formatThai(r.opens_at)}
+                    {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThai(r.opens_at)}
                   </option>
                 ))}
               </select>
@@ -388,7 +389,7 @@ export default function ExamMonitorTool() {
                   <option value="">— เลือกชั้น/ห้อง —</option>
                   {roomOptions.map(o => (
                     <option key={`${o.grade_level}|${o.room}`} value={`${o.grade_level}|${o.room}`}>
-                      ชั้น {o.grade_level}/{o.room}
+                      ชั้น {formatGradeRoom(o.grade_level, o.room)}
                     </option>
                   ))}
                 </select>

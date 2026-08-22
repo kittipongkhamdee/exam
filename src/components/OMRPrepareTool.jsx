@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
 import { formatStudentName } from '../lib/student-name';
+import { formatGradeRoom } from '../lib/format';
 
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
@@ -359,7 +360,7 @@ export default function OMRPrepareTool() {
     setBatchError(null);
     try {
       const subj = subjects.find(s => s.id === subjectId);
-      const classLabel = subj ? `${subj.grade_level}/${subj.room}` : '';
+      const classLabel = subj ? formatGradeRoom(subj.grade_level, subj.room) : '';
       const canvas = document.createElement('canvas');
       // compress:true plus JPEG (instead of the 3x-scaled canvas's raw PNG)
       // is essential here, not just a nice-to-have — without it, a 25-student
@@ -459,7 +460,7 @@ export default function OMRPrepareTool() {
             <select className={inputCls} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
-                <option key={s.id} value={s.id}>{s.subject_code} {s.subject_name} (ชั้น {s.grade_level}/{s.room})</option>
+                <option key={s.id} value={s.id}>{s.subject_code} {s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
               ))}
             </select>
           </div>

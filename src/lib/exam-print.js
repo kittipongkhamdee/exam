@@ -24,6 +24,7 @@
 import { jsPDF } from 'jspdf';
 import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
+import { formatGradeRoom } from './format';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
 const FONT = '"Sarabun", sans-serif';
@@ -263,7 +264,7 @@ export async function generateExamQuestionPaperPdf(supabase, {
   const ctx = canvas.getContext('2d');
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${gradeLevel}/${room}`;
+  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${formatGradeRoom(gradeLevel, room)}`;
   const scoreTimeLine = [
     Number.isFinite(totalScore) && totalScore > 0 ? `คะแนนเต็ม ${totalScore} คะแนน` : '',
     Number(durationMinutes) > 0 ? `เวลา ${durationMinutes} นาที` : '',

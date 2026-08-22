@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { listExamDaySchedule } from '../lib/exam-db';
+import { formatGradeRoom } from '../lib/format';
 
 function CalendarIcon(props) {
   return (
@@ -97,7 +98,7 @@ function PrintableSchedule({ date, groups }) {
         <div className="space-y-5">
           {groups.map(g => (
             <div key={`${g.gradeLevel}|${g.room}`} className="break-inside-avoid">
-              <div className="font-bold text-sm mb-1">ชั้น {g.gradeLevel}/{g.room}</div>
+              <div className="font-bold text-sm mb-1">ชั้น {formatGradeRoom(g.gradeLevel, g.room)}</div>
               <ScheduleTable rows={g.rows} className="mb-2" />
             </div>
           ))}
@@ -169,7 +170,7 @@ export default function ExamDutyScheduleTool() {
 
       {!loading && groups.map(g => (
         <div key={`${g.gradeLevel}|${g.room}`} className={card}>
-          <div className="font-semibold text-gray-900 mb-3">ชั้น {g.gradeLevel}/{g.room}</div>
+          <div className="font-semibold text-gray-900 mb-3">ชั้น {formatGradeRoom(g.gradeLevel, g.room)}</div>
           <div className="overflow-x-auto">
             <ScheduleTable rows={g.rows} />
           </div>

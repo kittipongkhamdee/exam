@@ -352,6 +352,7 @@ export async function getRoundReport(supabase, roundId) {
       student_code: s.student_code,
       student_name: formatStudentName(s),
       status,
+      attempt_id: attempt?.id ?? null,
       started_at: attempt?.started_at ?? null,
       submitted_at: attempt?.submitted_at ?? null,
       total_correct: attempt?.total_correct ?? null,
@@ -378,6 +379,24 @@ export async function getRoundReport(supabase, roundId) {
     room: subject?.room,
     rows,
   };
+}
+
+/**
+ * Deletes one student's attempt at a รอบสอบ (in-progress or already
+ * submitted, cascading to their saved answers) so they can log in with
+ * the same PIN + เลขประจำตัวนักเรียน and start a completely fresh attempt —
+ * for a genuine retake (a technical failure mid-exam, a mistake the
+ * teacher wants to let them redo), not something a student can trigger
+ * themselves. Per-attempt, not per-round: resetting one student never
+ * touches anyone else's attempt at the same รอบสอบ. Authorized via the
+ * reset_exam_attempt RPC (is_admin() or owning the attempt's subject),
+ * matching every other exam-scoped write in this file.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} attemptId
+ */
+export async function resetExamAttempt(supabase, attemptId) {
+  const { error } = await supabase.rpc('reset_exam_attempt', { p_attempt_id: attemptId });
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------
@@ -833,6 +852,7 @@ export const EXAM_AUDIT_ACTION_LABEL = {
   exam_unlock_pin: 'ปลดล็อกด้วยรหัส',
   exam_unlock_proctor: 'ปลดล็อกจากมอนิเตอร์',
   exam_submit: 'ส่งข้อสอบ',
+  exam_attempt_reset: 'รีเซ็ตให้สอบใหม่',
 };
 
 /**

@@ -739,7 +739,7 @@ export default function ExamSetTool() {
                 <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{group.name}</div>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {group.rows.map(s => (
-                    <div key={s.id} className="flex justify-between items-center gap-3 text-sm px-3 py-2.5">
+                    <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
                       <div className="min-w-0">
                         <div className="font-medium text-gray-900">{s.title}</div>
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>

@@ -267,7 +267,7 @@ export default function ExamReportTool() {
                         <td className="py-2 pr-3 text-gray-500 text-xs">{formatThai(r.submitted_at)}</td>
                         <td className="py-2 pr-3 text-gray-900">
                           {r.status === 'submitted'
-                            ? (r.total_points !== r.total_questions
+                            ? (r.total_points != null && r.earned_points != null && r.total_points !== r.total_questions
                                 ? `${r.total_correct}/${r.total_questions} ข้อ · ${r.earned_points}/${r.total_points} คะแนน (${r.score}%)`
                                 : `${r.total_correct}/${r.total_questions} (${r.score}%)`)
                             : '—'}

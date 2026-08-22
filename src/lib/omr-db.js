@@ -457,14 +457,29 @@ export async function getItemAnalysisForQuiz(supabase, quizId) {
 
   const { data: results, error: resErr } = await supabase
     .from('omr_scan_results')
-    .select('responses')
+    .select('student_id, scanned_at, responses')
     .eq('quiz_id', quizId);
   if (resErr) throw resErr;
+
+  // A rescan (OMRScanTool's "สแกนซ้ำ") inserts a new row rather than
+  // overwriting the old one (see saveScanResult/listScanResultsForQuiz's
+  // own comment), so a student scanned twice would otherwise be counted as
+  // two different students here — silently skewing p/r/KR-20. Keep only
+  // each student's most recent scan, matching what the report/roster
+  // views already show as "the" result for that student.
+  const latestByStudent = new Map();
+  for (const result of results || []) {
+    if (!result.student_id) continue;
+    const existing = latestByStudent.get(result.student_id);
+    if (!existing || new Date(result.scanned_at) > new Date(existing.scanned_at)) {
+      latestByStudent.set(result.student_id, result);
+    }
+  }
 
   const numItems = quiz.num_questions;
   const itemMatrix = Array.from({ length: numItems }, () => []);
 
-  for (const result of results || []) {
+  for (const result of latestByStudent.values()) {
     const byIndex = new Map((result.responses || []).map(r => [r.question, r]));
     for (let qi = 0; qi < numItems; qi++) {
       const resp = byIndex.get(qi);

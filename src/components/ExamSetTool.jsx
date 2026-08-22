@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
-import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject, getBankQuestionQualityStats } from '../lib/exam-db';
+import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject, getBankQuestionQualityStats, examSetHasSubmittedAttempts } from '../lib/exam-db';
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
 import { generateExamQuestionPaperDocx } from '../lib/exam-docx';
 import { getConfigValue } from '../lib/config-db';
@@ -442,6 +442,18 @@ export default function ExamSetTool() {
       setTitle(full.title);
       setSelectedIds(full.questions.map(q => q.id));
       setPointsById(Object.fromEntries(full.questions.map(q => [q.id, q.points ?? 1])));
+      // Best-effort — never block opening the edit form over this check.
+      examSetHasSubmittedAttempts(supabase, full.id).then(hasAttempts => {
+        if (hasAttempts) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'ชุดข้อสอบนี้มีนักเรียนส่งข้อสอบแล้ว',
+            text: 'การแก้ไขข้อ/คะแนนของชุดข้อสอบนี้จะไม่กระทบคะแนนที่ตรวจไปแล้ว แต่รายงานวิเคราะห์ข้อสอบ (Item Analysis) ของรอบที่สอบไปแล้วอาจแสดงผลไม่ตรงกับข้อที่นักเรียนทำจริงอีกต่อไป',
+            confirmButtonText: 'เข้าใจแล้ว',
+            confirmButtonColor: '#4f46e5',
+          });
+        }
+      }).catch(() => {});
     } catch (err) {
       setFormError(err.message || 'โหลดชุดข้อสอบไม่สำเร็จ');
     } finally {

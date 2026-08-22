@@ -121,6 +121,36 @@ export async function getExamSetWithQuestions(supabase, id) {
 }
 
 /**
+ * Whether a ชุดข้อสอบ has any รอบสอบ with at least one submitted attempt —
+ * used to warn a teacher before they edit a set whose composition/points
+ * students have already been scored against. A submitted attempt's own
+ * score stays correct either way (submit_exam_attempt captures total_points
+ * once at start_exam_attempt time), but item-analysis/quality-stat reports
+ * re-read the set's *current* online_exam_set_questions, so editing after
+ * the fact can make past reports inconsistent with what those students
+ * actually saw.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} examSetId
+ * @returns {Promise<boolean>}
+ */
+export async function examSetHasSubmittedAttempts(supabase, examSetId) {
+  const { data: rounds, error: e1 } = await supabase
+    .from('online_exam_rounds')
+    .select('id')
+    .eq('exam_set_id', examSetId);
+  if (e1) throw e1;
+  if (!rounds || rounds.length === 0) return false;
+
+  const { count, error: e2 } = await supabase
+    .from('online_exam_attempts')
+    .select('id', { count: 'exact', head: true })
+    .in('round_id', rounds.map(r => r.id))
+    .not('submitted_at', 'is', null);
+  if (e2) throw e2;
+  return (count ?? 0) > 0;
+}
+
+/**
  * Create or update a ชุดข้อสอบ, replacing its full question list each time
  * — simplest correct way to persist a reordered/edited selection without a
  * client-side transaction.
@@ -867,16 +897,34 @@ export async function getItemAnalysisForRound(supabase, roundId) {
  * @param {string[]} questionIds
  * @returns {Promise<Record<string, { usageCount: number, sampleN: number, avgP: number|null, avgR: number|null, stars: number|null }>>}
  */
+// PostgREST encodes `.in('col', ids)` as a comma-joined literal in the
+// query string — a bank/history large enough (hundreds+ of question,
+// round, or attempt ids) can blow past URL length limits at the Supabase
+// gateway. Chunk any id list handed to `.in()` and merge the results.
+const IN_CHUNK_SIZE = 200;
+function chunkIds(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK_SIZE) out.push(ids.slice(i, i + IN_CHUNK_SIZE));
+  return out;
+}
+async function selectInChunks(ids, runChunk) {
+  const rows = [];
+  for (const chunk of chunkIds(ids)) {
+    const { data, error } = await runChunk(chunk);
+    if (error) throw error;
+    if (data) rows.push(...data);
+  }
+  return rows;
+}
+
 export async function getBankQuestionQualityStats(supabase, questionIds) {
   const stats = {};
   for (const qid of questionIds) stats[qid] = { usageCount: 0, sampleN: 0, avgP: null, avgR: null, stars: null };
   if (!questionIds || questionIds.length === 0) return stats;
 
-  const { data: setQs, error: e1 } = await supabase
-    .from('online_exam_set_questions')
-    .select('bank_question_id, exam_set_id')
-    .in('bank_question_id', questionIds);
-  if (e1) throw e1;
+  const setQs = await selectInChunks(questionIds, chunk =>
+    supabase.from('online_exam_set_questions').select('bank_question_id, exam_set_id').in('bank_question_id', chunk)
+  );
   if (!setQs || setQs.length === 0) return stats;
 
   const setIdsByQuestion = new Map();
@@ -887,11 +935,9 @@ export async function getBankQuestionQualityStats(supabase, questionIds) {
     allSetIds.add(row.exam_set_id);
   }
 
-  const { data: rounds, error: e2 } = await supabase
-    .from('online_exam_rounds')
-    .select('id, exam_set_id')
-    .in('exam_set_id', [...allSetIds]);
-  if (e2) throw e2;
+  const rounds = await selectInChunks([...allSetIds], chunk =>
+    supabase.from('online_exam_rounds').select('id, exam_set_id').in('exam_set_id', chunk)
+  );
 
   const roundsBySet = new Map();
   for (const r of rounds || []) {
@@ -906,12 +952,9 @@ export async function getBankQuestionQualityStats(supabase, questionIds) {
   if (!rounds || rounds.length === 0) return stats;
 
   const roundIds = rounds.map(r => r.id);
-  const { data: attempts, error: e3 } = await supabase
-    .from('online_exam_attempts')
-    .select('id, round_id')
-    .in('round_id', roundIds)
-    .not('submitted_at', 'is', null);
-  if (e3) throw e3;
+  const attempts = await selectInChunks(roundIds, chunk =>
+    supabase.from('online_exam_attempts').select('id, round_id').in('round_id', chunk).not('submitted_at', 'is', null)
+  );
 
   const attemptsByRound = new Map();
   for (const a of attempts || []) {
@@ -923,12 +966,9 @@ export async function getBankQuestionQualityStats(supabase, questionIds) {
   if (qualifyingRounds.length === 0) return stats;
 
   const qualifyingSetIds = [...new Set(qualifyingRounds.map(r => r.exam_set_id))];
-  const { data: allSetQs, error: e4 } = await supabase
-    .from('online_exam_set_questions')
-    .select('exam_set_id, seq, bank_question_id')
-    .in('exam_set_id', qualifyingSetIds)
-    .order('seq', { ascending: true });
-  if (e4) throw e4;
+  const allSetQs = await selectInChunks(qualifyingSetIds, chunk =>
+    supabase.from('online_exam_set_questions').select('exam_set_id, seq, bank_question_id').in('exam_set_id', chunk).order('seq', { ascending: true })
+  );
 
   const questionsBySet = new Map();
   for (const row of allSetQs || []) {
@@ -937,11 +977,9 @@ export async function getBankQuestionQualityStats(supabase, questionIds) {
   }
 
   const qualifyingAttemptIds = qualifyingRounds.flatMap(r => attemptsByRound.get(r.id) || []);
-  const { data: answers, error: e5 } = await supabase
-    .from('online_exam_answers')
-    .select('attempt_id, bank_question_id, is_correct')
-    .in('attempt_id', qualifyingAttemptIds);
-  if (e5) throw e5;
+  const answers = await selectInChunks(qualifyingAttemptIds, chunk =>
+    supabase.from('online_exam_answers').select('attempt_id, bank_question_id, is_correct').in('attempt_id', chunk)
+  );
 
   const byAttemptThenQuestion = new Map();
   for (const a of answers || []) {

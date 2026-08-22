@@ -36,7 +36,7 @@ import {
 } from '../lib/exam-db';
 import { getConfigValue } from '../lib/config-db';
 import { distanceMeters } from '../lib/geo';
-import { formatGradeRoom, formatThaiDateTime, formatThaiTime } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime, formatThaiTime, escapeHtml } from '../lib/format';
 
 const DEFAULT_PROXIMITY_MIN_DISTANCE_M = 15;
 
@@ -99,16 +99,16 @@ function showRoomScheduleDialog({ gradeLevel, room, monitors }) {
     ? '<div class="text-sm text-gray-500">ไม่มีรอบสอบในวันที่เลือก</div>'
     : `<div class="text-left space-y-2">${monitors.map(m => `
         <div class="border border-gray-200 rounded-lg px-3 py-2">
-          <div class="text-sm font-semibold text-gray-900">${m.exam_set_title} — ${m.subject_name}</div>
+          <div class="text-sm font-semibold text-gray-900">${escapeHtml(m.exam_set_title)} — ${escapeHtml(m.subject_name)}</div>
           <div class="text-xs text-gray-500 mt-0.5">${formatThaiTime(m.opens_at)} – ${formatThaiTime(m.closes_at)} · ทำได้ ${m.duration_minutes} นาที/คน</div>
           <div class="text-xs mt-1 flex flex-wrap gap-x-3">
-            <span class="font-mono font-bold tracking-widest text-gray-900">PIN: ${m.pin}</span>
-            <span class="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: ${m.unlock_pin}</span>
+            <span class="font-mono font-bold tracking-widest text-gray-900">PIN: ${escapeHtml(m.pin)}</span>
+            <span class="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: ${escapeHtml(m.unlock_pin)}</span>
           </div>
         </div>
       `).join('')}</div>`;
   return Swal.fire({
-    title: `ตารางคุมสอบ ชั้น ${formatGradeRoom(gradeLevel, room)}`,
+    title: `ตารางคุมสอบ ชั้น ${escapeHtml(formatGradeRoom(gradeLevel, room))}`,
     html: rowsHtml,
     width: 480,
     confirmButtonText: 'ปิด',
@@ -154,7 +154,19 @@ function ProximityMap({ rows, flaggedIds }) {
   const locatedKey = located.map(r => `${r.attempt_id}:${r.location_lat}:${r.location_lng}:${flaggedIds.has(r.attempt_id)}`).join(',');
 
   useEffect(() => {
-    if (!containerRef.current || located.length === 0) return;
+    // Every located student left (or the round just changed and none are
+    // located yet) — tear the map down instead of leaving mapRef pointing
+    // at a Leaflet instance bound to a DOM node React is about to remove
+    // (this component renders null below when located.length === 0).
+    // Without this, a student's marker disappearing and later reappearing
+    // (a monitor refresh landing between the two) left the *next* map
+    // bound to a detached node — `if (!mapRef.current)` below would skip
+    // creating a fresh one, so no map ever showed again.
+    if (located.length === 0) {
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; markersRef.current = []; }
+      return;
+    }
+    if (!containerRef.current) return;
     let cancelled = false;
     (async () => {
       const L = (await import('leaflet')).default;
@@ -172,7 +184,9 @@ function ProximityMap({ rows, flaggedIds }) {
           fillColor: isFlagged ? '#f87171' : '#818cf8',
           fillOpacity: 0.9,
         }).addTo(mapRef.current);
-        marker.bindTooltip(`${r.student_name} (${r.student_code})`);
+        // Leaflet renders a string tooltip as HTML, not text — escape the
+        // roster-sourced name/code before interpolating.
+        marker.bindTooltip(`${escapeHtml(r.student_name)} (${escapeHtml(r.student_code)})`);
         return marker;
       });
       const bounds = located.map(r => [r.location_lat, r.location_lng]);
@@ -465,6 +479,24 @@ export default function ExamMonitorTool() {
     return roomMonitors.map(m => m.id);
   }, [mode, roundId, roomMonitors]);
 
+  // The postgres_changes callback below only gets recreated when
+  // visibleRoundIds changes (see that effect's own comment on why) — so it
+  // would otherwise close over whatever mode/date/gradeRoomKey/
+  // refreshRoundMode/refreshRoomMode were current the moment that effect
+  // last ran, not the latest ones. refreshRoundMode/refreshRoomMode in
+  // particular get a new identity whenever proximityMinDistance changes
+  // (via noteProximityFlags), which itself only resolves asynchronously
+  // after mount — a round already selected before that config fetch
+  // finishes would otherwise keep flagging proximity pairs against the
+  // hardcoded default distance for as long as the teacher stays on that
+  // same round, never picking up the real configured value. Reading
+  // through a ref this effect keeps current every render sidesteps the
+  // staleness regardless of which prop it'd be.
+  const latestRef = useRef(null);
+  useEffect(() => {
+    latestRef.current = { mode, date, gradeRoomKey, refreshRoundMode, refreshRoomMode };
+  });
+
   // Live updates: one Realtime channel per visible round, re-fetching just
   // that round's monitor data on any attempt change (a raw payload doesn't
   // carry the roster join, so a light refetch is simplest & correct).
@@ -474,8 +506,9 @@ export default function ExamMonitorTool() {
       supabase
         .channel(`monitor-attempts-${id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'online_exam_attempts', filter: `round_id=eq.${id}` }, () => {
-          if (mode === 'round') refreshRoundMode(id);
-          else refreshRoomMode(date, gradeRoomKey);
+          const latest = latestRef.current;
+          if (latest.mode === 'round') latest.refreshRoundMode(id);
+          else latest.refreshRoomMode(latest.date, latest.gradeRoomKey);
         })
         .subscribe()
     );

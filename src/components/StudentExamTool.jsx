@@ -25,7 +25,7 @@ import { getBankQuestionImageUrl } from '../lib/bank-db';
 import { getAttemptLockStatus, saveAttemptLocation } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
 import { getConfigValue } from '../lib/config-db';
-import { formatThaiDateTime } from '../lib/format';
+import { formatThaiDateTime, escapeHtml } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
@@ -62,6 +62,32 @@ function clearDraft(attemptId) {
     window.localStorage.removeItem(draftKey(attemptId));
   } catch {
     // best-effort
+  }
+}
+
+const DRAFT_KEY_PREFIX = 'exam-draft-';
+
+// /take runs on shared school devices used by many different students across
+// many different รอบสอบ over time. clearDraft only ever fires for the one
+// attempt a student actually finishes, so a device that's ever had a student
+// close the tab mid-exam, get force-submitted, or simply never come back
+// accumulates an exam-draft-<attemptId> entry per abandoned attempt forever
+// — eventually large enough on a well-used device to trip localStorage's
+// quota, which saveDraft's try/catch swallows silently, breaking refresh-
+// resume for whichever student hits it next. Sweep every OTHER student's
+// leftover draft out on each successful login, keeping only the one for the
+// attempt just started/resumed.
+function pruneStaleDrafts(keepAttemptId) {
+  try {
+    const keepKey = draftKey(keepAttemptId);
+    const stale = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(DRAFT_KEY_PREFIX) && key !== keepKey) stale.push(key);
+    }
+    for (const key of stale) window.localStorage.removeItem(key);
+  } catch {
+    // best-effort — leftover drafts are a quota risk, not a correctness one
   }
 }
 
@@ -364,12 +390,29 @@ export default function StudentExamTool() {
       } else {
         setPhase('submitted');
       }
-    } catch {
-      // Even on an error the attempt is best treated as done — grading is
-      // idempotent server-side, so re-entering the PIN/code would just
-      // resume (if still within the window) or correctly report
-      // already_submitted if the write actually went through.
+    } catch (err) {
       submittedRef.current = false;
+      const code = err?.message?.trim();
+      if (code === 'time_expired' || code === 'attempt_locked') {
+        // Permanent — retrying this exact call will never succeed. Stop
+        // the auto-submit effects from trying again (autoSubmitTriggeredRef
+        // stays true) and tell the student plainly instead of silently
+        // failing forever or spamming the generic retry error below.
+        Swal.fire({
+          icon: 'error', title: 'ส่งข้อสอบไม่สำเร็จ',
+          text: code === 'attempt_locked'
+            ? 'หน้าจอถูกล็อกอยู่ กรุณาแจ้งครูคุมสอบเพื่อขอรหัสปลดล็อกก่อนส่งข้อสอบ'
+            : 'หมดเวลาทำข้อสอบแล้ว กรุณาติดต่อครูผู้สอน',
+          confirmButtonText: 'ตกลง', confirmButtonColor: '#4f46e5',
+        });
+        return;
+      }
+      // Anything else (network blip, transient server error) — clear the
+      // auto-submit guard so the timeout/violation effects that call this
+      // get to try again on their next tick, instead of leaving the
+      // student stuck on a frozen exam screen forever after one failed
+      // attempt.
+      autoSubmitTriggeredRef.current = false;
       if (!auto) Swal.fire({ icon: 'error', title: 'ส่งข้อสอบไม่สำเร็จ', text: 'กรุณาลองใหม่อีกครั้ง' });
     } finally {
       setSubmitting(false);
@@ -634,12 +677,17 @@ export default function StudentExamTool() {
     const opensAtMs = new Date(data.opens_at).getTime();
     const opensAtText = formatThaiDateTime(data.opens_at, { dateStyle: 'long', timeStyle: 'short' });
     const secondsUntilOpen = Math.floor((opensAtMs - Date.now()) / 1000);
+    // exam_set_title is a teacher-entered ชุดข้อสอบ title, not fixed text —
+    // escaped before going into Swal's html: (raw markup, not JSX) so a
+    // title containing e.g. <img onerror=...> can't run as script in every
+    // student's browser that happens to hit this dialog.
+    const setTitle = escapeHtml(data.exam_set_title);
 
     if (secondsUntilOpen > EARLY_WAIT_THRESHOLD_SECONDS) {
       await Swal.fire({
         icon: 'info',
         title: 'ยังไม่ถึงเวลาสอบ',
-        html: `การสอบ &quot;${data.exam_set_title}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>กรุณากลับมาเข้าสอบใหม่เมื่อถึงเวลา`,
+        html: `การสอบ &quot;${setTitle}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>กรุณากลับมาเข้าสอบใหม่เมื่อถึงเวลา`,
         confirmButtonText: 'ตกลง',
         confirmButtonColor: '#4f46e5',
       });
@@ -666,7 +714,7 @@ export default function StudentExamTool() {
     await Swal.fire({
       icon: 'info',
       title: 'ยังไม่ถึงเวลาสอบ',
-      html: `การสอบ &quot;${data.exam_set_title}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>เหลือเวลาอีก <b class="wait-countdown"></b> — ระบบจะพาเข้าสอบให้อัตโนมัติเมื่อถึงเวลา`,
+      html: `การสอบ &quot;${setTitle}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>เหลือเวลาอีก <b class="wait-countdown"></b> — ระบบจะพาเข้าสอบให้อัตโนมัติเมื่อถึงเวลา`,
       confirmButtonText: 'ปิด',
       confirmButtonColor: '#4f46e5',
       allowOutsideClick: false,
@@ -693,10 +741,11 @@ export default function StudentExamTool() {
   async function showTooLateDialog(data) {
     const opensAtText = formatThaiDateTime(data.opens_at, { dateStyle: 'long', timeStyle: 'short' });
     const closesAtText = formatThaiDateTime(data.closes_at, { dateStyle: 'long', timeStyle: 'short' });
+    const setTitle = escapeHtml(data.exam_set_title);
     await Swal.fire({
       icon: 'error',
       title: 'เข้าสอบสายเกินเวลาที่กำหนด',
-      html: `การสอบ &quot;${data.exam_set_title}&quot; กำหนดให้เข้าสอบในช่วง <b>${opensAtText} – ${closesAtText}</b><br>ขณะนี้เลยเวลาที่กำหนดแล้ว กรุณาติดต่อครูผู้สอน`,
+      html: `การสอบ &quot;${setTitle}&quot; กำหนดให้เข้าสอบในช่วง <b>${opensAtText} – ${closesAtText}</b><br>ขณะนี้เลยเวลาที่กำหนดแล้ว กรุณาติดต่อครูผู้สอน`,
       confirmButtonText: 'ตกลง',
       confirmButtonColor: '#4f46e5',
     });
@@ -736,6 +785,7 @@ export default function StudentExamTool() {
         await showExamRulesNotice(data.max_violations);
       }
       saveSession(pinVal.trim(), studentCodeVal.trim());
+      pruneStaleDrafts(data.attempt_id);
       setAttempt(data);
       setAnswers(loadDraft(data.attempt_id));
       setNow(Date.now());

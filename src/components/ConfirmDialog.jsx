@@ -35,7 +35,18 @@ export default function ConfirmDialog({
         showLoaderOnConfirm: true,
         allowOutsideClick: () => !Swal.isLoading(),
         preConfirm: async () => {
-          if (onConfirm) await onConfirm();
+          try {
+            if (onConfirm) await onConfirm();
+          } catch (err) {
+            // SweetAlert2 silently swallows a rejected preConfirm by
+            // default — it just stops the loading spinner and leaves the
+            // dialog open with no explanation, which read as "the delete
+            // button did nothing" to whoever clicked it. Every ConfirmDialog
+            // caller (delete flows across the app) gets a real error message
+            // here instead, with no per-caller try/catch needed.
+            Swal.showValidationMessage(err?.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+            return false;
+          }
         },
       }).then(result => {
         isOpenRef.current = false;

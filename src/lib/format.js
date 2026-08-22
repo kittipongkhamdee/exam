@@ -58,3 +58,15 @@ export function formatGradeRoom(gradeLevel, room) {
   if (room == null || String(room).trim() === '' || String(room) === '0') return level;
   return `${level}/${room}`;
 }
+
+// Escapes a value for safe interpolation into an HTML string (SweetAlert2's
+// `html:` option, a Leaflet tooltip's string content, or any other spot
+// that inserts a string as markup rather than text). Needed anywhere a
+// teacher-entered value (a ชุดข้อสอบ/subject title, a student name from an
+// imported roster, ...) ends up inside one of those — React's own JSX
+// escaping doesn't apply there, since the string is handed to a library
+// that renders it as raw HTML.
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
+}

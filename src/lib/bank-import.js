@@ -114,12 +114,23 @@ export function parseBankQuestionCsv(text) {
   dataRows.forEach((cols, i) => {
     const rowNum = i + 2; // 1-based + the header row this file is expected to have
     const question_text = (cols[0] || '').trim();
-    const choices = cols.slice(1, 1 + MAX_CHOICES).map(c => (c || '').trim()).filter(c => c !== '');
-    const answerRaw = (cols[1 + MAX_CHOICES] || '').trim();
-    const explanation = (cols[2 + MAX_CHOICES] || '').trim();
-    const difficultyRaw = (cols[3 + MAX_CHOICES] || '').trim().toLowerCase();
+    const rawChoices = cols.slice(1, 1 + MAX_CHOICES).map(c => (c || '').trim());
+    // Only trim *trailing* blanks (fine — a teacher using fewer than
+    // MAX_CHOICES columns just leaves the rest empty). A blank *before* a
+    // later filled-in column used to get silently compacted out by a bare
+    // .filter(), which shifts every later choice's array index down by one
+    // and desyncs it from the numeric "เฉลย" column reference — e.g.
+    // columns A,B,,D,E with เฉลย="4" (meaning column D) would silently
+    // score against E instead. Reject that shape instead of guessing.
+    let lastFilled = -1;
+    for (let idx = 0; idx < rawChoices.length; idx++) if (rawChoices[idx] !== '') lastFilled = idx;
+    const choices = rawChoices.slice(0, lastFilled + 1);
 
     if (!question_text) { errors.push(`แถวที่ ${rowNum}: ไม่มีคำถาม`); return; }
+    if (choices.some(c => c === '')) {
+      errors.push(`แถวที่ ${rowNum}: มีตัวเลือกเว้นว่างตรงกลาง (ต้องกรอกตัวเลือกเรียงต่อกันจากซ้ายไปขวา ห้ามเว้นคอลัมน์ว่างไว้)`);
+      return;
+    }
     if (choices.length < 2) { errors.push(`แถวที่ ${rowNum}: ต้องมีตัวเลือกอย่างน้อย 2 ข้อ`); return; }
     const answerNum = Number(answerRaw);
     if (!Number.isInteger(answerNum) || answerNum < 1 || answerNum > choices.length) {

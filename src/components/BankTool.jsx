@@ -524,6 +524,7 @@ export default function BankTool() {
       explanation: q.explanation || '',
       image_path: q.image_path || null,
       image_url: q.image_path ? (imageUrls[q.image_path] || null) : null,
+      difficulty: q.difficulty || 'medium',
     });
     setEditOriginalImagePath(q.image_path || null);
   }
@@ -880,6 +881,14 @@ export default function BankTool() {
                             </label>
                           ))}
                         </div>
+                        <label className={label}>ระดับความยาก</label>
+                        <select
+                          className={inputCls + ' w-full mt-1 mb-3'}
+                          value={editDraft.difficulty}
+                          onChange={e => setEditDraft(prev => ({ ...prev, difficulty: e.target.value }))}
+                        >
+                          {DIFFICULTIES.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                        </select>
                         <label className={label}>คำอธิบายเฉลย</label>
                         <textarea
                           className={inputCls + ' w-full mt-1 mb-3'} rows={2}

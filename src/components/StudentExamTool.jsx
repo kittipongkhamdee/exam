@@ -25,6 +25,7 @@ import { getBankQuestionImageUrl } from '../lib/bank-db';
 import { attemptUnlockChannelName } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
 import { getConfigValue } from '../lib/config-db';
+import { formatThaiDateTime } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
@@ -557,7 +558,7 @@ export default function StudentExamTool() {
   // background stretch, unlike the timers themselves.
   async function showTooEarlyDialog(data, pinVal, studentCodeVal) {
     const opensAtMs = new Date(data.opens_at).getTime();
-    const opensAtText = new Date(data.opens_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
+    const opensAtText = formatThaiDateTime(data.opens_at, { dateStyle: 'long', timeStyle: 'short' });
     const secondsUntilOpen = Math.floor((opensAtMs - Date.now()) / 1000);
 
     if (secondsUntilOpen > EARLY_WAIT_THRESHOLD_SECONDS) {
@@ -616,8 +617,8 @@ export default function StudentExamTool() {
 
   // "เข้าสอบสายเกินเวลา" — the PIN is real but closes_at has already passed.
   async function showTooLateDialog(data) {
-    const opensAtText = new Date(data.opens_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
-    const closesAtText = new Date(data.closes_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
+    const opensAtText = formatThaiDateTime(data.opens_at, { dateStyle: 'long', timeStyle: 'short' });
+    const closesAtText = formatThaiDateTime(data.closes_at, { dateStyle: 'long', timeStyle: 'short' });
     await Swal.fire({
       icon: 'error',
       title: 'เข้าสอบสายเกินเวลาที่กำหนด',
@@ -835,7 +836,7 @@ export default function StudentExamTool() {
           <p className="mt-1 text-sm text-gray-500">{result.student_name}</p>
           <div className="mt-4 text-4xl font-bold text-indigo-700">{result.score}%</div>
           <p className="mt-1 text-sm text-gray-500">ตอบถูก {result.total_correct} จาก {result.total_questions} ข้อ</p>
-          <p className="mt-3 text-xs text-gray-400">ส่งเมื่อ {new Date(result.submitted_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+          <p className="mt-3 text-xs text-gray-400">ส่งเมื่อ {formatThaiDateTime(result.submitted_at, { dateStyle: 'medium', timeStyle: 'short' })}</p>
         </div>
       </div>
     );
@@ -843,7 +844,7 @@ export default function StudentExamTool() {
 
   // phase === 'exam'
   const fullscreenSupported = typeof document !== 'undefined' && (document.fullscreenEnabled || document.webkitFullscreenEnabled);
-  const watermarkTime = new Date(now).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+  const watermarkTime = formatThaiDateTime(now, { dateStyle: 'short', timeStyle: 'short' });
 
   return (
     <div className="min-h-dvh bg-gray-50 pb-24 relative">

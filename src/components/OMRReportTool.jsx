@@ -17,7 +17,7 @@ import { getQuizWithAnswerKey, listMyQuizzes, listScanResultsForQuiz, getItemAna
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { formatStudentName } from '../lib/student-name';
 import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
-import { formatGradeRoom } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed';
@@ -221,7 +221,7 @@ export default function OMRReportTool() {
         r.total_correct,
         selectedQuiz.numQuestions,
         r.score,
-        new Date(r.scanned_at).toLocaleString('th-TH'),
+        formatThaiDateTime(r.scanned_at),
       ]),
     ];
     const csv = '﻿' + rows.map(row => row.map(csvEscape).join(',')).join('\r\n');
@@ -354,7 +354,7 @@ export default function OMRReportTool() {
                       <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{formatStudentName(r.students)}</td>
                       <td className="px-4 py-2.5 text-right text-gray-500">{r.total_correct}/{selectedQuiz.numQuestions}</td>
                       <td className={"px-4 py-2.5 text-right font-bold " + scoreColor(r.score)}>{r.score}%</td>
-                      <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{new Date(r.scanned_at).toLocaleString('th-TH')}</td>
+                      <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{formatThaiDateTime(r.scanned_at)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -18,7 +18,7 @@ import { flushSync } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { listMyExamSets, listMyExamRounds, saveExamRound, deleteExamRound, generatePin } from '../lib/exam-db';
 import { qrSvgPath } from '../lib/qr';
-import { formatGradeRoom } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime, toBangkokInputValue, fromBangkokInputValue } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 function QrCode({ value, className }) {
@@ -114,7 +114,7 @@ function PrintableRoundSheet({ rounds, active }) {
               <tbody>
                 {group.rows.map(r => (
                   <tr key={r.id}>
-                    <td className="border border-gray-400 px-2 py-1">{formatThai(r.opens_at)} – {formatThai(r.closes_at)}</td>
+                    <td className="border border-gray-400 px-2 py-1">{formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)}</td>
                     <td className="border border-gray-400 px-2 py-1">{r.duration_minutes} นาที</td>
                     <td className="border border-gray-400 px-2 py-1 font-mono font-bold">{r.pin}</td>
                     <td className="border border-gray-400 px-2 py-1 font-mono font-bold">{r.unlock_pin}</td>
@@ -156,7 +156,7 @@ function PrintableStudentSigns({ rounds, active, origin }) {
               </h1>
               <p className="text-sm text-gray-500 mb-6">
                 {r.online_exam_sets?.title}<br />
-                {formatThai(r.opens_at)} – {formatThai(r.closes_at)}
+                {formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)}
               </p>
 
               {takeUrl && (
@@ -185,19 +185,6 @@ function PrintableStudentSigns({ rounds, active, origin }) {
       })}
     </div>
   );
-}
-
-function pad(n) { return String(n).padStart(2, '0'); }
-
-function toLocalInputValue(isoString) {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formatThai(isoString) {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function computeStatus(round) {
@@ -303,8 +290,8 @@ export default function ExamScheduleTool() {
   function startEdit(r) {
     setEditingRoundId(r.id);
     setExamSetId(r.exam_set_id);
-    setOpensAt(toLocalInputValue(r.opens_at));
-    setClosesAt(toLocalInputValue(r.closes_at));
+    setOpensAt(toBangkokInputValue(r.opens_at));
+    setClosesAt(toBangkokInputValue(r.closes_at));
     setDurationMinutes(r.duration_minutes);
     setPin(r.pin);
     setUnlockPin(r.unlock_pin);
@@ -315,7 +302,9 @@ export default function ExamScheduleTool() {
 
   async function handleSave() {
     if (!examSetId || !opensAt || !closesAt || !pin.trim() || !unlockPin.trim() || !durationMinutes) return;
-    if (new Date(closesAt).getTime() <= new Date(opensAt).getTime()) {
+    const opensAtDate = fromBangkokInputValue(opensAt);
+    const closesAtDate = fromBangkokInputValue(closesAt);
+    if (closesAtDate.getTime() <= opensAtDate.getTime()) {
       setFormError('เวลาปิดรับสอบต้องอยู่หลังเวลาเปิดสอบ');
       return;
     }
@@ -327,8 +316,8 @@ export default function ExamScheduleTool() {
         examSetId,
         pin: pin.trim(),
         unlockPin: unlockPin.trim(),
-        opensAt: new Date(opensAt).toISOString(),
-        closesAt: new Date(closesAt).toISOString(),
+        opensAt: opensAtDate.toISOString(),
+        closesAt: closesAtDate.toISOString(),
         durationMinutes: Number(durationMinutes),
         scheduleType,
         autoRevealResults,
@@ -399,11 +388,11 @@ export default function ExamScheduleTool() {
 
             <div className={row + ' mt-3'}>
               <div className={field}>
-                <label className={label}>เปิดให้เข้าสอบ</label>
+                <label className={label}>เปิดให้เข้าสอบ (เวลาประเทศไทย)</label>
                 <input type="datetime-local" className={inputCls} value={opensAt} onChange={e => setOpensAt(e.target.value)} />
               </div>
               <div className={field}>
-                <label className={label}>ปิดรับเข้าสอบ</label>
+                <label className={label}>ปิดรับเข้าสอบ (เวลาประเทศไทย)</label>
                 <input type="datetime-local" className={inputCls} value={closesAt} onChange={e => setClosesAt(e.target.value)} />
               </div>
               <div className={field}>
@@ -525,7 +514,7 @@ export default function ExamScheduleTool() {
                             )}
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">
-                            {formatThai(r.opens_at)} – {formatThai(r.closes_at)} · ทำได้ {r.duration_minutes} นาที/คน
+                            {formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)} · ทำได้ {r.duration_minutes} นาที/คน
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

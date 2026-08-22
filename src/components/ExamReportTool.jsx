@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound } from '../lib/exam-db';
-import { formatGradeRoom } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
 
@@ -60,11 +60,6 @@ function DownloadIcon(props) {
       <path d="M4 19h16" />
     </svg>
   );
-}
-
-function formatThai(isoString) {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 const STATUS_LABEL = {
@@ -202,7 +197,7 @@ export default function ExamReportTool() {
               <option value="">— เลือกรอบสอบ —</option>
               {rounds.map(r => (
                 <option key={r.id} value={r.id}>
-                  {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThai(r.opens_at)}
+                  {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThaiDateTime(r.opens_at)}
                   {viewAllTeachers && ` · ครู ${r.teacherName || '(ไม่ระบุชื่อ)'}`}
                 </option>
               ))}
@@ -221,7 +216,7 @@ export default function ExamReportTool() {
               <div>
                 <div className="font-semibold text-gray-900">{report.exam_set_title}</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {report.subject_name} (ชั้น {formatGradeRoom(report.grade_level, report.room)}) · {formatThai(report.opens_at)} – {formatThai(report.closes_at)}
+                  {report.subject_name} (ชั้น {formatGradeRoom(report.grade_level, report.room)}) · {formatThaiDateTime(report.opens_at)} – {formatThaiDateTime(report.closes_at)}
                 </div>
               </div>
               <button type="button" className={btn} onClick={handleToggleVisible} disabled={togglingVisible}>
@@ -265,7 +260,7 @@ export default function ExamReportTool() {
                         <td className="py-2 pr-3 font-mono text-gray-700">{r.student_code}</td>
                         <td className="py-2 pr-3 text-gray-900">{r.student_name}</td>
                         <td className="py-2 pr-3"><span className={pill + ' ' + status.cls}>{status.label}</span></td>
-                        <td className="py-2 pr-3 text-gray-500 text-xs">{formatThai(r.submitted_at)}</td>
+                        <td className="py-2 pr-3 text-gray-500 text-xs">{formatThaiDateTime(r.submitted_at)}</td>
                         <td className="py-2 pr-3 text-gray-900">
                           {r.status === 'submitted'
                             ? (r.total_points != null && r.earned_points != null && r.total_points !== r.total_questions

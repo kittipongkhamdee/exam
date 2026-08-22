@@ -27,7 +27,7 @@ import {
   getRoundMonitor, getRoomMonitor, listMonitorableRounds,
   proctorUnlockAttempt, listProctorAssignmentsForDate,
 } from '../lib/exam-db';
-import { formatGradeRoom } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime, formatThaiTime } from '../lib/format';
 
 function MonitorIcon(props) {
   return (
@@ -66,7 +66,7 @@ function showRoomScheduleDialog({ gradeLevel, room, monitors }) {
     : `<div class="text-left space-y-2">${monitors.map(m => `
         <div class="border border-gray-200 rounded-lg px-3 py-2">
           <div class="text-sm font-semibold text-gray-900">${m.exam_set_title} — ${m.subject_name}</div>
-          <div class="text-xs text-gray-500 mt-0.5">${formatTime(m.opens_at)} – ${formatTime(m.closes_at)} · ทำได้ ${m.duration_minutes} นาที/คน</div>
+          <div class="text-xs text-gray-500 mt-0.5">${formatThaiTime(m.opens_at)} – ${formatThaiTime(m.closes_at)} · ทำได้ ${m.duration_minutes} นาที/คน</div>
           <div class="text-xs mt-1 flex flex-wrap gap-x-3">
             <span class="font-mono font-bold tracking-widest text-gray-900">PIN: ${m.pin}</span>
             <span class="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: ${m.unlock_pin}</span>
@@ -80,16 +80,6 @@ function showRoomScheduleDialog({ gradeLevel, room, monitors }) {
     confirmButtonText: 'ปิด',
     confirmButtonColor: '#4f46e5',
   });
-}
-
-function formatThai(isoString) {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function formatTime(isoString) {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleTimeString('th-TH', { timeStyle: 'short' });
 }
 
 function todayBangkok() {
@@ -179,7 +169,7 @@ function RoundMonitorCard({ monitor, onUnlockDone }) {
         <div>
           <div className="font-semibold text-gray-900">{monitor.exam_set_title}</div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {monitor.subject_name} (ชั้น {formatGradeRoom(monitor.grade_level, monitor.room)}) · {formatTime(monitor.opens_at)} – {formatTime(monitor.closes_at)}
+            {monitor.subject_name} (ชั้น {formatGradeRoom(monitor.grade_level, monitor.room)}) · {formatThaiTime(monitor.opens_at)} – {formatThaiTime(monitor.closes_at)}
           </div>
         </div>
         <div className="flex flex-wrap gap-3 text-xs">
@@ -366,7 +356,7 @@ export default function ExamMonitorTool() {
                 <option value="">— เลือกรอบสอบ —</option>
                 {rounds.map(r => (
                   <option key={r.id} value={r.id}>
-                    {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThai(r.opens_at)}
+                    {r.online_exam_sets?.title} — {r.online_exam_sets?.subjects?.subject_name} (ชั้น {formatGradeRoom(r.online_exam_sets?.subjects?.grade_level, r.online_exam_sets?.subjects?.room)}) · {formatThaiDateTime(r.opens_at)}
                   </option>
                 ))}
               </select>

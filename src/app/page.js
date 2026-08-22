@@ -8,7 +8,7 @@ export default function Home() {
           ระบบสอบวัดผล
         </h1>
         <p className="text-gray-500">
-          ระบบจัดการข้อสอบ จัดสอบออนไลน์ และตรวจกระดาษคำตอบ OMR อัตโนมัติ
+          จัดการข้อสอบ สอบออนไลน์ และตรวจกระดาษคำตอบ OMR อัตโนมัติ
         </p>
         <Link
           href="/dashboard"

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { listMyExamSets, listMyExamRounds, saveExamRound, deleteExamRound, generatePin } from '../lib/exam-db';
+import { getConfigValue } from '../lib/config-db';
 import { qrSvgPath } from '../lib/qr';
 import { formatGradeRoom, formatThaiDateTime, toBangkokInputValue, fromBangkokInputValue } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
@@ -230,6 +231,11 @@ export default function ExamScheduleTool() {
   const [scheduleType, setScheduleType] = useState('adhoc');
   const [autoRevealResults, setAutoRevealResults] = useState(false);
   const [requireLocation, setRequireLocation] = useState(false);
+  // Admin's system-wide master switch (Settings → ตรวจสอบตำแหน่งนักเรียน) —
+  // the "บังคับแชร์ตำแหน่งก่อนเข้าสอบ" checkbox below only appears when
+  // this is on, so a teacher isn't offered a control that start_exam_attempt
+  // would ignore anyway (see the migration ANDing round + global flags).
+  const [proximityFeatureEnabled, setProximityFeatureEnabled] = useState(true);
   const [editingRoundId, setEditingRoundId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -270,6 +276,14 @@ export default function ExamScheduleTool() {
         setExamSets(await listMyExamSets(supabase));
       } catch {
         // best-effort
+      }
+    })();
+    (async () => {
+      try {
+        const stored = await getConfigValue(supabase, 'exam_proximity_check_enabled');
+        setProximityFeatureEnabled(stored !== 'false');
+      } catch {
+        // best-effort — defaults to enabled, matching the Settings panel's own default
       }
     })();
     refreshRounds();
@@ -461,15 +475,17 @@ export default function ExamScheduleTool() {
               </p>
             </div>
 
-            <div className={field + ' mt-3'}>
-              <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={requireLocation} onChange={e => setRequireLocation(e.target.checked)} />
-                บังคับแชร์ตำแหน่งก่อนเข้าสอบ (สำหรับสอบที่บ้าน)
-              </label>
-              <p className="text-xs text-gray-400 mt-0.5">
-                นักเรียนต้องกดอนุญาตแชร์ตำแหน่งก่อนจึงจะเริ่มทำข้อสอบได้ — ถ้าปฏิเสธหรืออุปกรณ์หา GPS ไม่ได้ จะเข้าสอบไม่ได้เด็ดขาด (ต้องลองใหม่จนกว่าจะสำเร็จ) ใช้ระยะห่างขั้นต่ำที่ตั้งไว้ที่หน้าตั้งค่า — ปกติเปิดเฉพาะรอบที่ให้นักเรียนสอบจากที่บ้าน ไม่จำเป็นสำหรับรอบที่สอบในโรงเรียน
-              </p>
-            </div>
+            {proximityFeatureEnabled && (
+              <div className={field + ' mt-3'}>
+                <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={requireLocation} onChange={e => setRequireLocation(e.target.checked)} />
+                  บังคับแชร์ตำแหน่งก่อนเข้าสอบ (สำหรับสอบที่บ้าน)
+                </label>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  นักเรียนต้องกดอนุญาตแชร์ตำแหน่งก่อนจึงจะเริ่มทำข้อสอบได้ — ถ้าปฏิเสธหรืออุปกรณ์หา GPS ไม่ได้ จะเข้าสอบไม่ได้เด็ดขาด (ต้องลองใหม่จนกว่าจะสำเร็จ) ใช้ระยะห่างขั้นต่ำที่ตั้งไว้ที่หน้าตั้งค่า — ปกติเปิดเฉพาะรอบที่ให้นักเรียนสอบจากที่บ้าน ไม่จำเป็นสำหรับรอบที่สอบในโรงเรียน
+                </p>
+              </div>
+            )}
 
             {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
 

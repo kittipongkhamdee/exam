@@ -15,10 +15,20 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
+import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
 import { formatStudentName } from '../lib/student-name';
 import { formatGradeRoom } from '../lib/format';
+
+function groupQuizzesBySubject(quizzes) {
+  const groups = new Map();
+  for (const q of quizzes) {
+    const key = `${q.subjects?.subject_name} (ชั้น ${formatGradeRoom(q.subjects?.grade_level, q.subjects?.room)})`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(q);
+  }
+  return [...groups.entries()].map(([name, rows]) => ({ name, rows }));
+}
 
 export default function OMRPrepareTool() {
   const [numQuestions, setNumQuestions] = useState(20);
@@ -94,6 +104,79 @@ export default function OMRPrepareTool() {
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [loadQuizError, setLoadQuizError] = useState(null);
 
+  // Every quiz across every subject this teacher owns — lets the teacher
+  // find and open/delete a quiz directly without picking its subject
+  // first (the per-subject dropdown above only ever shows quizzes for
+  // whatever subject happens to already be selected). Loaded once at
+  // mount and refreshed after any save/delete, mirroring how
+  // `existingQuizzes` already keeps itself in sync.
+  const [allQuizzes, setAllQuizzes] = useState([]);
+  const [allQuizzesLoading, setAllQuizzesLoading] = useState(true);
+  const [expandedQuizGroups, setExpandedQuizGroups] = useState(new Set());
+  const [deleteListTarget, setDeleteListTarget] = useState(null); // a row from allQuizzes, or null
+  const [deletingListQuiz, setDeletingListQuiz] = useState(false);
+  const [deleteListError, setDeleteListError] = useState(null);
+  // Set right before switching subjectId from the all-quizzes list, so the
+  // subjectId effect below (which itself resets quizId/roster/title first)
+  // can load this specific quiz *after* that reset finishes, instead of
+  // racing it — see the effect for how this is consumed.
+  const pendingQuizLoadRef = useRef(null);
+
+  const refreshAllQuizzes = useCallback(async () => {
+    try {
+      setAllQuizzes(await listMyQuizzes(supabase));
+    } catch {
+      // best-effort — the rest of the page still works without this list
+    } finally {
+      setAllQuizzesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refreshAllQuizzes(); }, [refreshAllQuizzes]);
+
+  function toggleQuizGroup(name) {
+    setExpandedQuizGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+
+  // Opens a quiz picked from the all-subjects list: switches to its
+  // subject (if not already selected) and loads it once that subject's
+  // own effect has finished resetting the form.
+  function openQuizFromList(quiz) {
+    if (quiz.subject_id === subjectId) {
+      handleLoadQuiz(quiz.id);
+    } else {
+      pendingQuizLoadRef.current = quiz.id;
+      setSubjectId(quiz.subject_id);
+    }
+  }
+
+  async function handleDeleteListQuiz() {
+    if (!deleteListTarget) return;
+    setDeletingListQuiz(true);
+    setDeleteListError(null);
+    try {
+      await deleteQuiz(supabase, deleteListTarget.id);
+      if (quizId === deleteListTarget.id) {
+        setQuizId(null);
+        setRoster([]);
+        setAnswerKey({});
+      }
+      if (deleteListTarget.subject_id === subjectId) {
+        setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
+      }
+      await refreshAllQuizzes();
+      setDeleteListTarget(null);
+    } catch (err) {
+      setDeleteListError(err.message || 'ลบชุดข้อสอบไม่สำเร็จ');
+    } finally {
+      setDeletingListQuiz(false);
+    }
+  }
+
   const [roster, setRoster] = useState([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
 
@@ -166,6 +249,16 @@ export default function OMRPrepareTool() {
           setLoadingClassStudents(false);
         }
       }
+      // openQuizFromList sets this right before switching subjects, so the
+      // quiz loads only after the reset/existingQuizzes-refresh above has
+      // fully settled — loading it any earlier would race handleLoadQuiz's
+      // own field-setting against this effect's setQuizId(null)/setTitle
+      // above and could leave stale defaults on screen.
+      if (pendingQuizLoadRef.current) {
+        const pendingId = pendingQuizLoadRef.current;
+        pendingQuizLoadRef.current = null;
+        handleLoadQuiz(pendingId);
+      }
     })();
   }, [subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -202,6 +295,7 @@ export default function OMRPrepareTool() {
       setQuizId(newQuizId);
       setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       refreshRoster(newQuizId);
+      refreshAllQuizzes();
     } catch (err) {
       setSaveQuizError(err.message || 'บันทึกเฉลยไม่สำเร็จ');
     } finally {
@@ -220,6 +314,7 @@ export default function OMRPrepareTool() {
       setAnswerKey({});
       setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       setConfirmDeleteQuizOpen(false);
+      refreshAllQuizzes();
     } catch (err) {
       setDeleteQuizError(err.message || 'ลบชุดข้อสอบไม่สำเร็จ');
     } finally {
@@ -434,6 +529,51 @@ export default function OMRPrepareTool() {
       <div className="text-sm text-gray-500 mb-5">
         เลือกวิชา → ออกแบบฟอร์ม → กำหนดเฉลย แล้วพิมพ์กระดาษคำตอบไว้ล่วงหน้า — เมื่อสอบเสร็จให้ไปที่หน้า
         <a href="/omr/scan" className="text-indigo-600 font-semibold"> สแกนตรวจ</a> เพื่อตรวจด้วยมือถือ
+      </div>
+
+      <div className={card}>
+        <div className="font-semibold text-gray-900 mb-3">ชุดข้อสอบที่มีอยู่แล้วทั้งหมด</div>
+        {allQuizzesLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
+        {!allQuizzesLoading && allQuizzes.length === 0 && (
+          <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบในระบบ — เลือกวิชาด้านล่างเพื่อเริ่มสร้างชุดแรก</div>
+        )}
+        {allQuizzes.length > 0 && (
+          <div className="max-h-72 overflow-y-auto -mx-5 px-5">
+            {groupQuizzesBySubject(allQuizzes).map(group => {
+              const expanded = expandedQuizGroups.has(group.name);
+              return (
+                <div key={group.name}>
+                  <button
+                    type="button"
+                    onClick={() => toggleQuizGroup(group.name)}
+                    className="w-full flex items-center gap-2 pt-3 pb-1.5 first:pt-0 text-left"
+                  >
+                    <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{group.name}</span>
+                    <span className="text-[11px] text-gray-400">({group.rows.length})</span>
+                    <div className="h-px flex-1 bg-gray-100" />
+                  </button>
+                  {expanded && group.rows.map(q => (
+                    <div key={q.id} className="flex justify-between items-center gap-3 text-sm py-2 border-b border-gray-100 last:border-b-0">
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900 truncate">{q.title}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{q.num_questions} ข้อ · {q.num_choices} ตัวเลือก</div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => openQuizFromList(q)} disabled={loadingQuiz}>
+                          <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
+                        </button>
+                        <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setDeleteListTarget(q)}>
+                          <TrashIcon className="h-3.5 w-3.5" /> ลบ
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto overflow-y-hidden" role="tablist">
@@ -702,6 +842,18 @@ export default function OMRPrepareTool() {
         onConfirm={handleDeleteQuiz}
         onCancel={() => setConfirmDeleteQuizOpen(false)}
       />
+
+      <ConfirmDialog
+        open={!!deleteListTarget}
+        title="ยืนยันลบชุดข้อสอบ"
+        message={deleteListTarget ? `ลบชุดข้อสอบ "${deleteListTarget.title}" ทั้งหมด?\n\nการลบนี้จะลบเฉลย ผลตรวจของนักเรียนทุกคน และรูปที่เก็บไว้ของชุดนี้ไปด้วย และไม่สามารถกู้คืนได้` : ''}
+        confirmLabel="ลบชุดข้อสอบ"
+        danger
+        loading={deletingListQuiz}
+        onConfirm={handleDeleteListQuiz}
+        onCancel={() => { setDeleteListTarget(null); setDeleteListError(null); }}
+      />
+      {deleteListError && <div className="text-xs text-red-600 mt-2">{deleteListError}</div>}
     </div>
   );
 }
@@ -711,6 +863,23 @@ function CheckCircleIcon(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <circle cx="12" cy="12" r="9" />
       <path d="m8.5 12.5 2.5 2.5 4.5-5" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function PencilIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   );
 }

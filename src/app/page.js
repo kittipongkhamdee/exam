@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-gray-50 font-serif">
+    <div className="flex flex-1 flex-col items-center justify-center bg-gray-50 font-prompt">
       <main className="flex w-full max-w-xl flex-col items-center gap-6 px-6 py-32 text-center">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">
           ระบบสอบวัดผล

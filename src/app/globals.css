@@ -6,7 +6,7 @@
      Student screens (/take) and every exported/printed document keep the
      app-wide Sarabun above — see the print:font-sans overrides on the
      printable sheets in ExamScheduleTool.jsx / ExamDutyScheduleTool.jsx. */
-  --font-serif: 'Noto Serif Thai', 'Sarabun', serif;
+  --font-prompt: 'Prompt', 'Sarabun', sans-serif;
 }
 
 body {

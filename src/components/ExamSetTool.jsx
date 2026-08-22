@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
-import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject } from '../lib/exam-db';
+import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject, getBankQuestionQualityStats } from '../lib/exam-db';
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
 import { generateExamQuestionPaperDocx } from '../lib/exam-docx';
 import { getConfigValue } from '../lib/config-db';
@@ -277,6 +277,31 @@ function CopyIcon(props) {
   );
 }
 
+// Same automatic 1-5 star rating shown on คลังข้อสอบ (BankTool.jsx) —
+// duplicated here rather than shared/exported since every Tool component
+// in this app keeps its own small presentational pieces local.
+function StarRating({ stars }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" title={`${stars}/5 ดาว จากค่าความยาก/อำนาจจำแนกที่วัดได้จริง`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <svg key={i} viewBox="0 0 24 24" className={'h-3.5 w-3.5 ' + (i < stars ? 'fill-amber-400' : 'fill-gray-200')}>
+          <path d="M12 2.5l2.9 6.2 6.8.7-5.1 4.6 1.5 6.7L12 17.3l-6.1 3.4 1.5-6.7-5.1-4.6 6.8-.7L12 2.5z" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
+function matchesStarFilter(stars, filter) {
+  if (!filter) return true;
+  if (filter === 'none') return stars === null || stars === undefined;
+  if (stars === null || stars === undefined) return false;
+  if (filter === '5') return stars === 5;
+  if (filter === '4+') return stars >= 4;
+  if (filter === '3+') return stars >= 3;
+  return true;
+}
+
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
@@ -303,6 +328,10 @@ export default function ExamSetTool() {
   const [title, setTitle] = useState('');
   const [availableQuestions, setAvailableQuestions] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [qualityStats, setQualityStats] = useState({});
+  const [filterDifficulty, setFilterDifficulty] = useState('');
+  const [filterIndicatorId, setFilterIndicatorId] = useState('');
+  const [filterStars, setFilterStars] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [pointsById, setPointsById] = useState({}); // { [bank_question_id]: points }
   const [bulkPoints, setBulkPoints] = useState(1);
@@ -366,16 +395,28 @@ export default function ExamSetTool() {
   }, [refreshSets]);
 
   useEffect(() => {
+    setFilterDifficulty('');
+    setFilterIndicatorId('');
+    setFilterStars('');
     if (!subjectId) {
       setAvailableQuestions([]);
+      setQualityStats({});
       return;
     }
     setQuestionsLoading(true);
     (async () => {
       try {
-        setAvailableQuestions(await listMyBankQuestions(supabase, { subjectId }));
+        const list = await listMyBankQuestions(supabase, { subjectId });
+        setAvailableQuestions(list);
+        // Best-effort and independent of the question list itself — a slow
+        // or failed stats query should never block picking questions, it
+        // just means the star badges/filter stay off for this refresh.
+        getBankQuestionQualityStats(supabase, list.map(q => q.id))
+          .then(setQualityStats)
+          .catch(() => {});
       } catch {
         setAvailableQuestions([]);
+        setQualityStats({});
       } finally {
         setQuestionsLoading(false);
       }
@@ -414,14 +455,14 @@ export default function ExamSetTool() {
   }
 
   function toggleSelectAllQuestions() {
-    const allSelected = availableQuestions.length > 0 && availableQuestions.every(q => selectedIds.includes(q.id));
+    const allSelected = filteredQuestions.length > 0 && filteredQuestions.every(q => selectedIds.includes(q.id));
     if (allSelected) {
-      setSelectedIds([]);
+      setSelectedIds(prev => prev.filter(id => !filteredQuestions.some(q => q.id === id)));
     } else {
-      setSelectedIds(availableQuestions.map(q => q.id));
+      setSelectedIds(prev => [...new Set([...prev, ...filteredQuestions.map(q => q.id)])]);
       setPointsById(prev => {
         const next = { ...prev };
-        for (const q of availableQuestions) if (next[q.id] === undefined) next[q.id] = 1;
+        for (const q of filteredQuestions) if (next[q.id] === undefined) next[q.id] = 1;
         return next;
       });
     }
@@ -458,7 +499,22 @@ export default function ExamSetTool() {
   const questionsById = new Map(availableQuestions.map(q => [q.id, q]));
   const selectedQuestions = selectedIds.map(id => questionsById.get(id)).filter(Boolean);
   const totalPoints = selectedIds.reduce((sum, id) => sum + (pointsById[id] ?? 1), 0);
-  const allQuestionsSelected = availableQuestions.length > 0 && availableQuestions.every(q => selectedIds.includes(q.id));
+
+  // Indicator/ผลการเรียนรู้ dropdown options: only what's actually attached
+  // to at least one question in this subject's bank, so the filter never
+  // offers a choice that would empty the list.
+  const indicatorOptions = [...new Map(
+    availableQuestions.filter(q => q.indicator_id && q.indicators).map(q => [q.indicator_id, q.indicators])
+  ).entries()]
+    .map(([id, ind]) => ({ id, ...ind }))
+    .sort((a, b) => (a.indicator_code || '').localeCompare(b.indicator_code || ''));
+
+  const filteredQuestions = availableQuestions.filter(q =>
+    (!filterDifficulty || q.difficulty === filterDifficulty) &&
+    (!filterIndicatorId || q.indicator_id === filterIndicatorId) &&
+    matchesStarFilter(qualityStats[q.id]?.stars ?? null, filterStars)
+  );
+  const allQuestionsSelected = filteredQuestions.length > 0 && filteredQuestions.every(q => selectedIds.includes(q.id));
 
   async function handleSave() {
     if (!subjectId || !title.trim() || selectedIds.length === 0) return;
@@ -666,24 +722,66 @@ export default function ExamSetTool() {
                 <div className="text-sm text-gray-500 mt-2">วิชานี้ยังไม่มีข้อสอบในคลัง — ไปสร้างที่ &quot;คลังข้อสอบ&quot; ก่อน</div>
               )}
               {availableQuestions.length > 0 && (
-                <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {availableQuestions.map(q => (
-                    <label key={q.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox" className="mt-0.5"
-                        checked={selectedIds.includes(q.id)}
-                        onChange={() => toggleQuestion(q.id)}
-                      />
-                      <span className="min-w-0">
-                        <span className="text-gray-700">{q.question_text}</span>{' '}
-                        <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
-                          {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
-                        </span>{' '}
-                        <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTY_LABEL[q.difficulty] || q.difficulty}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                <>
+                  <div className="flex flex-wrap gap-2 mt-2 mb-1.5">
+                    <select
+                      className={inputCls + ' text-xs py-1.5'}
+                      value={filterDifficulty}
+                      onChange={e => setFilterDifficulty(e.target.value)}
+                    >
+                      <option value="">ระดับความยาก: ทั้งหมด</option>
+                      {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                    {indicatorOptions.length > 0 && (
+                      <select
+                        className={inputCls + ' text-xs py-1.5 max-w-[180px]'}
+                        value={filterIndicatorId}
+                        onChange={e => setFilterIndicatorId(e.target.value)}
+                      >
+                        <option value="">ตัวชี้วัด/ผลการเรียนรู้: ทั้งหมด</option>
+                        {indicatorOptions.map(ind => (
+                          <option key={ind.id} value={ind.id}>{ind.indicator_code}</option>
+                        ))}
+                      </select>
+                    )}
+                    <select
+                      className={inputCls + ' text-xs py-1.5'}
+                      value={filterStars}
+                      onChange={e => setFilterStars(e.target.value)}
+                    >
+                      <option value="">ดาวคะแนน: ทั้งหมด</option>
+                      <option value="5">5 ดาว</option>
+                      <option value="4+">4 ดาวขึ้นไป</option>
+                      <option value="3+">3 ดาวขึ้นไป</option>
+                      <option value="none">ยังไม่มีข้อมูล</option>
+                    </select>
+                  </div>
+                  {filteredQuestions.length === 0 ? (
+                    <div className="text-sm text-gray-500 mt-2">ไม่มีข้อสอบที่ตรงกับตัวกรองที่เลือก</div>
+                  ) : (
+                    <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                      {filteredQuestions.map(q => (
+                        <label key={q.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox" className="mt-0.5"
+                            checked={selectedIds.includes(q.id)}
+                            onChange={() => toggleQuestion(q.id)}
+                          />
+                          <span className="min-w-0">
+                            <span className="text-gray-700">{q.question_text}</span>{' '}
+                            <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
+                              {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
+                            </span>{' '}
+                            <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTY_LABEL[q.difficulty] || q.difficulty}</span>
+                            {qualityStats[q.id]?.stars != null && (
+                              <>{' '}<StarRating stars={qualityStats[q.id].stars} /></>
+                            )}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

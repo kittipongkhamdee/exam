@@ -97,7 +97,7 @@ function PrinterIcon(props) {
 // hidden the same way so only this sheet ends up on paper.
 function PrintableRoundSheet({ rounds, active }) {
   return (
-    <div className={active ? 'hidden print:block p-6' : 'hidden'}>
+    <div className={active ? 'hidden print:block print:font-sans p-6' : 'hidden'}>
       <h1 className="text-lg font-bold mb-4">รายละเอียดรอบสอบสำหรับครูคุมสอบ</h1>
       <div className="space-y-5">
         {groupBySubject(rounds).map(group => (
@@ -146,7 +146,7 @@ function PrintableStudentSigns({ rounds, active, origin }) {
         return (
           <div
             key={r.id}
-            className={'hidden print:flex items-center justify-center min-h-screen p-10' + (i < rounds.length - 1 ? ' break-after-page' : '')}
+            className={'hidden print:flex print:font-sans items-center justify-center min-h-screen p-10' + (i < rounds.length - 1 ? ' break-after-page' : '')}
           >
             <div className="w-full max-w-md rounded-3xl border-2 border-gray-300 p-10 text-center">
               <div className="inline-block text-xs font-bold tracking-widest uppercase text-indigo-700 bg-indigo-50 rounded-full px-3 py-1 mb-3">

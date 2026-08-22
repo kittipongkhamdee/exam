@@ -95,14 +95,18 @@ export default function DashboardShell({ children }) {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
+      <div className="flex flex-1 items-center justify-center text-sm text-gray-500 font-serif">
         กำลังตรวจสอบสถานะเข้าสู่ระบบ...
       </div>
     );
   }
 
   if (!session) {
-    return <LoginForm />;
+    return (
+      <div className="flex flex-1 font-serif">
+        <LoginForm />
+      </div>
+    );
   }
 
   const groups = NAV_GROUPS
@@ -110,7 +114,7 @@ export default function DashboardShell({ children }) {
     .filter(group => group.items.length > 0);
 
   return (
-    <div className="flex flex-1 min-h-screen">
+    <div className="flex flex-1 min-h-screen font-serif">
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div

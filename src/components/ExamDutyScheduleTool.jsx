@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { listExamDaySchedule } from '../lib/exam-db';
-import { formatGradeRoom } from '../lib/format';
+import { formatGradeRoom, formatThaiTime } from '../lib/format';
 
 function CalendarIcon(props) {
   return (
@@ -36,14 +36,14 @@ function todayBangkok() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 }
 
+// dateStr is a plain "YYYY-MM-DD" from the date picker, already meant as
+// a Bangkok calendar date — anchoring it to noon Bangkok (rather than
+// midnight, which risks parsing edge cases right at the day boundary)
+// before formatting keeps it from drifting to the adjacent day on a
+// device set to a different timezone.
 function formatThaiDate(dateStr) {
   if (!dateStr) return '';
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('th-TH', { dateStyle: 'long' });
-}
-
-function formatTime(isoString) {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleTimeString('th-TH', { timeStyle: 'short' });
+  return new Date(`${dateStr}T12:00:00+07:00`).toLocaleDateString('th-TH', { dateStyle: 'long', timeZone: 'Asia/Bangkok' });
 }
 
 function groupByRoom(rows) {
@@ -71,7 +71,7 @@ function ScheduleTable({ rows, className }) {
       <tbody>
         {rows.map(r => (
           <tr key={r.round_id}>
-            <td className="border border-gray-300 px-2 py-1">{formatTime(r.opens_at)} – {formatTime(r.closes_at)}</td>
+            <td className="border border-gray-300 px-2 py-1">{formatThaiTime(r.opens_at)} – {formatThaiTime(r.closes_at)}</td>
             <td className="border border-gray-300 px-2 py-1">{r.exam_set_title} — {r.subject_name}</td>
             <td className="border border-gray-300 px-2 py-1">{r.duration_minutes} นาที</td>
             <td className="border border-gray-300 px-2 py-1 font-mono font-bold">{r.pin}</td>

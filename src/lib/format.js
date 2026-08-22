@@ -1,6 +1,53 @@
 // format.js — small display-only formatting helpers shared across the
 // exam and OMR modules.
 
+// Every exam-time display and every <input type="datetime-local"> a
+// teacher fills in is meant to represent Thailand wall-clock time,
+// regardless of what timezone the device it's viewed/edited on happens to
+// be set to (a laptop with its clock misconfigured, a browser left on
+// UTC, etc.) — a plain `new Date(...)`/`toLocaleString(...)` call with no
+// explicit timeZone instead silently trusts that device's own local
+// timezone, which is normally Thai time but isn't guaranteed to be.
+// Thailand has a single fixed UTC+7 offset with no DST, so anchoring to
+// it is just a constant string, not a real timezone library.
+export const BANGKOK_TZ = 'Asia/Bangkok';
+
+// Formats an ISO timestamp in Thai locale, always against Asia/Bangkok —
+// use in place of a bare `.toLocaleString('th-TH', opts)`.
+export function formatThaiDateTime(isoString, opts = { dateStyle: 'medium', timeStyle: 'short' }) {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleString('th-TH', { ...opts, timeZone: BANGKOK_TZ });
+}
+
+export function formatThaiDate(isoString, opts = { dateStyle: 'long' }) {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleDateString('th-TH', { ...opts, timeZone: BANGKOK_TZ });
+}
+
+export function formatThaiTime(isoString, opts = { timeStyle: 'short' }) {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleTimeString('th-TH', { ...opts, timeZone: BANGKOK_TZ });
+}
+
+// <input type="datetime-local"> holds a plain "YYYY-MM-DDTHH:mm" string
+// with no timezone of its own — these two convert it to/from a real UTC
+// instant, always treating that plain string as Thailand wall-clock time
+// no matter the device's own timezone.
+export function toBangkokInputValue(isoString) {
+  if (!isoString) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BANGKOK_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(isoString));
+  const get = (type) => parts.find(p => p.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+}
+
+export function fromBangkokInputValue(value) {
+  if (!value) return null;
+  return new Date(`${value}:00+07:00`);
+}
+
 // ชั้น/ห้อง display: room "0" is the sentinel a subject gets when a grade
 // has only a single room (no real ห้อง subdivision to distinguish), so it
 // reads better omitted entirely — "ม. 6" rather than "ม. 6/0". A subject

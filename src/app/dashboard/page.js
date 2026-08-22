@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { listMyQuizzes, listMyRecentScanActivity, getMyScanStats } from '@/lib/omr-db';
 import { listMyExamSets, listMyExamRounds } from '@/lib/exam-db';
 import { formatStudentName } from '@/lib/student-name';
-import { formatGradeRoom } from '@/lib/format';
+import { formatGradeRoom, formatThaiDateTime, BANGKOK_TZ } from '@/lib/format';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5';
 
@@ -18,16 +18,15 @@ function scoreColor(pct) {
   return 'text-red-600';
 }
 
-function formatThaiDate(d) {
-  return new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+// The greeting banner's own "now" clock — a plain Date object (not an ISO
+// string), so it needs its own formatters rather than the shared
+// isoString-based ones in lib/format.js.
+function greetingDate(d) {
+  return new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: BANGKOK_TZ }).format(d);
 }
 
-function formatThaiTime(d) {
-  return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' น.';
-}
-
-function formatThaiDateTime(isoString) {
-  return new Date(isoString).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+function greetingTime(d) {
+  return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BANGKOK_TZ }).format(d) + ' น.';
 }
 
 function SectionLabel({ children }) {
@@ -59,8 +58,8 @@ function GreetingBanner() {
       </div>
       {now && (
         <div>
-          <div className="text-sm text-white/90">{formatThaiDate(now)}</div>
-          <div className="text-2xl font-extrabold mt-0.5">{formatThaiTime(now)}</div>
+          <div className="text-sm text-white/90">{greetingDate(now)}</div>
+          <div className="text-2xl font-extrabold mt-0.5">{greetingTime(now)}</div>
         </div>
       )}
     </div>

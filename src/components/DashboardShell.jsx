@@ -46,6 +46,7 @@ const NAV_GROUPS = [
   },
   {
     items: [
+      { href: '/manual', label: 'คู่มือการใช้งาน', icon: BookIcon, adminOnly: false },
       { href: '/settings', label: 'ตั้งค่า', icon: GearIcon, adminOnly: true },
     ],
   },
@@ -422,6 +423,15 @@ function CalendarIcon(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+
+function BookIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
     </svg>
   );
 }

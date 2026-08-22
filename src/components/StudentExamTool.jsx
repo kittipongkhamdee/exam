@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabaseClient';
 import { getBankQuestionImageUrl } from '../lib/bank-db';
 import { attemptUnlockChannelName } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
+import { getConfigValue } from '../lib/config-db';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
@@ -147,6 +148,22 @@ function ClockIcon(props) {
   );
 }
 
+// The school/system logo when the admin has uploaded one (Settings →
+// ชื่อระบบ คำอธิบาย และโลโก้), falling back to the same clock badge as
+// before when there isn't one — img over the plain badge background so a
+// non-square logo still sits centered without distortion.
+function LogoBadge({ logoUrl, animate }) {
+  return (
+    <div className={'h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3 overflow-hidden' + (animate ? ' animate-pulse' : '')}>
+      {logoUrl ? (
+        <img src={logoUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <ClockIcon className="h-7 w-7 text-white" />
+      )}
+    </div>
+  );
+}
+
 function ExpandIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -189,6 +206,24 @@ export default function StudentExamTool() {
   const [studentCode, setStudentCode] = useState(savedSession?.studentCode || '');
   const [loginError, setLoginError] = useState(null);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+
+  // exam_app_logo — the same school/system logo an admin uploads in
+  // Settings and this app reuses everywhere else (printed exam papers,
+  // the logged-in dashboard). Students never get a Supabase session, so
+  // this read only works because config has a narrow anon-read policy
+  // scoped to just this one key (see migration
+  // add_anon_read_exam_app_logo_config) — every other config key (API
+  // keys, etc.) stays blocked for anon.
+  useEffect(() => {
+    (async () => {
+      try {
+        setLogoUrl(await getConfigValue(supabase, 'exam_app_logo'));
+      } catch {
+        // best-effort — falls back to the default clock icon
+      }
+    })();
+  }, []);
 
   const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, student_name, deadline, questions, violation_count, max_violations, locked }
   const [result, setResult] = useState(null); // { exam_set_title, student_name, submitted_at, total_correct, total_questions, score } — once the teacher reveals results
@@ -726,9 +761,7 @@ export default function StudentExamTool() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
         <div className="flex flex-col items-center text-center">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3 animate-pulse">
-            <ClockIcon className="h-7 w-7 text-white" />
-          </div>
+          <LogoBadge logoUrl={logoUrl} animate />
           <p className="text-sm text-gray-500">กำลังเข้าสอบต่อ...</p>
         </div>
       </div>
@@ -740,9 +773,7 @@ export default function StudentExamTool() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm">
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3">
-              <ClockIcon className="h-7 w-7 text-white" />
-            </div>
+            <LogoBadge logoUrl={logoUrl} />
             <h1 className="text-xl font-bold text-gray-900">เข้าสอบออนไลน์</h1>
             <p className="mt-1 text-sm text-gray-500">กรอกรหัส PIN และเลขประจำตัวนักเรียนที่ครูแจ้ง</p>
           </div>

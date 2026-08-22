@@ -118,7 +118,7 @@ function formatWaitCountdown(totalSeconds) {
 // A live wait is only useful for a plausible "arrived early" gap — beyond
 // this, just tell the student the start time and let them come back later
 // instead of implying a tab left open for days will do anything useful.
-const EARLY_WAIT_THRESHOLD_SECONDS = 3 * 60 * 60;
+const EARLY_WAIT_THRESHOLD_SECONDS = 30 * 60;
 
 function CheckCircleIcon(props) {
   return (
@@ -506,10 +506,23 @@ export default function StudentExamTool() {
   // Within EARLY_WAIT_THRESHOLD_SECONDS this shows a live countdown and
   // (per "นับเวลาถอยหลังเข้าระบบสอบ") retries the same login automatically
   // the moment it reaches zero; beyond that it's just informational, since
-  // nobody realistically leaves a tab open for hours/days waiting.
+  // nobody realistically leaves a tab open for hours waiting.
+  //
+  // Deliberately does NOT rely on SweetAlert2's own `timer` option (or any
+  // bare setInterval/setTimeout) to decide when to retry — a phone's
+  // screen locking, or the browser backgrounding the tab, freely suspends
+  // JS timers for an indefinite stretch, so a student who locked their
+  // phone right through the exam's opens_at came back to a frozen
+  // countdown that never auto-retried and had to type the PIN again.
+  // Every check here instead compares real wall-clock time (Date.now())
+  // against the fixed target opensAtMs, and a visibilitychange/focus
+  // listener re-runs that check the instant the tab becomes visible again
+  // — visibility events fire reliably even after a timer-suspending
+  // background stretch, unlike the timers themselves.
   async function showTooEarlyDialog(data, pinVal, studentCodeVal) {
+    const opensAtMs = new Date(data.opens_at).getTime();
     const opensAtText = new Date(data.opens_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' });
-    const secondsUntilOpen = Math.floor((new Date(data.opens_at).getTime() - Date.now()) / 1000);
+    const secondsUntilOpen = Math.floor((opensAtMs - Date.now()) / 1000);
 
     if (secondsUntilOpen > EARLY_WAIT_THRESHOLD_SECONDS) {
       await Swal.fire({
@@ -522,8 +535,24 @@ export default function StudentExamTool() {
       return;
     }
 
-    let timerInterval;
-    const result = await Swal.fire({
+    let retried = false;
+    let tickInterval;
+    function retry() {
+      if (retried) return;
+      retried = true;
+      clearInterval(tickInterval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      Swal.close();
+      login(pinVal, studentCodeVal, { showRulesNotice: true });
+    }
+    function onVisible() {
+      if (!document.hidden && Date.now() >= opensAtMs) retry();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+
+    await Swal.fire({
       icon: 'info',
       title: 'ยังไม่ถึงเวลาสอบ',
       html: `การสอบ &quot;${data.exam_set_title}&quot; จะเริ่มเวลา <b>${opensAtText}</b><br>เหลือเวลาอีก <b class="wait-countdown"></b> — ระบบจะพาเข้าสอบให้อัตโนมัติเมื่อถึงเวลา`,
@@ -531,21 +560,22 @@ export default function StudentExamTool() {
       confirmButtonColor: '#4f46e5',
       allowOutsideClick: false,
       allowEscapeKey: false,
-      timer: secondsUntilOpen * 1000,
-      timerProgressBar: true,
       didOpen: () => {
         const b = Swal.getHtmlContainer()?.querySelector('.wait-countdown');
-        timerInterval = setInterval(() => {
-          const left = Swal.getTimerLeft();
-          if (b && left != null) b.textContent = formatWaitCountdown(Math.ceil(left / 1000));
-        }, 500);
+        const tick = () => {
+          const remaining = Math.max(0, Math.ceil((opensAtMs - Date.now()) / 1000));
+          if (b) b.textContent = formatWaitCountdown(remaining);
+          if (remaining <= 0) retry();
+        };
+        tick();
+        tickInterval = setInterval(tick, 500);
       },
-      willClose: () => clearInterval(timerInterval),
+      willClose: () => {
+        clearInterval(tickInterval);
+        document.removeEventListener('visibilitychange', onVisible);
+        window.removeEventListener('focus', onVisible);
+      },
     });
-
-    if (result.dismiss === Swal.DismissReason.timer) {
-      login(pinVal, studentCodeVal, { showRulesNotice: true });
-    }
   }
 
   // "เข้าสอบสายเกินเวลา" — the PIN is real but closes_at has already passed.

@@ -271,11 +271,11 @@ function LoginForm({ idleSignedOut }) {
           <div className="mb-6 grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-center">
               <div className="text-2xl font-bold text-indigo-600"><CountUpNumber value={stats.bankQuestionsCount} /></div>
-              <div className="mt-0.5 text-[11px] text-gray-500">ข้อสอบในคลังทั้งหมด</div>
+              <div className="mt-0.5 text-[11px] text-gray-500">ข้อสอบในคลัง</div>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-center">
               <div className="text-2xl font-bold text-indigo-600"><CountUpNumber value={stats.omrScanResultsCount} /></div>
-              <div className="mt-0.5 text-[11px] text-gray-500">กระดาษคำตอบที่ตรวจแล้ว</div>
+              <div className="mt-0.5 text-[11px] text-gray-500">กระดาษคำตอบ</div>
             </div>
           </div>
         )}
@@ -325,7 +325,7 @@ function LoginForm({ idleSignedOut }) {
           <img src="/promptpay-qr.jpg" alt="PromptPay QR" className="h-20 w-20 rounded-lg object-cover shrink-0 border border-gray-100" />
           <div className="min-w-0">
             <div className="flex items-center gap-1 text-xs font-semibold text-amber-600">
-              ☕ เลี้ยงกาแฟผู้พัฒนา
+              ☕ เลี้ยงชาไทยผู้พัฒนาระบบ
             </div>
             <div className="text-sm font-bold text-gray-900">085-203-7897</div>
             <div className="text-xs text-gray-500">นายกิตติพงษ์ คำดี</div>

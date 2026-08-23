@@ -1123,22 +1123,22 @@ export default function StudentExamTool() {
         </button>
       )}
 
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <div className="min-w-0">
-          <div className="font-semibold text-gray-700 truncate">{attempt.exam_set_title}</div>
-          <div className="text-xs text-gray-500">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
-        </div>
-        <div className="min-w-0 max-w-full text-center">
-          <div className="font-bold text-gray-900 truncate">{attempt.student_name}</div>
-          <button type="button" onClick={handleLogout} className="text-[11px] text-gray-400 hover:text-gray-600 underline">
-            ไม่ใช่ฉัน? ออกจากระบบ
-          </button>
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <div className={'flex items-center gap-1.5 font-mono font-bold text-lg ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-2.5 space-y-1">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 font-semibold text-gray-700 truncate">{attempt.exam_set_title}</div>
+          <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
             <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
           </div>
-          <div className="flex items-center gap-1">
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs text-gray-500 shrink-0">ตอบแล้ว {answeredCount}/{attempt.questions.length} ข้อ</div>
+          <div className="min-w-0 font-bold text-gray-900 truncate">{attempt.student_name}</div>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <button type="button" onClick={handleLogout} className="text-[11px] text-gray-400 hover:text-gray-600 underline shrink-0">
+            ไม่ใช่ฉัน? ออกจากระบบ
+          </button>
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button" onClick={() => adjustFontScale(-FONT_SCALE_STEP)} disabled={fontScale <= FONT_SCALE_MIN}
               aria-label="ลดขนาดตัวอักษร"

@@ -13,3 +13,32 @@ body {
   background: #f8f9fb;
   color: #1a1d23;
 }
+
+/* /take (student exam) background — subject-icon motif (atom, DNA, math,
+   globe, ก, ...) tiled over a soft sky gradient, the same visual language
+   as the classic OBEC exam-portal look the teacher asked to echo here.
+   Applied to every /take phase for a consistent identity; .take-bg-glow
+   layers in the extra centered lightbulb/sunburst flourish, reserved for
+   the short, centered "portal" screens (login/resuming/submitted/result)
+   — the exam-taking screen (which scrolls through many questions) just
+   keeps the tiled icons, since a one-off centered glow would scroll out
+   of view immediately there anyway. */
+.take-bg {
+  background-color: #bfdbfe;
+  background-image:
+    url('/take-bg-pattern.svg'),
+    linear-gradient(180deg, #eff6ff 0%, #cfe4fd 45%, #93c5fd 100%);
+  background-repeat: repeat, no-repeat;
+  background-position: top left, top left;
+  background-size: 320px 320px, 100% 100%;
+}
+
+.take-bg-glow {
+  background-image:
+    url('/take-bg-glow.svg'),
+    url('/take-bg-pattern.svg'),
+    linear-gradient(180deg, #eff6ff 0%, #cfe4fd 45%, #93c5fd 100%);
+  background-repeat: no-repeat, repeat, no-repeat;
+  background-position: top center, top left, top left;
+  background-size: min(900px, 140%) auto, 320px 320px, 100% 100%;
+}

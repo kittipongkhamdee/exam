@@ -29,7 +29,7 @@ import { formatThaiDateTime, escapeHtml } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
-  invalid_pin_or_closed: 'รหัส PIN ไม่ถูกต้อง หรือยังไม่ถึง/เลยเวลาเข้าสอบแล้ว',
+  invalid_pin_or_closed: 'รหัส PIN ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง',
   invalid_student_code: 'ไม่พบเลขประจำตัวนักเรียนนี้ในห้องเรียนของข้อสอบชุดนี้ กรุณาตรวจสอบอีกครั้ง',
   already_submitted: 'คุณได้ส่งข้อสอบชุดนี้ไปแล้ว',
   time_expired: 'หมดเวลาทำข้อสอบแล้ว',

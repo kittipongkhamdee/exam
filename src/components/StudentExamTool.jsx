@@ -867,7 +867,7 @@ export default function StudentExamTool() {
   // to a real browser and re-enter the PIN + student code there.
   if (inAppBrowser) {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
         <div className={card + ' w-full max-w-sm text-center'}>
           <div className="h-14 w-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
             <AlertIcon className="h-8 w-8" />
@@ -889,7 +889,7 @@ export default function StudentExamTool() {
 
   if (phase === 'resuming') {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
         <div className="flex flex-col items-center text-center">
           <LogoBadge logoUrl={logoUrl} animate />
           <p className="text-sm text-gray-500">กำลังเข้าสอบต่อ...</p>
@@ -900,7 +900,7 @@ export default function StudentExamTool() {
 
   if (phase === 'locating') {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
         <div className={card + ' w-full max-w-sm text-center'}>
           <div className="h-14 w-14 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
             <MapPinIcon className="h-8 w-8" />
@@ -928,7 +928,7 @@ export default function StudentExamTool() {
 
   if (phase === 'login') {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm">
           <div className="flex flex-col items-center text-center mb-6">
             <LogoBadge logoUrl={logoUrl} />
@@ -965,7 +965,7 @@ export default function StudentExamTool() {
 
   if (phase === 'submitted') {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
         <div className={card + ' w-full max-w-sm text-center'}>
           <div className="h-14 w-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircleIcon className="h-8 w-8" />
@@ -979,7 +979,7 @@ export default function StudentExamTool() {
 
   if (phase === 'result') {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center px-4 py-10">
+      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
         <div className={card + ' w-full max-w-sm text-center'}>
           <div className="h-14 w-14 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircleIcon className="h-8 w-8" />
@@ -999,7 +999,7 @@ export default function StudentExamTool() {
   const watermarkTime = formatThaiDateTime(now, { dateStyle: 'short', timeStyle: 'short' });
 
   return (
-    <div className="min-h-dvh bg-gray-50 pb-24 relative">
+    <div className="min-h-dvh take-bg pb-24 relative">
       <div
         className="fixed inset-0 z-40 pointer-events-none select-none"
         style={{ backgroundImage: watermarkBackground(`${attempt.student_name} · ${studentCode}`, watermarkTime), backgroundRepeat: 'repeat' }}

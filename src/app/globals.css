@@ -24,10 +24,10 @@ body {
    keeps the tiled icons, since a one-off centered glow would scroll out
    of view immediately there anyway. */
 .take-bg {
-  background-color: #bfdbfe;
+  background-color: #3b5bdb;
   background-image:
     url('/take-bg-pattern.svg'),
-    linear-gradient(180deg, #eff6ff 0%, #cfe4fd 45%, #93c5fd 100%);
+    linear-gradient(180deg, #dbeafe 0%, #60a5fa 45%, #3355d8 100%);
   background-repeat: repeat, no-repeat;
   background-position: top left, top left;
   background-size: 320px 320px, 100% 100%;
@@ -37,7 +37,7 @@ body {
   background-image:
     url('/take-bg-glow.svg'),
     url('/take-bg-pattern.svg'),
-    linear-gradient(180deg, #eff6ff 0%, #cfe4fd 45%, #93c5fd 100%);
+    linear-gradient(180deg, #dbeafe 0%, #60a5fa 45%, #3355d8 100%);
   background-repeat: no-repeat, repeat, no-repeat;
   background-position: top center, top left, top left;
   background-size: min(900px, 140%) auto, 320px 320px, 100% 100%;

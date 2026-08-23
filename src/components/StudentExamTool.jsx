@@ -193,11 +193,11 @@ function ClockIcon(props) {
 // colored badge treatment.
 function LogoBadge({ logoUrl, animate }) {
   if (logoUrl) {
-    return <img src={logoUrl} alt="" className={'h-14 w-14 object-contain mb-3' + (animate ? ' animate-pulse' : '')} />;
+    return <img src={logoUrl} alt="" className={'h-24 w-24 object-contain mb-3' + (animate ? ' animate-pulse' : '')} />;
   }
   return (
-    <div className={'h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3' + (animate ? ' animate-pulse' : '')}>
-      <ClockIcon className="h-7 w-7 text-white" />
+    <div className={'h-24 w-24 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3' + (animate ? ' animate-pulse' : '')}>
+      <ClockIcon className="h-12 w-12 text-white" />
     </div>
   );
 }
@@ -949,7 +949,7 @@ export default function StudentExamTool() {
               <label className={label}>เลขประจำตัวนักเรียน</label>
               <input
                 type="text" inputMode="numeric" required
-                className={inputCls}
+                className={inputCls + ' text-center'}
                 value={studentCode} onChange={e => setStudentCode(e.target.value)}
                 placeholder="เลขประจำตัวนักเรียน"
               />

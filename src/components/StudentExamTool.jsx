@@ -975,43 +975,48 @@ export default function StudentExamTool() {
   if (phase === 'login') {
     return (
       <PortalScreen logoUrl={logoUrl}>
-        <div className="text-center mb-7">
-          <h1 className="text-xl font-bold text-gray-900">เข้าสอบออนไลน์</h1>
-          <p className="mt-1 text-sm text-gray-500">กรอกรหัส PIN และเลขประจำตัวนักเรียนที่ครูแจ้ง</p>
+        {/* font-prompt: this login screen specifically uses Prompt (Google
+            Fonts), unlike the rest of /take which stays on the app-wide
+            Sarabun — see globals.css's --font-prompt token. */}
+        <div className="font-prompt">
+          <div className="text-center mb-7">
+            <h1 className="text-xl font-bold text-gray-900">เข้าสอบออนไลน์</h1>
+            <p className="mt-1 text-sm text-gray-500">กรอกรหัส PIN และเลขประจำตัวนักเรียน</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className={fieldWrap}>
+              <div className="h-8 w-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+                <LockIcon className="h-4 w-4 text-[#0f766e]" />
+              </div>
+              <div className="flex-1">
+                <label className={label}>รหัส PIN</label>
+                <input
+                  type="text" inputMode="numeric" required autoFocus
+                  className={fieldInput + ' font-mono tracking-widest text-lg font-semibold'}
+                  value={pin} onChange={e => setPin(e.target.value)}
+                  placeholder="000000"
+                />
+              </div>
+            </div>
+            <div className={fieldWrap}>
+              <div className="h-8 w-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+                <PersonIcon className="h-4 w-4 text-[#0f766e]" />
+              </div>
+              <div className="flex-1">
+                <label className={label}>เลขประจำตัวนักเรียน</label>
+                <input
+                  type="text" inputMode="numeric" required
+                  className={fieldInput + ' text-[15px]'}
+                  value={studentCode} onChange={e => setStudentCode(e.target.value)}
+                  placeholder="เลขประจำตัวนักเรียน"
+                />
+              </div>
+            </div>
+            <button type="submit" className={btn + ' mt-2'} disabled={loggingIn}>
+              {loggingIn ? 'กำลังตรวจสอบ...' : 'เข้าสอบ'}
+            </button>
+          </form>
         </div>
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className={fieldWrap}>
-            <div className="h-8 w-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
-              <LockIcon className="h-4 w-4 text-[#0f766e]" />
-            </div>
-            <div className="flex-1">
-              <label className={label}>รหัส PIN</label>
-              <input
-                type="text" inputMode="numeric" required autoFocus
-                className={fieldInput + ' font-mono tracking-widest text-lg font-semibold'}
-                value={pin} onChange={e => setPin(e.target.value)}
-                placeholder="000000"
-              />
-            </div>
-          </div>
-          <div className={fieldWrap}>
-            <div className="h-8 w-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
-              <PersonIcon className="h-4 w-4 text-[#0f766e]" />
-            </div>
-            <div className="flex-1">
-              <label className={label}>เลขประจำตัวนักเรียน</label>
-              <input
-                type="text" inputMode="numeric" required
-                className={fieldInput + ' text-[15px]'}
-                value={studentCode} onChange={e => setStudentCode(e.target.value)}
-                placeholder="เลขประจำตัวนักเรียน"
-              />
-            </div>
-          </div>
-          <button type="submit" className={btn + ' mt-2'} disabled={loggingIn}>
-            {loggingIn ? 'กำลังตรวจสอบ...' : 'เข้าสอบ'}
-          </button>
-        </form>
       </PortalScreen>
     );
   }

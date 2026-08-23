@@ -184,20 +184,65 @@ function ClockIcon(props) {
   );
 }
 
+function GraduationCapIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M2 8l10-4 10 4-10 4-10-4Z" />
+      <path d="M6.5 10v4c0 1.6 2.5 3 5.5 3s5.5-1.4 5.5-3v-4" />
+      <path d="M22 8v6" />
+    </svg>
+  );
+}
+
+function LockIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+function PersonIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  );
+}
+
 // The school/system logo when the admin has uploaded one (Settings →
-// ชื่อระบบ คำอธิบาย และโลโก้), falling back to the same clock badge as
-// before when there isn't one. The uploaded logo is typically its own
-// already-designed badge with a transparent background, so it's shown
-// plain (no gradient/shadow box behind it, which would otherwise show
-// through the transparent parts) — only the clock-icon fallback gets the
-// colored badge treatment.
+// ชื่อระบบ คำอธิบาย และโลโก้), falling back to a graduation-cap badge when
+// there isn't one. Always rendered inside PortalScreen's blob header
+// (colored background), so the fallback badge is a plain white square —
+// the uploaded logo, typically its own already-designed badge with a
+// transparent background, is shown plain either way (no box behind it,
+// which would otherwise show through the transparent parts).
 function LogoBadge({ logoUrl, animate }) {
   if (logoUrl) {
-    return <img src={logoUrl} alt="" className={'h-24 w-24 object-contain mb-3' + (animate ? ' animate-pulse' : '')} />;
+    return <img src={logoUrl} alt="" className={'h-24 w-24 object-contain' + (animate ? ' animate-pulse' : '')} />;
   }
   return (
-    <div className={'h-24 w-24 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-400 flex items-center justify-center shadow-lg shadow-indigo-200 mb-3' + (animate ? ' animate-pulse' : '')}>
-      <ClockIcon className="h-12 w-12 text-white" />
+    <div className={'h-24 w-24 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-black/20' + (animate ? ' animate-pulse' : '')}>
+      <GraduationCapIcon className="h-12 w-12 text-[#123a5e]" />
+    </div>
+  );
+}
+
+// A "portal" screen shared by every /take phase except the exam-taking
+// one itself: a fixed-height teal/navy/yellow blob header (the style the
+// teacher picked from a set of mockups) holding the school logo, with the
+// screen's own content below on plain white — see .take-blob-header.
+function PortalScreen({ logoUrl, animate, children }) {
+  return (
+    <div className="min-h-dvh bg-white">
+      <div className="take-blob-header h-64 flex items-center justify-center">
+        <LogoBadge logoUrl={logoUrl} animate={animate} />
+      </div>
+      <div className="max-w-sm mx-auto px-6 pb-10 pt-7">
+        {children}
+      </div>
     </div>
   );
 }
@@ -857,9 +902,13 @@ export default function StudentExamTool() {
   }
 
   const card = 'bg-white border border-gray-200 rounded-xl p-5';
-  const inputCls = 'px-3 py-2.5 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
-  const label = 'text-xs font-semibold text-gray-500 block mb-1';
-  const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed w-full';
+  const label = 'text-[11px] font-semibold text-gray-400 block';
+  const btn = 'bg-amber-400 text-[#123a5e] px-4 py-3 rounded-full font-bold text-sm hover:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed w-full shadow-lg shadow-amber-400/30';
+  // An underlined, icon-prefixed field (rather than a boxed input) — the
+  // login form's PIN/student-code fields, matching the blob style's field
+  // treatment (see PortalScreen above).
+  const fieldWrap = 'flex items-center gap-3 border-b-2 border-gray-200 pb-2.5 focus-within:border-[#0f766e]';
+  const fieldInput = 'w-full bg-transparent focus:outline-none placeholder:text-gray-300 text-slate-900';
 
   // Hard block, no bypass — see in-app-browser.js for why. Checked before
   // every other phase (including 'resuming') so a saved session inside an
@@ -867,8 +916,8 @@ export default function StudentExamTool() {
   // to a real browser and re-enter the PIN + student code there.
   if (inAppBrowser) {
     return (
-      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
-        <div className={card + ' w-full max-w-sm text-center'}>
+      <PortalScreen logoUrl={logoUrl}>
+        <div className={card + ' text-center'}>
           <div className="h-14 w-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
             <AlertIcon className="h-8 w-8" />
           </div>
@@ -883,25 +932,22 @@ export default function StudentExamTool() {
             {linkCopied ? 'คัดลอกลิงก์แล้ว' : 'คัดลอกลิงก์หน้านี้'}
           </button>
         </div>
-      </div>
+      </PortalScreen>
     );
   }
 
   if (phase === 'resuming') {
     return (
-      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
-        <div className="flex flex-col items-center text-center">
-          <LogoBadge logoUrl={logoUrl} animate />
-          <p className="text-sm text-gray-500">กำลังเข้าสอบต่อ...</p>
-        </div>
-      </div>
+      <PortalScreen logoUrl={logoUrl} animate>
+        <p className="text-sm text-gray-500 text-center">กำลังเข้าสอบต่อ...</p>
+      </PortalScreen>
     );
   }
 
   if (phase === 'locating') {
     return (
-      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
-        <div className={card + ' w-full max-w-sm text-center'}>
+      <PortalScreen logoUrl={logoUrl}>
+        <div className={card + ' text-center'}>
           <div className="h-14 w-14 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
             <MapPinIcon className="h-8 w-8" />
           </div>
@@ -922,65 +968,72 @@ export default function StudentExamTool() {
             ออกจากระบบ
           </button>
         </div>
-      </div>
+      </PortalScreen>
     );
   }
 
   if (phase === 'login') {
     return (
-      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center text-center mb-6">
-            <LogoBadge logoUrl={logoUrl} />
-            <h1 className="text-xl font-bold text-gray-900">เข้าสอบออนไลน์</h1>
-            <p className="mt-1 text-sm text-gray-500">กรอกรหัส PIN และเลขประจำตัวนักเรียนที่ครูแจ้ง</p>
-          </div>
-          <form onSubmit={handleLogin} className={card + ' space-y-3'}>
-            <div>
+      <PortalScreen logoUrl={logoUrl}>
+        <div className="text-center mb-7">
+          <h1 className="text-xl font-bold text-gray-900">เข้าสอบออนไลน์</h1>
+          <p className="mt-1 text-sm text-gray-500">กรอกรหัส PIN และเลขประจำตัวนักเรียนที่ครูแจ้ง</p>
+        </div>
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div className={fieldWrap}>
+            <div className="h-8 w-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+              <LockIcon className="h-4 w-4 text-[#0f766e]" />
+            </div>
+            <div className="flex-1">
               <label className={label}>รหัส PIN</label>
               <input
                 type="text" inputMode="numeric" required autoFocus
-                className={inputCls + ' font-mono tracking-widest text-center text-lg'}
+                className={fieldInput + ' font-mono tracking-widest text-lg font-semibold'}
                 value={pin} onChange={e => setPin(e.target.value)}
                 placeholder="000000"
               />
             </div>
-            <div>
+          </div>
+          <div className={fieldWrap}>
+            <div className="h-8 w-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+              <PersonIcon className="h-4 w-4 text-[#0f766e]" />
+            </div>
+            <div className="flex-1">
               <label className={label}>เลขประจำตัวนักเรียน</label>
               <input
                 type="text" inputMode="numeric" required
-                className={inputCls + ' text-center'}
+                className={fieldInput + ' text-[15px]'}
                 value={studentCode} onChange={e => setStudentCode(e.target.value)}
                 placeholder="เลขประจำตัวนักเรียน"
               />
             </div>
-            <button type="submit" className={btn} disabled={loggingIn}>
-              {loggingIn ? 'กำลังตรวจสอบ...' : 'เข้าสอบ'}
-            </button>
-          </form>
-        </div>
-      </div>
+          </div>
+          <button type="submit" className={btn + ' mt-2'} disabled={loggingIn}>
+            {loggingIn ? 'กำลังตรวจสอบ...' : 'เข้าสอบ'}
+          </button>
+        </form>
+      </PortalScreen>
     );
   }
 
   if (phase === 'submitted') {
     return (
-      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
-        <div className={card + ' w-full max-w-sm text-center'}>
+      <PortalScreen logoUrl={logoUrl}>
+        <div className={card + ' text-center'}>
           <div className="h-14 w-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircleIcon className="h-8 w-8" />
           </div>
           <h1 className="text-lg font-bold text-gray-900">ส่งข้อสอบเรียบร้อยแล้ว</h1>
           <p className="mt-2 text-sm text-gray-500">รอให้ครูผู้สอนประกาศผลคะแนน</p>
         </div>
-      </div>
+      </PortalScreen>
     );
   }
 
   if (phase === 'result') {
     return (
-      <div className="min-h-dvh take-bg take-bg-glow flex items-center justify-center px-4 py-10">
-        <div className={card + ' w-full max-w-sm text-center'}>
+      <PortalScreen logoUrl={logoUrl}>
+        <div className={card + ' text-center'}>
           <div className="h-14 w-14 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircleIcon className="h-8 w-8" />
           </div>
@@ -990,7 +1043,7 @@ export default function StudentExamTool() {
           <p className="mt-1 text-sm text-gray-500">ตอบถูก {result.total_correct} จาก {result.total_questions} ข้อ</p>
           <p className="mt-3 text-xs text-gray-400">ส่งเมื่อ {formatThaiDateTime(result.submitted_at, { dateStyle: 'medium', timeStyle: 'short' })}</p>
         </div>
-      </div>
+      </PortalScreen>
     );
   }
 
@@ -999,7 +1052,7 @@ export default function StudentExamTool() {
   const watermarkTime = formatThaiDateTime(now, { dateStyle: 'short', timeStyle: 'short' });
 
   return (
-    <div className="min-h-dvh take-bg pb-24 relative">
+    <div className="min-h-dvh bg-gray-50 pb-24 relative">
       <div
         className="fixed inset-0 z-40 pointer-events-none select-none"
         style={{ backgroundImage: watermarkBackground(`${attempt.student_name} · ${studentCode}`, watermarkTime), backgroundRepeat: 'repeat' }}

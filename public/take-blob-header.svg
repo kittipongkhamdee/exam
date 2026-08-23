@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="256" viewBox="0 0 800 256" preserveAspectRatio="none">
+  <rect width="800" height="256" fill="#123a5e"/>
+  <path d="M0,0 H800 V128 C 680,180 620,100 510,128 C 390,158 430,222 290,206 C 165,192 185,146 82,154 C 20,158 0,146 0,128 Z" fill="#2dd4bf"/>
+  <path d="M0,0 H800 V60 C 700,94 620,34 470,60 C 330,84 310,34 185,50 C 82,64 40,34 0,42 Z" fill="#17a794"/>
+  <circle cx="676" cy="52" r="24" fill="#facc15"/>
+  <circle cx="108" cy="100" r="7" fill="#123a5e"/>
+  <g transform="translate(614,128)" stroke="#eafffb" stroke-width="3" stroke-linecap="round">
+    <line x1="0" y1="0" x2="0" y2="10"/>
+    <line x1="14" y1="0" x2="14" y2="10"/>
+    <line x1="0" y1="18" x2="0" y2="28"/>
+    <line x1="14" y1="18" x2="14" y2="28"/>
+  </g>
+  <g transform="translate(116,180)" stroke="#123a5e" stroke-width="3" stroke-linecap="round">
+    <line x1="0" y1="0" x2="16" y2="16"/>
+    <line x1="16" y1="0" x2="0" y2="16"/>
+  </g>
+  <circle cx="410" cy="20" r="4" fill="#ffffff" fill-opacity="0.6"/>
+  <circle cx="740" cy="150" r="5" fill="#ffffff" fill-opacity="0.4"/>
+</svg>

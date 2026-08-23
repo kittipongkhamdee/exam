@@ -16,4 +16,39 @@
   </g>
   <circle cx="410" cy="20" r="4" fill="#ffffff" fill-opacity="0.6"/>
   <circle cx="740" cy="150" r="5" fill="#ffffff" fill-opacity="0.4"/>
+
+  <!-- subject symbols: math, science, Thai, English, music, sports -->
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.75" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- math (pi) -->
+    <text x="36" y="72" font-family="Georgia,'Times New Roman',serif" font-size="34" fill="#ffffff" fill-opacity="0.75" stroke="none">&#960;</text>
+
+    <!-- music note -->
+    <g transform="translate(176,138) scale(1.3)">
+      <ellipse cx="6" cy="18" rx="3.2" ry="2.4" transform="rotate(-15 6 18)" fill="#ffffff" fill-opacity="0.8" stroke="none"/>
+      <path d="M9 18V4"/>
+      <path d="M9 4c4 1 5 4 3 7"/>
+    </g>
+
+    <!-- Thai: ko-kai -->
+    <text x="234" y="228" font-family="'Leelawadee UI','Tahoma','Sarabun',sans-serif" font-size="32" fill="#ffffff" fill-opacity="0.75" stroke="none">ก</text>
+
+    <!-- science (atom) -->
+    <g transform="translate(546,44) scale(1.4)">
+      <circle cx="12" cy="12" r="1.6" fill="#ffffff" fill-opacity="0.8" stroke="none"/>
+      <ellipse cx="12" cy="12" rx="10" ry="4.2"/>
+      <ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(60 12 12)"/>
+      <ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(120 12 12)"/>
+    </g>
+
+    <!-- sports ball -->
+    <g transform="translate(686,118) scale(1.3)">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 6.5 15.5 9 14 13.2H10L8.5 9Z"/>
+      <path d="M12 6.5V3.2M15.5 9l2.8-1M14 13.2l1.8 2.4M10 13.2 8.2 15.6M8.5 9l-2.8-1"/>
+    </g>
+
+    <!-- English: Aa -->
+    <text x="546" y="228" font-family="Georgia,'Times New Roman',serif" font-style="italic" font-size="26" fill="#ffffff" fill-opacity="0.75" stroke="none">Aa</text>
+  </g>
 </svg>

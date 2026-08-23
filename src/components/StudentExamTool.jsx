@@ -123,6 +123,35 @@ function clearSession() {
   }
 }
 
+// A device-level reading-size preference (not per-attempt) — small phones
+// make the default text genuinely hard to read during an exam. Stored as a
+// whole-number percentage of the root font size (100 = default); applied by
+// setting document.documentElement's font-size while phase === 'exam', so
+// every rem-sized Tailwind class on the page (question/choice text, but
+// also spacing/touch-target sizing) scales together.
+const FONT_SCALE_KEY = 'exam-font-scale';
+const FONT_SCALE_MIN = 90;
+const FONT_SCALE_MAX = 150;
+const FONT_SCALE_STEP = 10;
+
+function loadFontScale() {
+  try {
+    const raw = window.localStorage.getItem(FONT_SCALE_KEY);
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) ? Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, n)) : 100;
+  } catch {
+    return 100;
+  }
+}
+
+function saveFontScale(scale) {
+  try {
+    window.localStorage.setItem(FONT_SCALE_KEY, String(scale));
+  } catch {
+    // best-effort — losing this just means the next exam starts at 100% again
+  }
+}
+
 function formatCountdown(totalSeconds) {
   const s = Math.max(0, totalSeconds);
   const m = Math.floor(s / 60);
@@ -289,6 +318,25 @@ export default function StudentExamTool() {
   const [studentCode, setStudentCode] = useState(savedSession?.studentCode || '');
   const [loggingIn, setLoggingIn] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
+  const [fontScale, setFontScale] = useState(() => (typeof window !== 'undefined' ? loadFontScale() : 100));
+
+  // Applies the reading-size preference while actually taking the exam —
+  // scoped to that one phase so it never affects the login/result screens,
+  // and reset on the way out so it can't linger if this device is later
+  // reused for something else.
+  useEffect(() => {
+    if (phase !== 'exam') return;
+    document.documentElement.style.fontSize = fontScale + '%';
+    return () => { document.documentElement.style.fontSize = ''; };
+  }, [phase, fontScale]);
+
+  function adjustFontScale(delta) {
+    setFontScale(prev => {
+      const next = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, prev + delta));
+      saveFontScale(next);
+      return next;
+    });
+  }
 
   // exam_app_logo — the same school/system logo an admin uploads in
   // Settings and this app reuses everywhere else (printed exam papers,
@@ -1086,8 +1134,26 @@ export default function StudentExamTool() {
             ไม่ใช่ฉัน? ออกจากระบบ
           </button>
         </div>
-        <div className={'flex items-center gap-1.5 font-mono font-bold text-lg shrink-0 justify-self-end ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
-          <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className={'flex items-center gap-1.5 font-mono font-bold text-lg ' + (secondsLeft <= 60 ? 'text-red-600' : 'text-gray-900')}>
+            <ClockIcon className="h-5 w-5" /> {formatCountdown(secondsLeft)}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button" onClick={() => adjustFontScale(-FONT_SCALE_STEP)} disabled={fontScale <= FONT_SCALE_MIN}
+              aria-label="ลดขนาดตัวอักษร"
+              className="h-6 w-6 rounded-full border border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+            >
+              <span className="text-[10px] leading-none">ก</span>
+            </button>
+            <button
+              type="button" onClick={() => adjustFontScale(FONT_SCALE_STEP)} disabled={fontScale >= FONT_SCALE_MAX}
+              aria-label="เพิ่มขนาดตัวอักษร"
+              className="h-7 w-7 rounded-full border border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+            >
+              <span className="text-sm font-bold leading-none">ก</span>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -5,12 +5,13 @@
 // content in-between. Also acts as the auth gate: renders a login form
 // until a Supabase session exists.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { getConfigValue } from '../lib/config-db';
+import { getPublicStats } from '../lib/public-stats';
 
 const DEFAULT_APP_NAME = 'ระบบสอบวัดผล';
 
@@ -53,7 +54,7 @@ const NAV_GROUPS = [
 ];
 
 export default function DashboardShell({ children }) {
-  const { session, isAdmin, loading } = useAuth();
+  const { session, isAdmin, loading, idleSignedOut } = useAuth();
   // Two independent toggles driven by one hamburger button: below the `md`
   // breakpoint the sidebar is an off-canvas drawer (mobileOpen, closed by
   // default so it doesn't block the screen on load); at `md` and above it's
@@ -110,7 +111,7 @@ export default function DashboardShell({ children }) {
   if (!session) {
     return (
       <div className="flex flex-1 font-prompt">
-        <LoginForm />
+        <LoginForm idleSignedOut={idleSignedOut} />
       </div>
     );
   }
@@ -233,11 +234,18 @@ function NavLink({ href, label, icon: Icon, onNavigate, comingSoon }) {
   );
 }
 
-function LoginForm() {
+function LoginForm({ idleSignedOut }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getPublicStats(supabase).then(s => { if (active) setStats(s); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -258,6 +266,25 @@ function LoginForm() {
           <h1 className="text-xl font-bold text-gray-900">ระบบสอบวัดผล</h1>
           <p className="mt-1 text-sm text-gray-500">เข้าสู่ระบบเพื่อจัดการและตรวจข้อสอบ</p>
         </div>
+
+        {stats && (
+          <div className="mb-6 grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-center">
+              <div className="text-2xl font-bold text-indigo-600"><CountUpNumber value={stats.bankQuestionsCount} /></div>
+              <div className="mt-0.5 text-[11px] text-gray-500">ข้อสอบในคลังทั้งหมด</div>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-center">
+              <div className="text-2xl font-bold text-indigo-600"><CountUpNumber value={stats.omrScanResultsCount} /></div>
+              <div className="mt-0.5 text-[11px] text-gray-500">กระดาษคำตอบที่ตรวจแล้ว</div>
+            </div>
+          </div>
+        )}
+
+        {idleSignedOut && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-700">
+            ออกจากระบบอัตโนมัติเนื่องจากไม่ได้ใช้งานเป็นเวลานาน กรุณาเข้าสู่ระบบอีกครั้ง
+          </div>
+        )}
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -307,6 +334,29 @@ function LoginForm() {
       </div>
     </div>
   );
+}
+
+// Animates from 0 up to `value` once (on mount / whenever `value` first
+// resolves from null to a number) — a subtle bit of motion for the login
+// screen's site-wide usage counters, not a live/repeating ticker.
+function CountUpNumber({ value, durationMs = 1200 }) {
+  const [display, setDisplay] = useState(0);
+  const frameRef = useRef(null);
+
+  useEffect(() => {
+    if (value == null) return;
+    const start = performance.now();
+    function tick(now) {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setDisplay(Math.round(value * eased));
+      if (t < 1) frameRef.current = requestAnimationFrame(tick);
+    }
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [value, durationMs]);
+
+  return display.toLocaleString('th-TH');
 }
 
 function ScanCheckIcon(props) {

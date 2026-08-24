@@ -344,6 +344,22 @@ export async function generateExamQuestionPaperPdf(supabase, {
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
   groupByIndicator = false,
 }) {
+  // Canvas text does not automatically wait for a webfont to finish
+  // downloading — drawing before Sarabun is loaded silently falls back to
+  // the browser default (e.g. Arial) instead of erroring, and the canvas
+  // never re-renders once the font does arrive. Explicitly load the two
+  // weights this file actually draws with (regular + bold) via the Font
+  // Loading API first, same fix already in place for the OMR answer sheet
+  // (OMRPrepareTool.jsx's fontReady effect).
+  if (document.fonts) {
+    try {
+      await Promise.all([document.fonts.load(BODY_FONT), document.fonts.load(SCHOOL_FONT)]);
+    } catch {
+      // best-effort — if the Font Loading API itself rejects, still proceed
+      // and draw with whatever's available rather than blocking the print.
+    }
+  }
+
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
   const [images, logoImg] = await Promise.all([

@@ -88,18 +88,19 @@ function getColumnLayout(columns) {
   return { count: 2, width, xs: [CONTENT_X, CONTENT_X + width + COLUMN_GUTTER] };
 }
 
-// A thin solid guide line down the middle of the gutter between the two
-// columns, on every page that uses a 2-column layout — a fixed line
-// spanning the whole column height regardless of how far content
-// actually reaches. save()/restore() isolates this stroke's style from
-// every other stroke drawn afterward on this shared ctx (the letterhead
-// box, the คำชี้แจง box, ...).
+// A dense dashed "เส้นปรุ" guide line down the middle of the gutter
+// between the two columns, on every page that uses a 2-column layout —
+// a fixed line spanning the whole column height regardless of how far
+// content actually reaches. save()/restore() isolates this stroke's
+// style (color, width, dash pattern) from every other stroke drawn
+// afterward on this shared ctx (the letterhead box, the คำชี้แจง box, ...).
 function drawColumnDivider(ctx, colLayout, yTop, yBottom) {
   if (colLayout.count !== 2) return;
   const gutterMid = colLayout.xs[0] + colLayout.width + COLUMN_GUTTER / 2;
   ctx.save();
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 1;
+  ctx.setLineDash([1.5, 1.5]);
   ctx.beginPath();
   ctx.moveTo(gutterMid, yTop);
   ctx.lineTo(gutterMid, yBottom);

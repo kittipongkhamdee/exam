@@ -22,7 +22,7 @@
 // beyond fetching question images.
 
 import { jsPDF } from 'jspdf';
-import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText } from './omr-core';
+import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText, THAI_GLYPH_SAMPLE } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
@@ -349,11 +349,14 @@ export async function generateExamQuestionPaperPdf(supabase, {
   // the browser default (e.g. Arial) instead of erroring, and the canvas
   // never re-renders once the font does arrive. Explicitly load the two
   // weights this file actually draws with (regular + bold) via the Font
-  // Loading API first, same fix already in place for the OMR answer sheet
-  // (OMRPrepareTool.jsx's fontReady effect).
+  // Loading API first — passing THAI_GLYPH_SAMPLE as the text argument so
+  // the actual Thai subset loads, not just Latin (see its comment above).
   if (document.fonts) {
     try {
-      await Promise.all([document.fonts.load(BODY_FONT), document.fonts.load(SCHOOL_FONT)]);
+      await Promise.all([
+        document.fonts.load(BODY_FONT, THAI_GLYPH_SAMPLE),
+        document.fonts.load(SCHOOL_FONT, THAI_GLYPH_SAMPLE),
+      ]);
     } catch {
       // best-effort — if the Font Loading API itself rejects, still proceed
       // and draw with whatever's available rather than blocking the print.

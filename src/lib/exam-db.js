@@ -788,10 +788,10 @@ export async function listAllExamRoundsWithTeacher(supabase) {
  * so this takes the max across the set's questions.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ examSetId: string, subjectId: string, title: string, questions: Array<{ correct_choice: number, num_choices: number, points?: number }>, existingQuizId?: string|null }} args
+ * @param {{ examSetId: string, subjectId: string, title: string, questions: Array<{ correct_choice: number, num_choices: number, points?: number }>, existingQuizId?: string|null, setCode?: number|null }} args
  * @returns {Promise<string>} the omr_quizzes id
  */
-export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title, questions, existingQuizId }) {
+export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title, questions, existingQuizId, setCode }) {
   if (existingQuizId) {
     const { count, error: countError } = await supabase
       .from('omr_scan_results')
@@ -819,6 +819,7 @@ export async function syncPrintedOmrQuiz(supabase, { examSetId, subjectId, title
     paperLayout: 'halfLandscape',
     cols: null,
     answerKey,
+    setCode,
   });
 
   const { error } = await supabase.from('online_exam_sets').update({ printed_quiz_id: quizId }).eq('id', examSetId);

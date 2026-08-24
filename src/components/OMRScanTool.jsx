@@ -449,7 +449,10 @@ export default function OMRScanTool() {
   const filteredQuizzes = quizzes.filter(q => {
     if (gradeFilter && q.subjects?.grade_level !== gradeFilter) return false;
     if (!quizFilter.trim()) return true;
-    const hay = `${q.title} ${q.subjects?.subject_name || ''} ${q.subjects?.subject_code || ''}`.toLowerCase();
+    // Matching on the bare number (no zero-padding) so typing "7" finds
+    // "รหัส 007" — same code printed top-right on that ชุดข้อสอบ's paper.
+    const setCodeText = Number.isFinite(q.set_code) ? `${q.set_code} ${String(q.set_code).padStart(3, '0')}` : '';
+    const hay = `${q.title} ${q.subjects?.subject_name || ''} ${q.subjects?.subject_code || ''} ${setCodeText}`.toLowerCase();
     return hay.includes(quizFilter.trim().toLowerCase());
   });
 
@@ -505,7 +508,7 @@ export default function OMRScanTool() {
         </button>
 
         <input
-          type="text" placeholder="ค้นหาชุดข้อสอบ / วิชา..." value={quizFilter}
+          type="text" placeholder="ค้นหาชุดข้อสอบ / วิชา / รหัสชุดข้อสอบ..." value={quizFilter}
           onChange={e => setQuizFilter(e.target.value)}
           className="w-full px-3 py-3 border border-gray-300 rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
         />
@@ -547,7 +550,12 @@ export default function OMRScanTool() {
                 <SheetIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-gray-900 truncate">{i + 1}. {q.title}</div>
+                <div className="font-semibold text-gray-900 truncate flex items-center gap-1.5 flex-wrap">
+                  {i + 1}. {q.title}
+                  {Number.isFinite(q.set_code) && (
+                    <span className={pill + ' bg-slate-100 text-slate-700 font-mono'}>รหัส {String(q.set_code).padStart(3, '0')}</span>
+                  )}
+                </div>
                 <div className="text-sm text-gray-500 mt-0.5 truncate">
                   {q.subjects?.subject_name} (ชั้น {formatGradeRoom(q.subjects?.grade_level, q.subjects?.room)}) · {q.num_questions} ข้อ
                 </div>

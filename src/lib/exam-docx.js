@@ -29,7 +29,7 @@ const NO_BORDERS = {
   left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
   right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
 };
-const BOX_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '999999' };
+const BOX_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '000000' };
 const MAX_IMG_W_PX = 260;
 const MAX_IMG_H_PX = 200;
 

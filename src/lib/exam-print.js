@@ -46,9 +46,11 @@ const CHOICE_FONT = `13.5px ${FONT}`;
 // Printed above the first question of each new ตัวชี้วัด/ผลการเรียนรู้ group
 // when groupByIndicator is on — see planQuestions/drawQuestionBlock. Code
 // and description run together on the same wrapped block (not a separate
-// bold code line), regular weight, no divider line — per the teacher's
-// feedback on the design draft and the follow-up layout request.
+// line each), the code bold and the description regular weight, no divider
+// line — per the teacher's feedback on the design draft and two follow-up
+// layout requests.
 const INDICATOR_FONT = `13px ${FONT}`;
+const INDICATOR_BOLD_FONT = `bold 13px ${FONT}`;
 const INDICATOR_LINE_H = 17;
 const INDICATOR_GAP_AFTER = 8;
 
@@ -152,9 +154,18 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth,
 
     let header = null;
     if (groupByIndicator && q.indicator_id != null && q.indicator_id !== prevIndicatorId && q.indicators?.indicator_code) {
+      // codeLabel is measured/drawn bold, the description regular — same
+      // "label width reserves room on the first line, wrapped lines start
+      // flush left" pattern drawQuestionBlock already uses for "1. " before
+      // question text.
+      const codeLabel = `ตัวชี้วัด ${q.indicators.indicator_code}  `;
+      measureCtx.font = INDICATOR_BOLD_FONT;
+      const codeLabelW = measureCtx.measureText(codeLabel).width;
       measureCtx.font = INDICATOR_FONT;
-      const headerLines = wrapText(measureCtx, `ตัวชี้วัด ${q.indicators.indicator_code}  ${q.indicators.indicator_text || ''}`, columnWidth - 30);
+      const headerLines = wrapText(measureCtx, q.indicators.indicator_text || '', columnWidth - 30);
+      if (headerLines.length === 0) headerLines.push('');
       header = {
+        codeLabel, codeLabelW,
         textLines: headerLines,
         height: headerLines.length * INDICATOR_LINE_H + INDICATOR_GAP_AFTER,
       };
@@ -281,10 +292,11 @@ function drawQuestionBlock(ctx, plan, x, y) {
   ctx.fillStyle = '#000';
   let qy = y;
   if (plan.header) {
+    ctx.font = INDICATOR_BOLD_FONT;
+    ctx.fillText(plan.header.codeLabel, x, qy + 13);
     ctx.font = INDICATOR_FONT;
-    let hy = qy + 13;
     plan.header.textLines.forEach((line, i) => {
-      ctx.fillText(line, x, hy + i * INDICATOR_LINE_H);
+      ctx.fillText(line, i === 0 ? x + plan.header.codeLabelW : x, qy + 13 + i * INDICATOR_LINE_H);
     });
     qy += plan.header.height;
   }

@@ -31,23 +31,27 @@ const FONT = '"Sarabun", sans-serif';
 // PAGE_W=850 for a 210mm-wide page (~4.05 px/mm here) — these are sized in
 // that coordinate system to print at roughly 12-14pt, not their raw px
 // number; the original 13px body / 12px choice text worked out to ~9pt on
-// paper, too small for a printed exam.
+// paper, too small for a printed exam. Body/choice/qnum were nudged back
+// down a point from an earlier 16/15/16 pass — still comfortably readable
+// on paper, less oversized on screen.
 const SCHOOL_FONT = `bold 19px ${FONT}`;
 const EXAM_TITLE_FONT = `bold 18px ${FONT}`;
 const SUBTITLE_FONT = `14px ${FONT}`;
 const CONT_FONT = `14px ${FONT}`;
 const INSTRUCTION_FONT = `13px ${FONT}`;
-const QNUM_FONT = `bold 16px ${FONT}`;
-const BODY_FONT = `16px ${FONT}`;
-const CHOICE_FONT = `15px ${FONT}`;
+// Same size/weight as BODY_FONT — the question number is just "1. ", "2. "
+// inline with the question text now, not a bold "ข้อ 1." label.
+const QNUM_FONT = `15px ${FONT}`;
+const BODY_FONT = `15px ${FONT}`;
+const CHOICE_FONT = `14px ${FONT}`;
 
 const CONTENT_X = MARGIN;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const COLUMN_GUTTER = 30;
 const CHOICE_INDENT = 25;
 const MAX_IMAGE_H = 200;
-const TEXT_LINE_H = 23;
-const CHOICE_LINE_H = 21;
+const TEXT_LINE_H = 22;
+const CHOICE_LINE_H = 20;
 const BLOCK_GAP = 23;
 const FOOTER_RESERVE = 20;
 const LOGO_SIZE = 56;
@@ -189,7 +193,7 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
 function drawQuestionBlock(ctx, plan, x, y) {
   ctx.fillStyle = '#000';
   ctx.font = QNUM_FONT;
-  const qLabel = `ข้อ ${plan.qi + 1}. `;
+  const qLabel = `${plan.qi + 1}. `;
   const qLabelW = ctx.measureText(qLabel).width;
   ctx.fillText(qLabel, x, y + 16);
   ctx.font = BODY_FONT;

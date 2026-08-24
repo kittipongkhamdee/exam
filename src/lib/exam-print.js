@@ -197,7 +197,11 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       ty += 20;
     }
     ctx.textAlign = 'left';
-    let by = Math.max(cy + (hasLogo ? LOGO_SIZE : 0), ty) + 4;
+    // ty already advanced one full line past the last line actually drawn
+    // (subjectLine's or scoreTimeLine's trailing += 20, whichever ran
+    // last) — undo that unused advance so the gap below is measured from
+    // the real last baseline, not a phantom next line.
+    let by = Math.max(cy + (hasLogo ? LOGO_SIZE : 0), ty - 20) + 8;
 
     if (instructions.length > 0) {
       const lineH = 19;

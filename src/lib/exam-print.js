@@ -124,16 +124,23 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth)
 /**
  * Draws the top-of-page letterhead and returns the y where question columns
  * can start. The first page gets the full letterhead (logo, school name,
- * exam title, subject/score/time line, boxed คำชี้แจง rules, and a rule);
- * continuation pages just get a short "(ต่อ)" line so the two-column body
- * has more room.
+ * exam title, subject/score/time line, boxed คำชี้แจง rules) wrapped in one
+ * outer border — matching the traditional bordered exam-cover-page layout
+ * (a single table border framing the whole header) most Thai schools
+ * already use for paper exams, rather than just the คำชี้แจง sub-box this
+ * used to draw alone with a plain rule underneath. Continuation pages just
+ * get a short "(ต่อ)" line so the two-column body has more room.
  */
 function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle, isFirstPage }) {
   let y = MARGIN;
   ctx.fillStyle = '#000';
   if (isFirstPage) {
+    const boxPad = 14;
+    const contentX0 = MARGIN + boxPad;
+    const contentW = CONTENT_W - boxPad * 2;
     const hasLogo = !!logoImg;
-    const textX = hasLogo ? MARGIN + LOGO_SIZE + 14 : MARGIN;
+    const textX = hasLogo ? contentX0 + LOGO_SIZE + 14 : contentX0;
+    const cy = MARGIN + boxPad;
     if (hasLogo) {
       // "Contain" the logo within the LOGO_SIZE box instead of stretching
       // it to fill a fixed square — most school logos/crests aren't
@@ -142,10 +149,10 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       const logoScale = Math.min(LOGO_SIZE / logoImg.width, LOGO_SIZE / logoImg.height);
       const logoW = logoImg.width * logoScale;
       const logoH = logoImg.height * logoScale;
-      ctx.drawImage(logoImg, MARGIN + (LOGO_SIZE - logoW) / 2, y + (LOGO_SIZE - logoH) / 2, logoW, logoH);
+      ctx.drawImage(logoImg, contentX0 + (LOGO_SIZE - logoW) / 2, cy + (LOGO_SIZE - logoH) / 2, logoW, logoH);
     }
 
-    let ty = y + 18;
+    let ty = cy + 18;
     if (schoolName) {
       ctx.font = SCHOOL_FONT; ctx.fillStyle = '#000';
       ctx.fillText(schoolName, textX, ty);
@@ -163,25 +170,26 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       ctx.fillText(scoreTimeLine, textX, ty);
       ty += 20;
     }
-    y = Math.max(y + (hasLogo ? LOGO_SIZE : 0), ty) + 15;
+    let by = Math.max(cy + (hasLogo ? LOGO_SIZE : 0), ty) + 12;
 
     if (instructions.length > 0) {
       const lineH = 19;
-      const boxPad = 10;
+      const innerPad = 10;
       ctx.font = INSTRUCTION_FONT;
-      const boxH = instructions.length * lineH + boxPad * 2;
+      const boxH = instructions.length * lineH + innerPad * 2;
       ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
-      ctx.strokeRect(MARGIN, y, CONTENT_W, boxH);
+      ctx.strokeRect(contentX0, by, contentW, boxH);
       ctx.fillStyle = '#222';
       instructions.forEach((line, i) => {
-        ctx.fillText(line, MARGIN + boxPad, y + boxPad + 14 + i * lineH);
+        ctx.fillText(line, contentX0 + innerPad, by + innerPad + 14 + i * lineH);
       });
-      y += boxH + 15;
+      by += boxH;
     }
 
-    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(MARGIN, y); ctx.lineTo(PAGE_W - MARGIN, y); ctx.stroke();
-    y += 20;
+    y = by + boxPad;
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    ctx.strokeRect(MARGIN, MARGIN, CONTENT_W, y - MARGIN);
+    y += 18;
   } else {
     ctx.font = CONT_FONT; ctx.fillStyle = '#666';
     ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 13);

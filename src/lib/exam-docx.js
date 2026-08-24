@@ -219,14 +219,27 @@ export async function generateExamQuestionPaperDocx(supabase, {
 
   const pageSetup = { size: { width: '210mm', height: '297mm' }, margin: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN } };
 
+  // The whole letterhead (logo/school/title/subject/score lines + the
+  // คำชี้แจง box) sits inside one outer border — matching the traditional
+  // bordered exam-cover-page layout most Thai schools already use (a
+  // single table border framing the whole header), rather than just
+  // boxing the คำชี้แจง lines alone with a plain rule underneath.
   const headerChildren = [
-    ...letterheadChildren({ schoolName, examTitle, subjectLine, scoreTimeLine, logo }),
-    ...instructionsBox(instructions),
-    new Paragraph({
-      spacing: { before: 100, after: 80 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC', space: 4 } },
-      children: [],
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: BOX_BORDER, bottom: BOX_BORDER, left: BOX_BORDER, right: BOX_BORDER },
+      rows: [new TableRow({
+        children: [new TableCell({
+          borders: NO_BORDERS,
+          margins: { top: 150, bottom: 150, left: 150, right: 150 },
+          children: [
+            ...letterheadChildren({ schoolName, examTitle, subjectLine, scoreTimeLine, logo }),
+            ...instructionsBox(instructions),
+          ],
+        })],
+      })],
     }),
+    new Paragraph({ spacing: { before: 160, after: 80 }, children: [] }),
   ];
 
   const doc = new Document({

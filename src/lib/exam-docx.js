@@ -170,17 +170,20 @@ function questionParagraphs(questions, choiceScheme, images, groupByIndicator) {
     // Same rule as exam-print.js's planQuestions: only a question entering
     // a NEW indicator group gets a header, and only when it actually has
     // one — no "ไม่มีตัวชี้วัด" label printed on the student's paper. Code
-    // and description run together on one line, regular weight, matching
-    // the PDF generator. keepNext asks Word to keep this paragraph attached
-    // to the question paragraph that follows, so a column/page break
-    // doesn't strand the header on its own — exam-print.js gets this for
-    // free by folding the header into the same question's height instead.
+    // and description run together on one line (code bold, description
+    // regular), matching the PDF generator. keepNext asks Word to keep this
+    // paragraph attached to the question paragraph that follows, so a
+    // column/page break doesn't strand the header on its own —
+    // exam-print.js gets this for free by folding the header into the same
+    // question's height instead.
     if (groupByIndicator && q.indicator_id != null && q.indicator_id !== prevIndicatorId && q.indicators?.indicator_code) {
-      const headerText = `ตัวชี้วัด ${q.indicators.indicator_code}${q.indicators.indicator_text ? `  ${q.indicators.indicator_text}` : ''}`;
       out.push(new Paragraph({
         keepNext: true,
         spacing: { before: 200, after: 0 },
-        children: [new TextRun({ text: headerText, size: '10.5pt' })],
+        children: [
+          new TextRun({ text: `ตัวชี้วัด ${q.indicators.indicator_code}`, bold: true, size: '10.5pt' }),
+          ...(q.indicators.indicator_text ? [new TextRun({ text: `  ${q.indicators.indicator_text}`, size: '10.5pt' })] : []),
+        ],
       }));
     }
     prevIndicatorId = q.indicator_id;

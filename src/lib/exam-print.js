@@ -197,7 +197,7 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       ty += 20;
     }
     ctx.textAlign = 'left';
-    let by = Math.max(cy + (hasLogo ? LOGO_SIZE : 0), ty) + 12;
+    let by = Math.max(cy + (hasLogo ? LOGO_SIZE : 0), ty) + 4;
 
     if (instructions.length > 0) {
       const lineH = 19;

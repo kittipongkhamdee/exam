@@ -315,8 +315,15 @@ const thaiSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === '
   : null;
 
 // Word-wraps text to fit maxWidth on the canvas ctx's current font.
-function wrapText(ctx, text, maxWidth) {
+// firstLineMaxWidth (defaults to maxWidth) narrows only the very first
+// wrapped line — for a caller that draws a label before the wrapped text
+// starts on that first line (e.g. a bold ตัวชี้วัด code before its
+// description) and wants every OTHER line flush left, unindented, while
+// still guaranteeing the first line plus the label never exceeds the
+// column's own right edge.
+function wrapText(ctx, text, maxWidth, firstLineMaxWidth = maxWidth) {
   const lines = [];
+  const widthFor = () => (lines.length === 0 ? firstLineMaxWidth : maxWidth);
   // Explicit newlines (e.g. a teacher's numbered คำชี้แจง list, one item
   // per line) are a forced break, not just whitespace to collapse — wrap
   // each \n-separated paragraph independently rather than letting the
@@ -333,19 +340,19 @@ function wrapText(ctx, text, maxWidth) {
       : para.split(/(\s+)/).filter(Boolean);
     let line = '';
     for (let seg of segments) {
-      while (ctx.measureText(seg).width > maxWidth) {
+      while (ctx.measureText(seg).width > widthFor()) {
         // Last-resort hard-break: only reached for a single dictionary
         // word/token still wider than the whole column on its own (rare —
         // a very long compound word or number) or when Intl.Segmenter is
         // unavailable.
         let cut = seg.length;
-        while (cut > 1 && ctx.measureText(seg.slice(0, cut)).width > maxWidth) cut--;
+        while (cut > 1 && ctx.measureText(seg.slice(0, cut)).width > widthFor()) cut--;
         if (line) { lines.push(line); line = ''; }
         lines.push(seg.slice(0, cut));
         seg = seg.slice(cut);
       }
       const candidate = line + seg;
-      if (line && ctx.measureText(candidate).width > maxWidth) {
+      if (line && ctx.measureText(candidate).width > widthFor()) {
         lines.push(line);
         line = seg;
       } else {

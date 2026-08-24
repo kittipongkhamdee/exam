@@ -202,7 +202,11 @@ function ProximityMap({ rows, flaggedIds }) {
   }, []);
 
   if (located.length === 0) return null;
-  return <div ref={containerRef} className="h-64 rounded-lg overflow-hidden border border-gray-200 mt-3" />;
+  // isolate: Leaflet's own panes/controls carry z-index up to 1000, and
+  // without a stacking context of its own here that escapes straight into
+  // the page's stacking order — easily beating the app sidebar's z-40 and
+  // rendering on top of it while the sidebar is open on mobile.
+  return <div ref={containerRef} className="relative isolate h-64 rounded-lg overflow-hidden border border-gray-200 mt-3" />;
 }
 
 function StudentCard({ row, flagged, onUnlock, onLock, unlocking, locking }) {

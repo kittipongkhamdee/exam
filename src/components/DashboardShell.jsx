@@ -125,14 +125,14 @@ export default function DashboardShell({ children }) {
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          className="fixed inset-0 z-30 bg-black/30 md:hidden print:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       <aside
         className={
-          "fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-gray-200 bg-white transform transition-[transform,width] duration-200 md:static md:translate-x-0 md:flex md:flex-col md:overflow-hidden " +
+          "fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-gray-200 bg-white transform transition-[transform,width] duration-200 md:static md:translate-x-0 md:flex md:flex-col md:overflow-hidden print:hidden " +
           (mobileOpen ? 'translate-x-0' : '-translate-x-full') + ' ' +
           (desktopCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-64')
         }
@@ -172,7 +172,7 @@ export default function DashboardShell({ children }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 flex items-center gap-3 border-b border-gray-200 bg-white px-4 sticky top-0 z-20">
+        <header className="h-16 flex items-center gap-3 border-b border-gray-200 bg-white px-4 sticky top-0 z-20 print:hidden">
           <button
             type="button"
             aria-label="เปิด/ปิดเมนู"
@@ -199,7 +199,7 @@ export default function DashboardShell({ children }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 print:p-0">{children}</main>
       </div>
     </div>
   );

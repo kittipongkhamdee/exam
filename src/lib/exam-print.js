@@ -88,20 +88,18 @@ function getColumnLayout(columns) {
   return { count: 2, width, xs: [CONTENT_X, CONTENT_X + width + COLUMN_GUTTER] };
 }
 
-// A dashed "เส้นปรุ" guide line down the middle of the gutter between the
-// two columns, on every page that uses a 2-column layout — a fixed line
-// spanning the whole column height regardless of how far content actually
-// reaches, matching the perforated cut/fold line printed exams
-// traditionally carry. save()/restore() keeps the dash pattern from
-// leaking into every other stroke drawn afterward on this shared ctx (the
-// letterhead box, the คำชี้แจง box, ...), which all expect solid lines.
+// A thin solid guide line down the middle of the gutter between the two
+// columns, on every page that uses a 2-column layout — a fixed line
+// spanning the whole column height regardless of how far content
+// actually reaches. save()/restore() isolates this stroke's style from
+// every other stroke drawn afterward on this shared ctx (the letterhead
+// box, the คำชี้แจง box, ...).
 function drawColumnDivider(ctx, colLayout, yTop, yBottom) {
   if (colLayout.count !== 2) return;
   const gutterMid = colLayout.xs[0] + colLayout.width + COLUMN_GUTTER / 2;
   ctx.save();
-  ctx.strokeStyle = '#aaa';
+  ctx.strokeStyle = '#000';
   ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
   ctx.beginPath();
   ctx.moveTo(gutterMid, yTop);
   ctx.lineTo(gutterMid, yBottom);
@@ -185,11 +183,11 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       ty += 25;
     }
     if (examTitle) {
-      ctx.font = EXAM_TITLE_FONT; ctx.fillStyle = '#111';
+      ctx.font = EXAM_TITLE_FONT; ctx.fillStyle = '#000';
       ctx.fillText(examTitle, centerX, ty);
       ty += 23;
     }
-    ctx.font = SUBTITLE_FONT; ctx.fillStyle = '#333';
+    ctx.font = SUBTITLE_FONT; ctx.fillStyle = '#000';
     ctx.fillText(subjectLine, centerX, ty);
     ty += 20;
     if (scoreTimeLine) {
@@ -208,9 +206,9 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       const innerPad = 10;
       ctx.font = INSTRUCTION_FONT;
       const boxH = instructions.length * lineH + innerPad * 2;
-      ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
       ctx.strokeRect(contentX0, by, contentW, boxH);
-      ctx.fillStyle = '#222';
+      ctx.fillStyle = '#000';
       instructions.forEach((line, i) => {
         ctx.fillText(line, contentX0 + innerPad, by + innerPad + 14 + i * lineH);
       });
@@ -218,11 +216,11 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
     }
 
     y = by + boxPad;
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
     ctx.strokeRect(MARGIN, MARGIN, CONTENT_W, y - MARGIN);
     y += 18;
   } else {
-    ctx.font = CONT_FONT; ctx.fillStyle = '#666';
+    ctx.font = CONT_FONT; ctx.fillStyle = '#000';
     ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 13);
     y += 28;
   }

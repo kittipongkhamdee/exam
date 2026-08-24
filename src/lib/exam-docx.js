@@ -294,6 +294,19 @@ export async function generateExamQuestionPaperDocx(supabase, {
   ];
 
   const doc = new Document({
+    // Every run in this document is Thai (or Thai/English mixed) — without
+    // a language tag, Word has no signal to apply its Thai (complex-script)
+    // line-breaking rules and can wrap far less predictably than intended.
+    // Setting it once here on the document's default run style, rather
+    // than on every individual TextRun, is enough: everything inherits it
+    // unless a run overrides its own language.
+    styles: {
+      default: {
+        document: {
+          run: { language: { value: 'th-TH', eastAsia: 'th-TH', bidirectional: 'th-TH' } },
+        },
+      },
+    },
     sections: [
       { properties: { page: pageSetup }, children: headerChildren, ...makeSetCodeHeader() },
       {

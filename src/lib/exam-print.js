@@ -53,7 +53,7 @@ const TEXT_LINE_H = 22;
 const CHOICE_LINE_H = 20;
 const BLOCK_GAP = 23;
 const FOOTER_RESERVE = 20;
-const LOGO_SIZE = 56;
+const LOGO_SIZE = 74;
 
 function loadImage(url) {
   return new Promise(resolve => {
@@ -86,6 +86,27 @@ function getColumnLayout(columns) {
   if (columns !== 2) return { count: 1, width: CONTENT_W, xs: [CONTENT_X] };
   const width = (CONTENT_W - COLUMN_GUTTER) / 2;
   return { count: 2, width, xs: [CONTENT_X, CONTENT_X + width + COLUMN_GUTTER] };
+}
+
+// A dashed "เส้นปรุ" guide line down the middle of the gutter between the
+// two columns, on every page that uses a 2-column layout — a fixed line
+// spanning the whole column height regardless of how far content actually
+// reaches, matching the perforated cut/fold line printed exams
+// traditionally carry. save()/restore() keeps the dash pattern from
+// leaking into every other stroke drawn afterward on this shared ctx (the
+// letterhead box, the คำชี้แจง box, ...), which all expect solid lines.
+function drawColumnDivider(ctx, colLayout, yTop, yBottom) {
+  if (colLayout.count !== 2) return;
+  const gutterMid = colLayout.xs[0] + colLayout.width + COLUMN_GUTTER / 2;
+  ctx.save();
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(gutterMid, yTop);
+  ctx.lineTo(gutterMid, yBottom);
+  ctx.stroke();
+  ctx.restore();
 }
 
 // One measurement/layout pass per question — wraps its text and each
@@ -302,6 +323,7 @@ export async function generateExamQuestionPaperPdf(supabase, {
 
   resetCanvas();
   let headerY = drawHeaderForPage(true);
+  drawColumnDivider(ctx, colLayout, headerY, bottomLimit);
   let colY = colLayout.xs.map(() => headerY);
   let colIndex = 0;
 
@@ -316,6 +338,7 @@ export async function generateExamQuestionPaperPdf(supabase, {
       pdf.addPage();
       resetCanvas();
       headerY = drawHeaderForPage(false);
+      drawColumnDivider(ctx, colLayout, headerY, bottomLimit);
       colY = colLayout.xs.map(() => headerY);
       colIndex = 0;
       // A fresh page always accepts the next question even if it still

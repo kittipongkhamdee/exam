@@ -79,7 +79,7 @@ async function loadLogo(logoDataUrl) {
   if (!logoDataUrl) return null;
   try {
     const mime = logoDataUrl.slice(5, logoDataUrl.indexOf(';'));
-    return await loadDocxImage(dataUrlToBytes(logoDataUrl), mime, 90, 90);
+    return await loadDocxImage(dataUrlToBytes(logoDataUrl), mime, 120, 120);
   } catch {
     return null;
   }
@@ -253,7 +253,11 @@ export async function generateExamQuestionPaperDocx(supabase, {
         properties: {
           page: pageSetup,
           type: SectionType.CONTINUOUS,
-          column: { count: columns === 1 ? 1 : 2, space: '0.7cm' },
+          // separate turns on Word's own column-divider rule (OOXML w:sep)
+          // — its only line-style option, solid rather than dashed, but the
+          // closest native Word equivalent to the ปรุ divider line
+          // exam-print.js draws dashed on the PDF's canvas.
+          column: { count: columns === 1 ? 1 : 2, space: '0.7cm', separate: columns !== 1 },
         },
         children: questionParagraphs(questions, choiceScheme, images),
       },

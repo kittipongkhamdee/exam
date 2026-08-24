@@ -31,6 +31,16 @@ const KINDS = [
   { value: 'ปลายทาง', label: 'ปลายทาง' },
 ];
 
+// Optional cognitive-level hints for the AI generator (ประเภทข้อสอบ) — none
+// selected means "let the AI decide", same as before this existed.
+const COGNITIVE_TYPES = [
+  { value: 'comprehension', label: 'ความเข้าใจ (Comprehension)' },
+  { value: 'application', label: 'การนำไปใช้ (Application)' },
+  { value: 'analysis', label: 'การวิเคราะห์ (Analysis)' },
+  { value: 'synthesis', label: 'การสังเคราะห์ (Synthesis)' },
+  { value: 'evaluation', label: 'การประเมินค่า (Evaluation)' },
+];
+
 function SparkleIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -238,6 +248,7 @@ export default function BankTool() {
   const [sourceMode, setSourceMode] = useState('indicators'); // 'indicators' | 'units' | 'custom'
   const [kindFilter, setKindFilter] = useState('');
   const [customTopic, setCustomTopic] = useState('');
+  const [cognitiveTypes, setCognitiveTypes] = useState([]);
   const [difficulty, setDifficulty] = useState('medium');
   const [numChoices, setNumChoices] = useState(4);
   const [numQuestions, setNumQuestions] = useState(5);
@@ -368,6 +379,10 @@ export default function BankTool() {
     setIndicatorIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
+  function toggleCognitiveType(value) {
+    setCognitiveTypes(prev => prev.includes(value) ? prev.filter(x => x !== value) : [...prev, value]);
+  }
+
   const filteredIndicators = kindFilter ? indicators.filter(i => i.kind === kindFilter) : indicators;
 
   function selectUnit(unit) {
@@ -401,7 +416,7 @@ export default function BankTool() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({
-          subjectId, indicatorIds, customTopic, difficulty,
+          subjectId, indicatorIds, customTopic, difficulty, cognitiveTypes,
           numChoices: Number(numChoices), numQuestions: Number(numQuestions),
         }),
       });
@@ -675,6 +690,22 @@ export default function BankTool() {
           <div className={field}>
             <label className={label}>จำนวนข้อ</label>
             <input type="number" min={1} max={15} className={inputCls + ' w-24'} value={numQuestions} onChange={e => setNumQuestions(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className={label}>ประเภทข้อสอบ (เลือกได้หลายข้อ ไม่บังคับเลือก)</label>
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-2">
+            {COGNITIVE_TYPES.map(c => (
+              <label key={c.value} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cognitiveTypes.includes(c.value)}
+                  onChange={() => toggleCognitiveType(c.value)}
+                />
+                {c.label}
+              </label>
+            ))}
           </div>
         </div>
 

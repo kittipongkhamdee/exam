@@ -163,9 +163,33 @@ function instructionsBox(instructions) {
   })];
 }
 
-function questionParagraphs(questions, choiceScheme, images) {
+function questionParagraphs(questions, choiceScheme, images, groupByIndicator) {
   const out = [];
+  let prevIndicatorId;
   questions.forEach((q, qi) => {
+    // Same rule as exam-print.js's planQuestions: only a question entering
+    // a NEW indicator group gets a header, and only when it actually has
+    // one — no "ไม่มีตัวชี้วัด" label printed on the student's paper.
+    // keepNext on both header paragraphs asks Word to keep them attached to
+    // the question paragraph that follows, so a column/page break doesn't
+    // strand the header on its own — exam-print.js gets this for free by
+    // folding the header into the same question's height instead.
+    if (groupByIndicator && q.indicator_id != null && q.indicator_id !== prevIndicatorId && q.indicators?.indicator_code) {
+      out.push(new Paragraph({
+        keepNext: true,
+        spacing: { before: 200, after: 0 },
+        children: [new TextRun({ text: `ตัวชี้วัด ${q.indicators.indicator_code}`, bold: true, size: '11pt' })],
+      }));
+      if (q.indicators.indicator_text) {
+        out.push(new Paragraph({
+          keepNext: true,
+          spacing: { before: 20, after: 0 },
+          children: [new TextRun({ text: q.indicators.indicator_text, size: '10.5pt' })],
+        }));
+      }
+    }
+    prevIndicatorId = q.indicator_id;
+
     out.push(new Paragraph({
       spacing: { before: 200, after: 60 },
       children: [
@@ -200,15 +224,17 @@ function questionParagraphs(questions, choiceScheme, images) {
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{
  *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string,
- *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
+ *   questions: Array<{question_text:string, choices:string[], image_path:string|null, indicator_id?:number|null, indicators?:{indicator_code:string, indicator_text:string}}>,
  *   choiceScheme?: 'thai'|'en'|'num', setCode?: number,
  *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
  *   instructions?: string[], columns?: 1|2, logoDataUrl?: string|null,
+ *   groupByIndicator?: boolean,
  * }} args
  */
 export async function generateExamQuestionPaperDocx(supabase, {
   title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai', setCode,
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
+  groupByIndicator = false,
 }) {
   const [images, logo] = await Promise.all([
     loadQuestionImages(supabase, questions),
@@ -282,7 +308,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
           // exam-print.js draws dashed on the PDF's canvas.
           column: { count: columns === 1 ? 1 : 2, space: '0.7cm', separate: columns !== 1 },
         },
-        children: questionParagraphs(questions, choiceScheme, images),
+        children: questionParagraphs(questions, choiceScheme, images, groupByIndicator),
         ...makeSetCodeHeader(),
       },
     ],

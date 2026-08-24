@@ -96,9 +96,9 @@ export async function getExamSetWithQuestions(supabase, id) {
   const { data, error } = await supabase
     .from('online_exam_sets')
     .select(`
-      id, subject_id, title, printed_quiz_id, set_code,
+      id, subject_id, title, printed_quiz_id, set_code, group_by_indicator,
       subjects ( subject_name, subject_code, grade_level, room ),
-      online_exam_set_questions ( seq, points, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path ) )
+      online_exam_set_questions ( seq, points, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path, indicator_id, indicators ( indicator_code, indicator_text ) ) )
     `)
     .eq('id', id)
     .single();
@@ -113,6 +113,7 @@ export async function getExamSetWithQuestions(supabase, id) {
     title: data.title,
     printed_quiz_id: data.printed_quiz_id,
     set_code: data.set_code,
+    group_by_indicator: data.group_by_indicator,
     subject_name: data.subjects?.subject_name,
     subject_code: data.subjects?.subject_code,
     grade_level: data.subjects?.grade_level,
@@ -156,19 +157,19 @@ export async function examSetHasSubmittedAttempts(supabase, examSetId) {
  * — simplest correct way to persist a reordered/edited selection without a
  * client-side transaction.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, subjectId: string, title: string, questions: Array<{ id: string, points: number }> }} args
+ * @param {{ id?: string, subjectId: string, title: string, questions: Array<{ id: string, points: number }>, groupByIndicator?: boolean }} args
  * @returns {Promise<string>} the exam set's id
  */
-export async function saveExamSet(supabase, { id, subjectId, title, questions }) {
+export async function saveExamSet(supabase, { id, subjectId, title, questions, groupByIndicator = false }) {
   const { data: { user } } = await supabase.auth.getUser();
   let examSetId = id;
   if (examSetId) {
-    const { error } = await supabase.from('online_exam_sets').update({ subject_id: subjectId, title }).eq('id', examSetId);
+    const { error } = await supabase.from('online_exam_sets').update({ subject_id: subjectId, title, group_by_indicator: groupByIndicator }).eq('id', examSetId);
     if (error) throw error;
     const { error: delError } = await supabase.from('online_exam_set_questions').delete().eq('exam_set_id', examSetId);
     if (delError) throw delError;
   } else {
-    const { data, error } = await supabase.from('online_exam_sets').insert({ subject_id: subjectId, title, created_by: user.id }).select('id').single();
+    const { data, error } = await supabase.from('online_exam_sets').insert({ subject_id: subjectId, title, created_by: user.id, group_by_indicator: groupByIndicator }).select('id').single();
     if (error) throw error;
     examSetId = data.id;
   }

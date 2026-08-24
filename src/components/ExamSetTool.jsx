@@ -602,6 +602,7 @@ export default function ExamSetTool() {
       });
       const genArgs = {
         title: full.title,
+        setCode: full.set_code,
         subjectName: full.subject_name,
         subjectCode: form.subjectCode,
         gradeLevel: full.grade_level,
@@ -883,7 +884,10 @@ export default function ExamSetTool() {
                   {group.rows.map(s => (
                     <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
                       <div className="min-w-0">
-                        <div className="font-medium text-gray-900">{s.title}</div>
+                        <div className="font-medium text-gray-900 flex items-center gap-1.5 flex-wrap">
+                          {s.title}
+                          <span className={pill + ' bg-slate-100 text-slate-700 font-mono'}>รหัส {String(s.set_code).padStart(3, '0')}</span>
+                        </div>
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap max-w-full shrink-0">

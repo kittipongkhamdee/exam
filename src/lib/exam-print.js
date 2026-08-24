@@ -150,10 +150,11 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth)
  * used to draw alone with a plain rule underneath. Continuation pages just
  * get a short "(ต่อ)" line so the two-column body has more room.
  */
-function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle, isFirstPage }) {
+function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle, isFirstPage, setCode }) {
   let y = MARGIN;
   ctx.fillStyle = '#000';
   ctx.textAlign = 'left';
+  const setCodeLabel = Number.isFinite(setCode) ? `รหัส ${String(setCode).padStart(3, '0')}` : null;
   if (isFirstPage) {
     const boxPad = 14;
     const contentX0 = MARGIN + boxPad;
@@ -161,6 +162,16 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
     const centerX = contentX0 + contentW / 2;
     const hasLogo = !!logoImg;
     const cy = MARGIN + boxPad;
+    if (setCodeLabel) {
+      // Top-right corner of the letterhead box — a small stamp a teacher
+      // can spot at a glance while matching a stack of printed papers to
+      // the right ชุดข้อสอบ during grading, as their number of sets grows.
+      ctx.textAlign = 'right';
+      ctx.font = `bold 12px ${FONT}`;
+      ctx.fillStyle = '#000';
+      ctx.fillText(setCodeLabel, contentX0 + contentW, cy + 10);
+      ctx.textAlign = 'left';
+    }
     if (hasLogo) {
       // "Contain" the logo within the LOGO_SIZE box instead of stretching
       // it to fill a fixed square — most school logos/crests aren't
@@ -223,6 +234,12 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
   } else {
     ctx.font = CONT_FONT; ctx.fillStyle = '#000';
     ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 13);
+    if (setCodeLabel) {
+      ctx.textAlign = 'right';
+      ctx.font = `bold 12px ${FONT}`;
+      ctx.fillText(setCodeLabel, PAGE_W - MARGIN, y + 13);
+      ctx.textAlign = 'left';
+    }
     y += 28;
   }
   return y;
@@ -275,13 +292,13 @@ function drawQuestionBlock(ctx, plan, x, y) {
  * @param {{
  *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string,
  *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
- *   choiceScheme?: 'thai'|'en'|'num',
+ *   choiceScheme?: 'thai'|'en'|'num', setCode?: number,
  *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
  *   instructions?: string[], columns?: 1|2, logoDataUrl?: string|null,
  * }} args
  */
 export async function generateExamQuestionPaperPdf(supabase, {
-  title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai',
+  title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai', setCode,
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
 }) {
   const measureCanvas = document.createElement('canvas');
@@ -321,7 +338,7 @@ export async function generateExamQuestionPaperPdf(supabase, {
   }
 
   function drawHeaderForPage(isFirstPage) {
-    return drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle: title, isFirstPage });
+    return drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle: title, isFirstPage, setCode });
   }
 
   resetCanvas();

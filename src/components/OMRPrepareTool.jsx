@@ -14,7 +14,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
-import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout } from '../lib/omr-core';
+import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, THAI_GLYPH_SAMPLE } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
@@ -354,13 +354,16 @@ export default function OMRPrepareTool() {
   // font even after it arrives. Explicitly load the specific weights used
   // (regular + bold) via the Font Loading API and only mark ready once both
   // resolve, so the sheet always redraws with Sarabun actually applied.
+  // THAI_GLYPH_SAMPLE as the text argument is required, not cosmetic — see
+  // its definition in omr-core.js for why an untargeted load() call never
+  // actually fetches Thai glyphs.
   useEffect(() => {
     (async () => {
       if (!document.fonts) { setFontReady(true); return; }
       try {
         await Promise.all([
-          document.fonts.load('10px "Sarabun"'),
-          document.fonts.load('bold 10px "Sarabun"'),
+          document.fonts.load('10px "Sarabun"', THAI_GLYPH_SAMPLE),
+          document.fonts.load('bold 10px "Sarabun"', THAI_GLYPH_SAMPLE),
         ]);
       } finally {
         setFontReady(true);

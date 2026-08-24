@@ -36,6 +36,19 @@ const TOP_BOTTOM_PAGE_W = PAGE_W, TOP_BOTTOM_PAGE_H = Math.round(148.5 * PX_PER_
 const MARKER = 26; // fiducial square size
 const MARGIN = 40;
 
+// Shared with exam-print.js and OMRPrepareTool.jsx: the `text` argument
+// document.fonts.load() needs to actually load Sarabun's Thai glyphs before
+// drawing to a <canvas>. Without a text argument, load() only guarantees
+// its default representative string (effectively ASCII/Latin) is fetched —
+// Google's Sarabun stylesheet subsets by unicode-range, shipping Thai
+// script (U+0E01-0E5B) as a completely separate woff2 file from Latin, so
+// an untargeted load() call never fetches the glyphs a Thai exam paper or
+// answer sheet is almost entirely made of; the canvas silently keeps using
+// the system fallback font for all of it. This full-coverage sample (every
+// Thai consonant/vowel/tone-mark + digits) forces that subset to load,
+// regardless of which specific words a given print job contains.
+const THAI_GLYPH_SAMPLE = 'กขคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮฤฦะัาำิีึืุูเแโใไๅๆ่้๊๋์ฯ0123456789';
+
 function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH = PAGE_H, layoutStyle = 'auto', forcedCols) {
   // Returns bubble center coordinates for each question/choice, and ID grid.
   // layoutStyle picks which template to use — 'auto' infers from pageW for
@@ -1214,6 +1227,7 @@ export {
   HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H,
   MARKER, MARGIN,
+  THAI_GLYPH_SAMPLE,
   buildLayout,
   drawFiducials,
   choiceLetters,

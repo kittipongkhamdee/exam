@@ -19,8 +19,19 @@ import {
   Document, Packer, Paragraph, TextRun, ImageRun, Header,
   AlignmentType, BorderStyle, WidthType, Table, TableRow, TableCell, SectionType,
 } from 'docx';
-import { choiceLetters } from './omr-core';
+import { choiceLetters, insertThaiZwsp } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
+
+// A real Word document lets Word's own layout engine decide line breaks —
+// unlike exam-print.js's canvas, which wraps text itself — but Word has no
+// built-in sense of Thai word boundaries to break on. Every TextRun's text
+// goes through insertThaiZwsp() first, splicing an invisible zero-width
+// space between each word omr-core's own Thai segmenter finds, so Word
+// actually has somewhere sensible to break instead of wrapping wherever it
+// likes (or not at all).
+function run(options) {
+  return new TextRun({ ...options, text: insertThaiZwsp(options.text) });
+}
 
 const PAGE_MARGIN = '10mm';
 const NO_BORDERS = {
@@ -110,18 +121,18 @@ function letterheadChildren({ schoolName, examTitle, subjectLine, scoreTimeLine,
   if (schoolName) {
     textParagraphs.push(new Paragraph({
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: schoolName, bold: true, size: '14pt' })],
+      children: [run({ text: schoolName, bold: true, size: '14pt' })],
     }));
   }
   if (examTitle) {
     textParagraphs.push(new Paragraph({
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: examTitle, bold: true, size: '13pt' })],
+      children: [run({ text: examTitle, bold: true, size: '13pt' })],
     }));
   }
-  textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: subjectLine, size: '11pt' })] }));
+  textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [run({ text: subjectLine, size: '11pt' })] }));
   if (scoreTimeLine) {
-    textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: scoreTimeLine, size: '11pt' })] }));
+    textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [run({ text: scoreTimeLine, size: '11pt' })] }));
   }
 
   if (!logo) return textParagraphs;
@@ -156,7 +167,7 @@ function instructionsBox(instructions) {
         borders: NO_BORDERS,
         children: instructions.map(line => new Paragraph({
           spacing: { after: 40 },
-          children: [new TextRun({ text: line, size: '10.5pt' })],
+          children: [run({ text: line, size: '10.5pt' })],
         })),
       })],
     })],
@@ -181,8 +192,8 @@ function questionParagraphs(questions, choiceScheme, images, groupByIndicator) {
         keepNext: true,
         spacing: { before: 200, after: 0 },
         children: [
-          new TextRun({ text: `ตัวชี้วัด ${q.indicators.indicator_code}`, bold: true, size: '10.5pt' }),
-          ...(q.indicators.indicator_text ? [new TextRun({ text: `  ${q.indicators.indicator_text}`, size: '10.5pt' })] : []),
+          run({ text: `ตัวชี้วัด ${q.indicators.indicator_code}`, bold: true, size: '10.5pt' }),
+          ...(q.indicators.indicator_text ? [run({ text: `  ${q.indicators.indicator_text}`, size: '10.5pt' })] : []),
         ],
       }));
     }
@@ -191,8 +202,8 @@ function questionParagraphs(questions, choiceScheme, images, groupByIndicator) {
     out.push(new Paragraph({
       spacing: { before: 200, after: 60 },
       children: [
-        new TextRun({ text: `ข้อ ${qi + 1}. `, bold: true, size: '12pt' }),
-        new TextRun({ text: q.question_text, size: '12pt' }),
+        run({ text: `ข้อ ${qi + 1}. `, bold: true, size: '12pt' }),
+        run({ text: q.question_text, size: '12pt' }),
       ],
     }));
     const img = q.image_path ? images.get(q.image_path) : null;
@@ -208,7 +219,7 @@ function questionParagraphs(questions, choiceScheme, images, groupByIndicator) {
       out.push(new Paragraph({
         indent: { left: 300 },
         spacing: { after: 40 },
-        children: [new TextRun({ text: `${letters[ci]}. ${c}`, size: '11pt' })],
+        children: [run({ text: `${letters[ci]}. ${c}`, size: '11pt' })],
       }));
     });
   });
@@ -263,7 +274,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
         default: new Header({
           children: [new Paragraph({
             alignment: AlignmentType.RIGHT,
-            children: [new TextRun({ text: setCodeLabel, size: '10.5pt' })],
+            children: [run({ text: setCodeLabel, size: '10.5pt' })],
           })],
         }),
       },

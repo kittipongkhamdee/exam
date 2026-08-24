@@ -314,6 +314,20 @@ const thaiSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === '
   ? new Intl.Segmenter('th', { granularity: 'word' })
   : null;
 
+// Unlike our own canvas-drawn PDF (which wraps text itself via wrapText
+// above), a real Word document lets Word's own layout engine decide line
+// breaks — but Word can only break where it's actually told a break is
+// allowed, and it has no built-in notion of Thai word boundaries on its
+// own. Splicing a zero-width space (U+200B — invisible, no visual effect)
+// between every word this same Intl.Segmenter finds gives Word an explicit
+// break opportunity at each one, the same technique the "thai-docx" agent
+// skill uses via Python's pythainlp. Returns text unchanged if there's
+// nothing to segment or Intl.Segmenter isn't available.
+function insertThaiZwsp(text) {
+  if (!text || !thaiSegmenter) return text;
+  return [...thaiSegmenter.segment(text)].map(s => s.segment).join('\u200b');
+}
+
 // Word-wraps text to fit maxWidth on the canvas ctx's current font.
 // firstLineMaxWidth (defaults to maxWidth) narrows only the very first
 // wrapped line — for a caller that draws a label before the wrapped text
@@ -1239,6 +1253,7 @@ export {
   drawFiducials,
   choiceLetters,
   wrapText,
+  insertThaiZwsp,
   fillTextClipped,
   drawSheet,
   toGray,

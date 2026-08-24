@@ -11,6 +11,7 @@ import { formatStudentName } from '@/lib/student-name';
 import {
   listProctorAssignmentsForDate, saveProctorAssignment, deleteProctorAssignment,
   listGradeRoomOptions, listAllTeachers, listExamAuditLog, EXAM_AUDIT_ACTION_LABEL,
+  listTeacherLastLogins,
 } from '@/lib/exam-db';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { formatGradeRoom } from '@/lib/format';
@@ -945,6 +946,71 @@ function formatLogTimestamp(iso) {
   }
 }
 
+function ClockIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
+// last_login_at is shared with the ปพ.5 system on this same Supabase
+// project — a teacher logging into either app updates the same column, so
+// this reflects the most recent login to the school system as a whole, not
+// just this exam app.
+function LastLoginPanel() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await listTeacherLastLogins(supabase));
+    } catch (err) {
+      setError(err.message || 'โหลดรายการไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-cyan-600 to-teal-500 text-white flex items-center justify-center shrink-0">
+            <ClockIcon className="h-4 w-4" />
+          </div>
+          <div className="font-semibold text-gray-900">ครูเข้าสู่ระบบล่าสุด</div>
+        </div>
+        <button type="button" className={btnTiny} onClick={refresh}>รีเฟรช</button>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        เวลาที่แต่ละครูเข้าสู่ระบบล่าสุด (ใช้ร่วมกับระบบ ปพ.5 — เข้าระบบไหนก็อัปเดตเวลานี้เหมือนกัน) เรียงจากเข้าล่าสุดไปเก่าสุด
+      </p>
+      {loading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
+      {error && <div className="text-sm text-red-600">{error}</div>}
+      {!loading && rows.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีข้อมูล</div>}
+      {rows.length > 0 && (
+        <div className="max-h-96 overflow-y-auto -mx-5 px-5">
+          <div className="divide-y divide-gray-100">
+            {rows.map(r => (
+              <div key={r.id} className="flex items-center justify-between gap-3 text-sm py-2">
+                <span className="font-medium text-gray-900 truncate">{r.full_name || '(ไม่ระบุชื่อ)'}</span>
+                <span className="text-xs text-gray-500 shrink-0">{r.last_login_at ? formatLogTimestamp(r.last_login_at) : 'ยังไม่เคยเข้าสู่ระบบ'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExamAuditLogPanel() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1031,6 +1097,7 @@ function SettingsContent() {
       <ExamSecurityPanel />
       <ExamProximityCheckPanel />
       <ExamProctorAssignmentPanel />
+      <LastLoginPanel />
       <ExamAuditLogPanel />
     </div>
   );

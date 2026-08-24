@@ -51,10 +51,18 @@ export function AuthProvider({ children }) {
       loadProfile(data.session);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       setSession(sess);
       if (sess) setIdleSignedOut(false);
       loadProfile(sess);
+      // Only an actual sign-in, not every tab reload restoring the existing
+      // session (INITIAL_SESSION) or a background token refresh — so this
+      // reflects when the teacher last logged in, not merely had the app
+      // open. Shared with the ปพ.5 system's own last_login_at write on this
+      // same profiles table, so either app's login updates it.
+      if (event === 'SIGNED_IN' && sess) {
+        supabase.from('profiles').update({ last_login_at: new Date().toISOString() }).eq('id', sess.user.id).then(() => {});
+      }
     });
 
     return () => { active = false; sub.subscription.unsubscribe(); };

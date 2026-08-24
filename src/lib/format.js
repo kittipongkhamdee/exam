@@ -29,6 +29,25 @@ export function formatThaiTime(isoString, opts = { timeStyle: 'short' }) {
   return new Date(isoString).toLocaleTimeString('th-TH', { ...opts, timeZone: BANGKOK_TZ });
 }
 
+// How long a student actually spent on an exam attempt — for the "รายงาน"
+// page's ใช้เวลา column, distinct from the round's configured
+// duration_minutes (a student can submit well before or, if a proctor
+// unlocks them past a screen-switch lockout, well after that nominal
+// time). Both ends are wall-clock instants, so a plain millisecond
+// difference is timezone-agnostic — no need to route through Bangkok time.
+export function formatDuration(startedAt, submittedAt) {
+  if (!startedAt || !submittedAt) return '';
+  const ms = new Date(submittedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const totalSeconds = Math.round(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h} ชม. ${m} นาที`;
+  if (m > 0) return `${m} นาที ${s} วินาที`;
+  return `${s} วินาที`;
+}
+
 // <input type="datetime-local"> holds a plain "YYYY-MM-DDTHH:mm" string
 // with no timezone of its own — these two convert it to/from a real UTC
 // instant, always treating that plain string as Thailand wall-clock time

@@ -737,6 +737,20 @@ export async function listAllTeachers(supabase) {
   return data;
 }
 
+// last_login_at is shared with the ปพ.5 system on this same Supabase
+// project (its own login flow already writes it) — AuthContext.jsx updates
+// it here too, on every SIGNED_IN event, so it reflects logins to either
+// app. Most-recent-first, nulls (never signed into anything) last, for the
+// admin's "ครูเข้าสู่ระบบล่าสุด" settings panel.
+export async function listTeacherLastLogins(supabase) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, last_login_at')
+    .order('last_login_at', { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return data;
+}
+
 /**
  * Every รอบสอบ in the system, each tagged with its owning teacher's name —
  * for the "รายงาน" page's admin-only "ทุกคน" view. Unlike listMyExamRounds,

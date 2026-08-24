@@ -206,7 +206,7 @@ function questionParagraphs(questions, choiceScheme, images, groupByIndicator) {
     out.push(new Paragraph({
       spacing: { before: 200, after: 60 },
       children: [
-        run({ text: `ข้อ ${qi + 1}. `, bold: true, size: '12pt' }),
+        run({ text: `${qi + 1}. `, bold: true, size: '12pt' }),
         run({ text: q.question_text, size: '12pt' }),
       ],
     }));

@@ -42,6 +42,7 @@ const NAV_GROUPS = [
       { href: '/exam/schedule', label: 'จัดสอบ', icon: ClipboardIcon, adminOnly: false },
       { href: '/exam/monitor', label: 'คุมสอบ', icon: MonitorIcon, adminOnly: false },
       { href: '/exam/duty-schedule', label: 'ตารางคุมสอบ', icon: CalendarIcon, adminOnly: false },
+      { href: '/exam/proctor-assignment', label: 'จัดครูคุมสอบ', icon: UsersIcon, adminOnly: true },
       { href: '/exam/report', label: 'รายงาน', icon: ReportIcon, adminOnly: false },
     ],
   },
@@ -473,6 +474,17 @@ function CalendarIcon(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+
+function UsersIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M16 4.5a3.5 3.5 0 0 1 0 7" />
+      <path d="M15 13.5a6.5 6.5 0 0 1 6.5 6.5" />
     </svg>
   );
 }

@@ -72,7 +72,7 @@ export async function listMyExamSets(supabase, opts = {}) {
   let query = supabase
     .from('online_exam_sets')
     .select(`
-      id, subject_id, title, created_at,
+      id, subject_id, title, created_at, set_code,
       subjects!inner ( subject_name, subject_code, grade_level, room, user_id ),
       online_exam_set_questions ( count )
     `)
@@ -96,7 +96,7 @@ export async function getExamSetWithQuestions(supabase, id) {
   const { data, error } = await supabase
     .from('online_exam_sets')
     .select(`
-      id, subject_id, title, printed_quiz_id,
+      id, subject_id, title, printed_quiz_id, set_code,
       subjects ( subject_name, subject_code, grade_level, room ),
       online_exam_set_questions ( seq, points, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path ) )
     `)
@@ -112,6 +112,7 @@ export async function getExamSetWithQuestions(supabase, id) {
     subject_id: data.subject_id,
     title: data.title,
     printed_quiz_id: data.printed_quiz_id,
+    set_code: data.set_code,
     subject_name: data.subjects?.subject_name,
     subject_code: data.subjects?.subject_code,
     grade_level: data.subjects?.grade_level,

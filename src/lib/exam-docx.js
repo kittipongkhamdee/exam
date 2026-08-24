@@ -16,7 +16,7 @@
 // not a new one) switches to the question body's column count.
 
 import {
-  Document, Packer, Paragraph, TextRun, ImageRun,
+  Document, Packer, Paragraph, TextRun, ImageRun, Header,
   AlignmentType, BorderStyle, WidthType, Table, TableRow, TableCell, SectionType,
 } from 'docx';
 import { choiceLetters } from './omr-core';
@@ -201,13 +201,13 @@ function questionParagraphs(questions, choiceScheme, images) {
  * @param {{
  *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string,
  *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
- *   choiceScheme?: 'thai'|'en'|'num',
+ *   choiceScheme?: 'thai'|'en'|'num', setCode?: number,
  *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
  *   instructions?: string[], columns?: 1|2, logoDataUrl?: string|null,
  * }} args
  */
 export async function generateExamQuestionPaperDocx(supabase, {
-  title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai',
+  title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai', setCode,
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
 }) {
   const [images, logo] = await Promise.all([
@@ -222,6 +222,29 @@ export async function generateExamQuestionPaperDocx(supabase, {
   ].filter(Boolean).join('   ');
 
   const pageSetup = { size: { width: '210mm', height: '297mm' }, margin: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN } };
+
+  // A running header (repeats on every page, unlike a one-off paragraph)
+  // showing รหัสชุดข้อสอบ top-right — same spot exam-print.js stamps it
+  // in the PDF, so a teacher can match a stack of printed papers to the
+  // right ชุดข้อสอบ while grading regardless of which page a sheet is on.
+  // Word requires each section to declare its own header for one to show,
+  // so both sections below get their own instance (docx.js assigns each
+  // Header its own relationship id — sharing one object across sections
+  // isn't a documented/safe pattern here).
+  const setCodeLabel = Number.isFinite(setCode) ? `รหัส ${String(setCode).padStart(3, '0')}` : null;
+  function makeSetCodeHeader() {
+    if (!setCodeLabel) return {};
+    return {
+      headers: {
+        default: new Header({
+          children: [new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [new TextRun({ text: setCodeLabel, bold: true, size: '10.5pt' })],
+          })],
+        }),
+      },
+    };
+  }
 
   // The whole letterhead (logo/school/title/subject/score lines + the
   // คำชี้แจง box) sits inside one outer border — matching the traditional
@@ -248,7 +271,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
 
   const doc = new Document({
     sections: [
-      { properties: { page: pageSetup }, children: headerChildren },
+      { properties: { page: pageSetup }, children: headerChildren, ...makeSetCodeHeader() },
       {
         properties: {
           page: pageSetup,
@@ -260,6 +283,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
           column: { count: columns === 1 ? 1 : 2, space: '0.7cm', separate: columns !== 1 },
         },
         children: questionParagraphs(questions, choiceScheme, images),
+        ...makeSetCodeHeader(),
       },
     ],
   });

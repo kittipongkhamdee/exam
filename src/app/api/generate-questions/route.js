@@ -12,6 +12,18 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publish
 const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
 const MAX_QUESTIONS = 15;
 
+// Optional cognitive-level hints (ประเภทข้อสอบ) the teacher can check to
+// steer what kind of thinking each question exercises — unchecked entirely
+// (the default) means the prompt omits this section and AI picks freely,
+// same behavior as before this existed.
+const COGNITIVE_LABEL = {
+  comprehension: 'ความเข้าใจ (Comprehension)',
+  application: 'การนำไปใช้ (Application)',
+  analysis: 'การวิเคราะห์ (Analysis)',
+  synthesis: 'การสังเคราะห์ (Synthesis)',
+  evaluation: 'การประเมินค่า (Evaluation)',
+};
+
 // Gemini returns 503 (model overloaded) and 429 (rate limited) fairly often
 // under normal load — both are meant to be retried, not surfaced as a
 // failure on the first try. Bounded to fit comfortably inside maxDuration
@@ -116,10 +128,13 @@ export async function POST(request) {
     return Response.json({ error: 'รูปแบบคำขอไม่ถูกต้อง' }, { status: 400 });
   }
 
-  const { subjectId, indicatorIds = [], customTopic = '', difficulty = 'medium', numChoices = 4, numQuestions = 5 } = body;
+  const { subjectId, indicatorIds = [], customTopic = '', difficulty = 'medium', cognitiveTypes = [], numChoices = 4, numQuestions = 5 } = body;
 
   if (!subjectId) return Response.json({ error: 'กรุณาเลือกวิชา' }, { status: 400 });
   if (!DIFFICULTY_LABEL[difficulty]) return Response.json({ error: 'ระดับความยากไม่ถูกต้อง' }, { status: 400 });
+  const cognitiveLabels = (Array.isArray(cognitiveTypes) ? cognitiveTypes : [])
+    .map(c => COGNITIVE_LABEL[c])
+    .filter(Boolean);
   const choiceCount = Number(numChoices);
   if (!Number.isInteger(choiceCount) || choiceCount < 2 || choiceCount > 6) {
     return Response.json({ error: 'จำนวนตัวเลือกต้องอยู่ระหว่าง 2-6' }, { status: 400 });
@@ -166,7 +181,8 @@ ${topicLines}
 - คำถามและตัวเลือกเป็นภาษาไทย ชัดเจน ไม่กำกวม เหมาะกับระดับชั้นที่ระบุ
 - ตัวเลือกต้องมีความยาวและรูปแบบใกล้เคียงกัน เพื่อไม่ให้เดาคำตอบจากลักษณะตัวเลือกได้
 - correct_choice คือดัชนีของตัวเลือกที่ถูกต้อง (เริ่มนับจาก 0)
-- explanation อธิบายสั้นๆ ว่าทำไมตัวเลือกนั้นถูก`;
+- explanation อธิบายสั้นๆ ว่าทำไมตัวเลือกนั้นถูก${cognitiveLabels.length > 0 ? `
+- แต่ละข้อต้องวัดทักษะการคิดระดับใดระดับหนึ่งต่อไปนี้ (คละกันไปในแต่ละข้อ ไม่ต้องใช้ครบทุกระดับในทุกข้อ): ${cognitiveLabels.join(', ')}` : ''}`;
 
   const responseSchema = {
     type: 'object',

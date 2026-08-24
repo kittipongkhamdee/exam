@@ -247,6 +247,9 @@ export default function BankTool() {
   const [saving, setSaving] = useState(false);
   const [importErrors, setImportErrors] = useState([]);
   const importInputRef = useRef(null);
+  const [pdfImporting, setPdfImporting] = useState(false);
+  const [pdfImportError, setPdfImportError] = useState(null);
+  const pdfImportInputRef = useRef(null);
 
   const [bankQuestions, setBankQuestions] = useState([]);
   const [bankLoading, setBankLoading] = useState(true);
@@ -463,6 +466,63 @@ export default function BankTool() {
       setImportErrors(errors);
     } catch {
       setImportErrors(['อ่านไฟล์ไม่สำเร็จ — ตรวจสอบว่าเป็นไฟล์ CSV ที่ถูกต้อง']);
+    }
+  }
+
+  const MAX_PDF_BYTES = 3 * 1024 * 1024;
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Sends the PDF to /api/import-questions-pdf, which asks Gemini to read
+  // the file and extract (not invent) each question verbatim — the only
+  // reliable way to handle real exam-paper PDFs, since their layout/
+  // numbering/choice-lettering varies far too much for a fixed parser (see
+  // bank-import.js's CSV path for that fixed-format alternative). A question
+  // with no answer key found in the file still comes back with the AI's
+  // best-effort correct_choice, flagged needs_review so the review step
+  // below highlights it — same "review before saving" safety net every
+  // other draft source (AI-generated, manual, CSV) already goes through.
+  async function handleImportPdfFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !subjectId) return;
+    setPdfImportError(null);
+    if (file.size > MAX_PDF_BYTES) {
+      setPdfImportError(`ไฟล์ใหญ่เกินไป (จำกัดไม่เกิน ${Math.round(MAX_PDF_BYTES / 1024 / 1024)}MB) ลองแยกเป็นไฟล์ย่อยหรือบีบอัดไฟล์ก่อน`);
+      return;
+    }
+    setPdfImporting(true);
+    try {
+      const pdfBase64 = await readFileAsBase64(file);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/import-questions-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ subjectId, difficulty, pdfBase64 }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'นำเข้าจากไฟล์ PDF ไม่สำเร็จ');
+      setDraftQuestions(prev => [
+        ...prev,
+        ...body.questions.map((q, i) => ({
+          ...q,
+          indicator_id: indicatorIds.length === 1 ? indicatorIds[0] : null,
+          image_path: null,
+          image_url: null,
+          _key: `pdf-${Date.now()}-${i}`,
+        })),
+      ]);
+    } catch (err) {
+      setPdfImportError(err.message || 'นำเข้าจากไฟล์ PDF ไม่สำเร็จ');
+    } finally {
+      setPdfImporting(false);
     }
   }
 
@@ -728,6 +788,10 @@ export default function BankTool() {
           <button type="button" className={btnSecondary} onClick={downloadBankQuestionTemplate}>
             <DownloadIcon className="h-4 w-4" /> ดาวน์โหลดแบบฟอร์มนำเข้า
           </button>
+          <button type="button" className={btnSecondary} disabled={!subjectId || pdfImporting} onClick={() => pdfImportInputRef.current?.click()}>
+            <UploadIcon className="h-4 w-4" /> {pdfImporting ? 'กำลังอ่านไฟล์...' : 'นำเข้าจากไฟล์ PDF'}
+          </button>
+          <input ref={pdfImportInputRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={handleImportPdfFile} />
         </div>
         {!subjectId && <div className="text-xs text-gray-400 mt-2">เลือกวิชาก่อนจึงจะนำเข้าไฟล์ได้</div>}
         {importErrors.length > 0 && (
@@ -738,8 +802,12 @@ export default function BankTool() {
             </ul>
           </div>
         )}
+        {pdfImportError && <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">{pdfImportError}</div>}
         <p className="text-xs text-gray-400 mt-2">
           รูปแบบไฟล์ CSV: คอลัมน์ คำถาม, ตัวเลือกที่ 1-6 (กรอกอย่างน้อย 2 ข้อ), เฉลย (เลขข้อที่ถูก), คำอธิบายเฉลย (ไม่บังคับ), ระดับความยาก (ง่าย/ปานกลาง/ยาก) — ดาวน์โหลดแบบฟอร์มด้านบนเพื่อดูตัวอย่าง
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          นำเข้าจากไฟล์ PDF: ให้ AI อ่านไฟล์ข้อสอบ (ไม่เกิน {Math.round(MAX_PDF_BYTES / 1024 / 1024)}MB) แล้วดึงคำถาม/ตัวเลือกออกมาให้อัตโนมัติ — ถ้าไฟล์ไม่มีเฉลยแนบมา AI จะประเมินคำตอบเองและทำเครื่องหมายให้ตรวจสอบซ้ำ รูปภาพ/แผนภาพในไฟล์จะไม่ถูกดึงมาด้วย ต้องแนบเพิ่มเองภายหลังถ้าจำเป็น
         </p>
       </div>
 
@@ -761,6 +829,9 @@ export default function BankTool() {
                     <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
                       {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
                     </span>
+                    {q.needs_review && (
+                      <span className={pill + ' bg-amber-50 text-amber-700'}>ตรวจสอบเฉลย — ไฟล์ไม่มีคำตอบ</span>
+                    )}
                   </div>
                   <button type="button" className={btnTiny} onClick={() => removeDraft(q._key)}>
                     <TrashIcon className="h-3.5 w-3.5" /> ลบข้อนี้

@@ -599,6 +599,7 @@ export default function ExamSetTool() {
         title: full.title,
         questions: full.questions,
         existingQuizId: full.printed_quiz_id,
+        setCode: full.set_code,
       });
       const genArgs = {
         title: full.title,

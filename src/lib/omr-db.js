@@ -45,11 +45,12 @@ import { analyzeItems } from './item-analysis';
  *   paperLayout: 'topBottom'|'halfLandscape',
  *   cols?: number|null, // forced column count the sheet was printed with, if any
  *   answerKey: Record<number, { choices: number[], points: number }>, // { [questionIndex0based]: {...} }
+ *   setCode?: number|null, // mirrors online_exam_sets.set_code for a quiz synced from a printed ชุดข้อสอบ; null otherwise
  * }} params
  * @returns {Promise<{ quizId: string }>}
  */
 export async function createQuiz(supabase, params) {
-  const { subjectId, title, numQuestions, numChoices, idDigits, choiceScheme, paperLayout, cols, answerKey } = params;
+  const { subjectId, title, numQuestions, numChoices, idDigits, choiceScheme, paperLayout, cols, answerKey, setCode } = params;
 
   const { data: quiz, error: quizErr } = await supabase
     .from('omr_quizzes')
@@ -62,6 +63,7 @@ export async function createQuiz(supabase, params) {
       choice_scheme: choiceScheme,
       paper_layout: paperLayout,
       cols: cols || null,
+      set_code: setCode ?? null,
     })
     .select('id')
     .single();
@@ -157,7 +159,7 @@ export async function listMyQuizzes(supabase) {
   const { data, error } = await supabase
     .from('omr_quizzes')
     .select(`
-      id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, created_at,
+      id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, created_at, set_code,
       subjects!inner ( subject_name, subject_code, grade_level, room )
     `)
     .eq('subjects.user_id', user?.id ?? '')

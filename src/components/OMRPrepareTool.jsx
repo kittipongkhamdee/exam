@@ -95,6 +95,10 @@ export default function OMRPrepareTool() {
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
   const [quizId, setQuizId] = useState(null);
+  // set_code mirrored from the linked ชุดข้อสอบ (null for a quiz made
+  // directly here, never synced from one) — printed on the answer sheet
+  // itself once loaded, same badge the question paper already carries.
+  const [setCode, setSetCode] = useState(null);
   const [savingQuiz, setSavingQuiz] = useState(false);
   const [saveQuizError, setSaveQuizError] = useState(null);
   const [deletingQuiz, setDeletingQuiz] = useState(false);
@@ -225,6 +229,7 @@ export default function OMRPrepareTool() {
   useEffect(() => {
     (async () => {
       setQuizId(null);
+      setSetCode(null);
       setRoster([]);
       setClassStudents([]);
       setBatchError(null);
@@ -276,6 +281,7 @@ export default function OMRPrepareTool() {
       setScheme(quiz.choiceScheme);
       setAnswerKey(quiz.answerKey);
       setQuizId(quiz.id);
+      setSetCode(quiz.setCode ?? null);
       refreshRoster(quiz.id);
     } catch (err) {
       setLoadQuizError(err.message || 'โหลดชุดข้อสอบไม่สำเร็จ');
@@ -311,6 +317,7 @@ export default function OMRPrepareTool() {
     try {
       await deleteQuiz(supabase, quizId);
       setQuizId(null);
+      setSetCode(null);
       setRoster([]);
       setAnswerKey({});
       setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
@@ -363,9 +370,9 @@ export default function OMRPrepareTool() {
 
   const regenerate = useCallback(() => {
     if (!sheetCanvasRef.current) return;
-    drawSheet(sheetCanvasRef.current, { title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols }, null);
+    drawSheet(sheetCanvasRef.current, { title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode }, null);
     setSheetReady(true);
-  }, [title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, fontReady]);
+  }, [title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode, fontReady]);
 
   useEffect(() => { regenerate(); }, [regenerate]);
 
@@ -474,7 +481,7 @@ export default function OMRPrepareTool() {
 
       function drawStudent(student, seatNumber) {
         drawSheet(canvas, {
-          title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols,
+          title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode,
           studentName: formatStudentName(student),
           studentClass: classLabel,
           studentNumber: seatNumber,

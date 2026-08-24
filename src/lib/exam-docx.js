@@ -239,7 +239,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
         default: new Header({
           children: [new Paragraph({
             alignment: AlignmentType.RIGHT,
-            children: [new TextRun({ text: setCodeLabel, bold: true, size: '10.5pt' })],
+            children: [new TextRun({ text: setCodeLabel, size: '10.5pt' })],
           })],
         }),
       },

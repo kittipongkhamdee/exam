@@ -273,6 +273,22 @@ function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
   return positions;
 }
 
+// Prints the same "รหัส 007" stamp used on the question paper, right-aligned
+// to just clear the top-right fiducial marker (never over it — that square
+// must stay solid for scan-time corner detection) so a teacher can match a
+// scanned answer sheet back to its ชุดข้อสอบ. Only drawn when the quiz
+// carries a set_code — most do not (quizzes made directly in เตรียมข้อสอบ,
+// never synced from a printed ชุดข้อสอบ, have none).
+function drawSetCodeStamp(ctx, pageW, y, setCode) {
+  if (!Number.isFinite(setCode)) return;
+  ctx.save();
+  ctx.font = '11px "Sarabun", sans-serif';
+  ctx.fillStyle = '#000';
+  ctx.textAlign = 'right';
+  ctx.fillText(`รหัส ${String(setCode).padStart(3, '0')}`, pageW - MARGIN - MARKER - 10, y);
+  ctx.restore();
+}
+
 // Thai script has no spaces between words, so a plain whitespace split
 // treats an entire unspaced sentence as one giant "word" — wrapping it
 // then requires cutting mid-word at an arbitrary character position,
@@ -404,6 +420,7 @@ function drawSheet(canvas, opts, answers) {
     ctx.textBaseline = 'alphabetic';
     ctx.font = 'bold 16px "Sarabun", sans-serif';
     ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 8, MARGIN + 16);
+    drawSetCodeStamp(ctx, pageW, MARGIN + 16, opts.setCode);
 
     // Left box: name + class/room/no, two rows separated by a line.
     const nameBoxY = layout.headerBoxY, nameBoxH = layout.nameBoxH;
@@ -484,6 +501,7 @@ function drawSheet(canvas, opts, answers) {
     ctx.textBaseline = 'alphabetic';
     ctx.font = 'bold 18px "Sarabun", sans-serif';
     ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 18);
+    drawSetCodeStamp(ctx, pageW, MARGIN + 18, opts.setCode);
     ctx.font = '11px "Sarabun", sans-serif';
     ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 36);
 
@@ -565,6 +583,7 @@ function drawSheet(canvas, opts, answers) {
   ctx.textBaseline = 'alphabetic';
   ctx.font = 'bold 18px "Sarabun", sans-serif';
   ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 16);
+  drawSetCodeStamp(ctx, pageW, MARGIN + 16, opts.setCode);
   ctx.font = '10px "Sarabun", sans-serif';
   ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 30);
 

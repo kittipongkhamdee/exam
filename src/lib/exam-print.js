@@ -24,7 +24,6 @@
 import { jsPDF } from 'jspdf';
 import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
-import { formatGradeRoom } from './format';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
 const FONT = '"Sarabun", sans-serif';
@@ -250,7 +249,7 @@ function drawQuestionBlock(ctx, plan, x, y) {
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{
- *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string, room: string,
+ *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string,
  *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
  *   choiceScheme?: 'thai'|'en'|'num',
  *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
@@ -258,7 +257,7 @@ function drawQuestionBlock(ctx, plan, x, y) {
  * }} args
  */
 export async function generateExamQuestionPaperPdf(supabase, {
-  title, subjectName, subjectCode, gradeLevel, room, questions, choiceScheme = 'thai',
+  title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai',
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
 }) {
   const measureCanvas = document.createElement('canvas');
@@ -277,7 +276,7 @@ export async function generateExamQuestionPaperPdf(supabase, {
   const ctx = canvas.getContext('2d');
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${formatGradeRoom(gradeLevel, room)}`;
+  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้นมัธยมศึกษาปีที่ ${gradeLevel}`;
   const scoreTimeLine = [
     Number.isFinite(totalScore) && totalScore > 0 ? `คะแนนเต็ม ${totalScore} คะแนน` : '',
     Number(durationMinutes) > 0 ? `เวลา ${durationMinutes} นาที` : '',

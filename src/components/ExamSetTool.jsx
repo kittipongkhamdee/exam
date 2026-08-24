@@ -605,7 +605,6 @@ export default function ExamSetTool() {
         subjectName: full.subject_name,
         subjectCode: form.subjectCode,
         gradeLevel: full.grade_level,
-        room: full.room,
         questions: full.questions,
         schoolName: form.schoolName.trim(),
         examTitle: form.examTitle.trim(),

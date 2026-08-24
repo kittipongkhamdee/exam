@@ -21,7 +21,6 @@ import {
 } from 'docx';
 import { choiceLetters } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
-import { formatGradeRoom } from './format';
 
 const PAGE_MARGIN = '10mm';
 const NO_BORDERS = {
@@ -200,7 +199,7 @@ function questionParagraphs(questions, choiceScheme, images) {
  * letterhead/layout args, same choiceScheme contract with syncPrintedOmrQuiz.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{
- *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string, room: string,
+ *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string,
  *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
  *   choiceScheme?: 'thai'|'en'|'num',
  *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
@@ -208,7 +207,7 @@ function questionParagraphs(questions, choiceScheme, images) {
  * }} args
  */
 export async function generateExamQuestionPaperDocx(supabase, {
-  title, subjectName, subjectCode, gradeLevel, room, questions, choiceScheme = 'thai',
+  title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai',
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
 }) {
   const [images, logo] = await Promise.all([
@@ -216,7 +215,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
     loadLogo(logoDataUrl),
   ]);
 
-  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้น ${formatGradeRoom(gradeLevel, room)}`;
+  const subjectLine = `รายวิชา ${subjectName}  รหัสวิชา ${subjectCode || '-'}  ชั้นมัธยมศึกษาปีที่ ${gradeLevel}`;
   const scoreTimeLine = [
     Number.isFinite(totalScore) && totalScore > 0 ? `คะแนนเต็ม ${totalScore} คะแนน` : '',
     Number(durationMinutes) > 0 ? `เวลา ${durationMinutes} นาที` : '',

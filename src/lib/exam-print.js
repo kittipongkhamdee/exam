@@ -44,13 +44,12 @@ const QNUM_FONT = `13.5px ${FONT}`;
 const BODY_FONT = `13.5px ${FONT}`;
 const CHOICE_FONT = `13.5px ${FONT}`;
 // Printed above the first question of each new ตัวชี้วัด/ผลการเรียนรู้ group
-// when groupByIndicator is on — see planQuestions/drawQuestionBlock. No
-// divider line, just the label + text, per the teacher's own feedback on
-// the design draft.
-const INDICATOR_CODE_FONT = `bold 13.5px ${FONT}`;
-const INDICATOR_TEXT_FONT = `13px ${FONT}`;
-const INDICATOR_CODE_LINE_H = 17;
-const INDICATOR_TEXT_LINE_H = 17;
+// when groupByIndicator is on — see planQuestions/drawQuestionBlock. Code
+// and description run together on the same wrapped block (not a separate
+// bold code line), regular weight, no divider line — per the teacher's
+// feedback on the design draft and the follow-up layout request.
+const INDICATOR_FONT = `13px ${FONT}`;
+const INDICATOR_LINE_H = 17;
 const INDICATOR_GAP_AFTER = 8;
 
 const CONTENT_X = MARGIN;
@@ -153,12 +152,11 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth,
 
     let header = null;
     if (groupByIndicator && q.indicator_id != null && q.indicator_id !== prevIndicatorId && q.indicators?.indicator_code) {
-      measureCtx.font = INDICATOR_TEXT_FONT;
-      const headerTextLines = wrapText(measureCtx, q.indicators.indicator_text || '', columnWidth - 30);
+      measureCtx.font = INDICATOR_FONT;
+      const headerLines = wrapText(measureCtx, `ตัวชี้วัด ${q.indicators.indicator_code}  ${q.indicators.indicator_text || ''}`, columnWidth - 30);
       header = {
-        code: q.indicators.indicator_code,
-        textLines: headerTextLines,
-        height: INDICATOR_CODE_LINE_H + headerTextLines.length * INDICATOR_TEXT_LINE_H + INDICATOR_GAP_AFTER,
+        textLines: headerLines,
+        height: headerLines.length * INDICATOR_LINE_H + INDICATOR_GAP_AFTER,
       };
     }
     prevIndicatorId = q.indicator_id;
@@ -283,16 +281,12 @@ function drawQuestionBlock(ctx, plan, x, y) {
   ctx.fillStyle = '#000';
   let qy = y;
   if (plan.header) {
-    ctx.font = INDICATOR_CODE_FONT;
-    ctx.fillText(`ตัวชี้วัด ${plan.header.code}`, x, qy + 13);
+    ctx.font = INDICATOR_FONT;
     let hy = qy + 13;
-    ctx.font = INDICATOR_TEXT_FONT;
-    plan.header.textLines.forEach((line) => {
-      hy += INDICATOR_TEXT_LINE_H;
-      ctx.fillText(line, x, hy);
+    plan.header.textLines.forEach((line, i) => {
+      ctx.fillText(line, x, hy + i * INDICATOR_LINE_H);
     });
     qy += plan.header.height;
-    ctx.fillStyle = '#000';
   }
   ctx.font = QNUM_FONT;
   const qLabel = `${plan.qi + 1}. `;

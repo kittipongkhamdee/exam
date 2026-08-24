@@ -523,7 +523,11 @@ export default function ExamSetTool() {
 
   const filteredQuestions = availableQuestions.filter(q =>
     (!filterDifficulty || q.difficulty === filterDifficulty) &&
-    (!filterIndicatorId || q.indicator_id === filterIndicatorId) &&
+    // filterIndicatorId comes off a <select>'s DOM value, always a string,
+    // while q.indicator_id is the numeric bigint Supabase returns — a bare
+    // === here never matched, silently emptying the list on any indicator
+    // filter pick.
+    (!filterIndicatorId || String(q.indicator_id) === filterIndicatorId) &&
     matchesStarFilter(qualityStats[q.id]?.stars ?? null, filterStars)
   );
   const allQuestionsSelected = filteredQuestions.length > 0 && filteredQuestions.every(q => selectedIds.includes(q.id));

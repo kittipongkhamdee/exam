@@ -154,15 +154,21 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth,
 
     let header = null;
     if (groupByIndicator && q.indicator_id != null && q.indicator_id !== prevIndicatorId && q.indicators?.indicator_code) {
-      // codeLabel is measured/drawn bold, the description regular — same
-      // "label width reserves room on the first line, wrapped lines start
-      // flush left" pattern drawQuestionBlock already uses for "1. " before
-      // question text.
+      // codeLabel is measured/drawn bold, the description regular. Unlike
+      // "1. " before question text (short enough that the wrap width's
+      // fixed 30px slack absorbs it), an indicator code like "ว 4.2 ม.1/4"
+      // is wide enough to overflow past the column's right edge if the
+      // description were wrapped at the same columnWidth - 30 budget and
+      // then drawn shifted right by codeLabelW — the wrapped line would
+      // already be at the column boundary, and the shift pushes it past.
+      // Wrapping (and drawing) every line indented by the actual codeLabelW
+      // keeps the whole block within the column regardless of how wide the
+      // code happens to be.
       const codeLabel = `ตัวชี้วัด ${q.indicators.indicator_code}  `;
       measureCtx.font = INDICATOR_BOLD_FONT;
       const codeLabelW = measureCtx.measureText(codeLabel).width;
       measureCtx.font = INDICATOR_FONT;
-      const headerLines = wrapText(measureCtx, q.indicators.indicator_text || '', columnWidth - 30);
+      const headerLines = wrapText(measureCtx, q.indicators.indicator_text || '', columnWidth - 30 - codeLabelW);
       if (headerLines.length === 0) headerLines.push('');
       header = {
         codeLabel, codeLabelW,
@@ -296,7 +302,7 @@ function drawQuestionBlock(ctx, plan, x, y) {
     ctx.fillText(plan.header.codeLabel, x, qy + 13);
     ctx.font = INDICATOR_FONT;
     plan.header.textLines.forEach((line, i) => {
-      ctx.fillText(line, i === 0 ? x + plan.header.codeLabelW : x, qy + 13 + i * INDICATOR_LINE_H);
+      ctx.fillText(line, x + plan.header.codeLabelW, qy + 13 + i * INDICATOR_LINE_H);
     });
     qy += plan.header.height;
   }

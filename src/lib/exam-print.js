@@ -134,12 +134,13 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth)
 function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine, instructions, logoImg, contTitle, isFirstPage }) {
   let y = MARGIN;
   ctx.fillStyle = '#000';
+  ctx.textAlign = 'left';
   if (isFirstPage) {
     const boxPad = 14;
     const contentX0 = MARGIN + boxPad;
     const contentW = CONTENT_W - boxPad * 2;
+    const centerX = contentX0 + contentW / 2;
     const hasLogo = !!logoImg;
-    const textX = hasLogo ? contentX0 + LOGO_SIZE + 14 : contentX0;
     const cy = MARGIN + boxPad;
     if (hasLogo) {
       // "Contain" the logo within the LOGO_SIZE box instead of stretching
@@ -152,24 +153,30 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       ctx.drawImage(logoImg, contentX0 + (LOGO_SIZE - logoW) / 2, cy + (LOGO_SIZE - logoH) / 2, logoW, logoH);
     }
 
+    // School/title/subject/score lines center across the whole box width,
+    // independent of the logo — a small badge pinned top-left plus a
+    // centered title block, matching the traditional exam cover-page
+    // layout, rather than text pushed right to clear the logo.
+    ctx.textAlign = 'center';
     let ty = cy + 18;
     if (schoolName) {
       ctx.font = SCHOOL_FONT; ctx.fillStyle = '#000';
-      ctx.fillText(schoolName, textX, ty);
+      ctx.fillText(schoolName, centerX, ty);
       ty += 25;
     }
     if (examTitle) {
       ctx.font = EXAM_TITLE_FONT; ctx.fillStyle = '#111';
-      ctx.fillText(examTitle, textX, ty);
+      ctx.fillText(examTitle, centerX, ty);
       ty += 23;
     }
     ctx.font = SUBTITLE_FONT; ctx.fillStyle = '#333';
-    ctx.fillText(subjectLine, textX, ty);
+    ctx.fillText(subjectLine, centerX, ty);
     ty += 20;
     if (scoreTimeLine) {
-      ctx.fillText(scoreTimeLine, textX, ty);
+      ctx.fillText(scoreTimeLine, centerX, ty);
       ty += 20;
     }
+    ctx.textAlign = 'left';
     let by = Math.max(cy + (hasLogo ? LOGO_SIZE : 0), ty) + 12;
 
     if (instructions.length > 0) {

@@ -43,6 +43,15 @@ const INSTRUCTION_FONT = `13px ${FONT}`;
 const QNUM_FONT = `13.5px ${FONT}`;
 const BODY_FONT = `13.5px ${FONT}`;
 const CHOICE_FONT = `13.5px ${FONT}`;
+// Printed above the first question of each new ตัวชี้วัด/ผลการเรียนรู้ group
+// when groupByIndicator is on — see planQuestions/drawQuestionBlock. No
+// divider line, just the label + text, per the teacher's own feedback on
+// the design draft.
+const INDICATOR_CODE_FONT = `bold 13.5px ${FONT}`;
+const INDICATOR_TEXT_FONT = `13px ${FONT}`;
+const INDICATOR_CODE_LINE_H = 17;
+const INDICATOR_TEXT_LINE_H = 17;
+const INDICATOR_GAP_AFTER = 8;
 
 const CONTENT_X = MARGIN;
 const CONTENT_W = PAGE_W - MARGIN * 2;
@@ -112,7 +121,19 @@ function drawColumnDivider(ctx, colLayout, yTop, yBottom) {
 // choice's text, and scales its image (if any) to fit one column —
 // producing everything the draw pass needs, plus the total height the
 // question will occupy, used to decide where column/page breaks fall.
-function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth) {
+//
+// When groupByIndicator is on, a question entering a new ตัวชี้วัด group
+// (its indicator_id differs from the previous question's) also gets a
+// `header` — the indicator's code + wrapped text, measured here and folded
+// into this same question's height so the pagination loop below always
+// treats a group's header and its first question as one atomic block; a
+// header can never be orphaned at the bottom of a column/page on its own.
+// Questions with no indicator_id never get a header, even when grouped —
+// printing "ไม่มีตัวชี้วัด" on the exam paper itself would read oddly to a
+// student, unlike the teacher-facing ExamSetTool list where that label is
+// useful.
+function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth, groupByIndicator) {
+  let prevIndicatorId;
   return questions.map((q, qi) => {
     measureCtx.font = BODY_FONT;
     const textLines = wrapText(measureCtx, q.question_text, columnWidth - 30);
@@ -130,13 +151,26 @@ function planQuestions(measureCtx, questions, choiceScheme, images, columnWidth)
       imgH = Math.round(img.height * scale);
     }
 
+    let header = null;
+    if (groupByIndicator && q.indicator_id != null && q.indicator_id !== prevIndicatorId && q.indicators?.indicator_code) {
+      measureCtx.font = INDICATOR_TEXT_FONT;
+      const headerTextLines = wrapText(measureCtx, q.indicators.indicator_text || '', columnWidth - 30);
+      header = {
+        code: q.indicators.indicator_code,
+        textLines: headerTextLines,
+        height: INDICATOR_CODE_LINE_H + headerTextLines.length * INDICATOR_TEXT_LINE_H + INDICATOR_GAP_AFTER,
+      };
+    }
+    prevIndicatorId = q.indicator_id;
+
     const height =
+      (header ? header.height : 0) +
       TEXT_LINE_H * textLines.length +
       (img ? imgH + 13 : 0) +
       choiceLines.reduce((sum, lines) => sum + lines.length * CHOICE_LINE_H, 0) +
       BLOCK_GAP;
 
-    return { qi, textLines, choiceLines, img, imgW, imgH, height };
+    return { qi, textLines, choiceLines, img, imgW, imgH, header, height };
   });
 }
 
@@ -247,15 +281,28 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
 
 function drawQuestionBlock(ctx, plan, x, y) {
   ctx.fillStyle = '#000';
+  let qy = y;
+  if (plan.header) {
+    ctx.font = INDICATOR_CODE_FONT;
+    ctx.fillText(`ตัวชี้วัด ${plan.header.code}`, x, qy + 13);
+    let hy = qy + 13;
+    ctx.font = INDICATOR_TEXT_FONT;
+    plan.header.textLines.forEach((line) => {
+      hy += INDICATOR_TEXT_LINE_H;
+      ctx.fillText(line, x, hy);
+    });
+    qy += plan.header.height;
+    ctx.fillStyle = '#000';
+  }
   ctx.font = QNUM_FONT;
   const qLabel = `${plan.qi + 1}. `;
   const qLabelW = ctx.measureText(qLabel).width;
-  ctx.fillText(qLabel, x, y + 16);
+  ctx.fillText(qLabel, x, qy + 16);
   ctx.font = BODY_FONT;
   plan.textLines.forEach((line, i) => {
-    ctx.fillText(line, i === 0 ? x + qLabelW : x + 25, y + 16 + i * TEXT_LINE_H);
+    ctx.fillText(line, i === 0 ? x + qLabelW : x + 25, qy + 16 + i * TEXT_LINE_H);
   });
-  let cursorY = y + TEXT_LINE_H * plan.textLines.length;
+  let cursorY = qy + TEXT_LINE_H * plan.textLines.length;
 
   if (plan.img) {
     ctx.drawImage(plan.img, x + 25, cursorY, plan.imgW, plan.imgH);
@@ -291,15 +338,17 @@ function drawQuestionBlock(ctx, plan, x, y) {
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{
  *   title: string, subjectName: string, subjectCode?: string, gradeLevel: string,
- *   questions: Array<{question_text:string, choices:string[], image_path:string|null}>,
+ *   questions: Array<{question_text:string, choices:string[], image_path:string|null, indicator_id?:number|null, indicators?:{indicator_code:string, indicator_text:string}}>,
  *   choiceScheme?: 'thai'|'en'|'num', setCode?: number,
  *   schoolName?: string, examTitle?: string, totalScore?: number, durationMinutes?: number|string,
  *   instructions?: string[], columns?: 1|2, logoDataUrl?: string|null,
+ *   groupByIndicator?: boolean,
  * }} args
  */
 export async function generateExamQuestionPaperPdf(supabase, {
   title, subjectName, subjectCode, gradeLevel, questions, choiceScheme = 'thai', setCode,
   schoolName = '', examTitle = '', totalScore, durationMinutes, instructions = [], columns = 2, logoDataUrl = null,
+  groupByIndicator = false,
 }) {
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
@@ -309,7 +358,7 @@ export async function generateExamQuestionPaperPdf(supabase, {
   ]);
 
   const colLayout = getColumnLayout(columns === 1 ? 1 : 2);
-  const plans = planQuestions(measureCtx, questions, choiceScheme, images, colLayout.width);
+  const plans = planQuestions(measureCtx, questions, choiceScheme, images, colLayout.width, groupByIndicator);
 
   const canvas = document.createElement('canvas');
   canvas.width = PAGE_W * PRINT_SCALE;

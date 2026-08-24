@@ -334,6 +334,12 @@ export default function ExamSetTool() {
   const [filterStars, setFilterStars] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [pointsById, setPointsById] = useState({}); // { [bank_question_id]: points }
+  // 'manual' keeps selectedIds' own order (drag/up-down, unchanged
+  // behavior); 'indicator' derives print/display order by grouping
+  // selectedQuestions by indicator_id instead — see groupedByIndicator
+  // below. Only the derived order is ever persisted (in handleSave); this
+  // never mutates selectedIds itself.
+  const [sortMode, setSortMode] = useState('manual');
   const [bulkPoints, setBulkPoints] = useState(1);
   const [editingSetId, setEditingSetId] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -429,6 +435,7 @@ export default function ExamSetTool() {
     setTitle('');
     setSelectedIds([]);
     setPointsById({});
+    setSortMode('manual');
     setFormError(null);
   }
 
@@ -442,6 +449,7 @@ export default function ExamSetTool() {
       setTitle(full.title);
       setSelectedIds(full.questions.map(q => q.id));
       setPointsById(Object.fromEntries(full.questions.map(q => [q.id, q.points ?? 1])));
+      setSortMode(full.group_by_indicator ? 'indicator' : 'manual');
       // Best-effort — never block opening the edit form over this check.
       examSetHasSubmittedAttempts(supabase, full.id).then(hasAttempts => {
         if (hasAttempts) {
@@ -512,6 +520,35 @@ export default function ExamSetTool() {
   const selectedQuestions = selectedIds.map(id => questionsById.get(id)).filter(Boolean);
   const totalPoints = selectedIds.reduce((sum, id) => sum + (pointsById[id] ?? 1), 0);
 
+  // Groups selectedQuestions by indicator_id — sorted by indicator_code, a
+  // trailing "ไม่มีตัวชี้วัด" group last for anything with none — without
+  // touching selectedIds itself. Used both to render the grouped list (sort
+  // mode 'indicator') and, in handleSave, to derive the seq order actually
+  // persisted when that mode is active.
+  function groupedByIndicator(questions) {
+    const groups = new Map(); // indicator_id (or null) -> { code, text, rows }
+    for (const q of questions) {
+      const key = q.indicator_id ?? null;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          code: key != null ? q.indicators?.indicator_code : 'ไม่มีตัวชี้วัด',
+          text: key != null ? q.indicators?.indicator_text : 'ข้อที่ยังไม่ได้ผูกตัวชี้วัด/ผลการเรียนรู้ไว้ในคลัง',
+          rows: [],
+        });
+      }
+      groups.get(key).rows.push(q);
+    }
+    const sorted = [...groups.values()].sort((a, b) => {
+      if (a.key == null) return 1;
+      if (b.key == null) return -1;
+      return (a.code || '').localeCompare(b.code || '');
+    });
+    return sorted;
+  }
+
+  const indicatorGroups = sortMode === 'indicator' ? groupedByIndicator(selectedQuestions) : [];
+
   // Indicator/ผลการเรียนรู้ dropdown options: only what's actually attached
   // to at least one question in this subject's bank, so the filter never
   // offers a choice that would empty the list.
@@ -537,9 +574,13 @@ export default function ExamSetTool() {
     setSaving(true);
     setFormError(null);
     try {
+      const orderedIds = sortMode === 'indicator'
+        ? groupedByIndicator(selectedQuestions).flatMap(g => g.rows.map(q => q.id))
+        : selectedIds;
       await saveExamSet(supabase, {
         id: editingSetId, subjectId, title: title.trim(),
-        questions: selectedIds.map(id => ({ id, points: pointsById[id] ?? 1 })),
+        questions: orderedIds.map(id => ({ id, points: pointsById[id] ?? 1 })),
+        groupByIndicator: sortMode === 'indicator',
       });
       resetForm();
       refreshSets();
@@ -608,6 +649,7 @@ export default function ExamSetTool() {
         subjectCode: form.subjectCode,
         gradeLevel: full.grade_level,
         questions: full.questions,
+        groupByIndicator: full.group_by_indicator,
         schoolName: form.schoolName.trim(),
         examTitle: form.examTitle.trim(),
         totalScore: Number(form.totalScore) || undefined,
@@ -803,7 +845,33 @@ export default function ExamSetTool() {
             </div>
 
             <div>
-              <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ, รวม {totalPoints} คะแนน)</label>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ, รวม {totalPoints} คะแนน)</label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-gray-400">เรียงตาม</span>
+                  <div className="flex gap-1 bg-gray-100 p-0.5 rounded-full">
+                    <button
+                      type="button"
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${sortMode === 'manual' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                      onClick={() => setSortMode('manual')}
+                    >
+                      ลำดับที่เลือก
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${sortMode === 'indicator' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                      onClick={() => setSortMode('indicator')}
+                    >
+                      ตัวชี้วัด/ผลการเรียนรู้
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {sortMode === 'indicator' && (
+                <div className="text-[11px] text-gray-400 italic mt-1">
+                  จัดกลุ่มข้อสอบตามตัวชี้วัด/ผลการเรียนรู้ให้อัตโนมัติ — ในโหมดนี้จะลากสลับลำดับข้อไม่ได้ (ยังลบข้อออกได้ตามปกติ) และจะพิมพ์หัวข้อตัวชี้วัดไว้บนกระดาษคำถามด้วย
+                </div>
+              )}
               {selectedQuestions.length > 0 && (
                 <div className="flex items-center gap-2 mt-3 mb-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2.5">
                   <label className="text-xs font-semibold text-gray-500">กำหนดคะแนนเท่ากันทุกข้อ</label>
@@ -817,6 +885,54 @@ export default function ExamSetTool() {
               )}
               {selectedQuestions.length === 0 ? (
                 <div className="text-sm text-gray-500 mt-2">ยังไม่ได้เลือกข้อสอบ</div>
+              ) : sortMode === 'indicator' ? (
+                <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {(() => {
+                    let n = 0;
+                    return indicatorGroups.map(g => (
+                      <div key={g.key ?? 'none'}>
+                        <div className={`flex items-baseline gap-2 px-3.5 py-2 ${g.key == null ? 'bg-gray-50' : 'bg-indigo-50'}`}>
+                          <span className={pill + (g.key == null ? ' bg-gray-200 text-gray-600 font-mono' : ' bg-indigo-600 text-white font-mono') + ' whitespace-nowrap shrink-0'}>{g.code}</span>
+                          <span className={`text-xs ${g.key == null ? 'text-gray-400' : 'text-indigo-700'}`}>{g.text}</span>
+                        </div>
+                        {g.rows.map(q => {
+                          const i = n++;
+                          return (
+                            <div key={q.id} className="flex items-start justify-between gap-3.5 px-3.5 py-3.5 text-sm">
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
+                                <span className="min-w-0 text-gray-700">{q.question_text}</span>
+                              </div>
+                              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs text-gray-500">คะแนน</span>
+                                  <input
+                                    type="number" min={0.01} step="any"
+                                    className="w-14 px-1.5 py-1 border border-gray-300 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    value={pointsById[q.id] ?? 1}
+                                    onChange={e => updatePoints(q.id, e.target.value)}
+                                    aria-label={`คะแนนข้อ ${i + 1}`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button type="button" className={btnTiny} disabled aria-label="เลื่อนขึ้น">
+                                    <ArrowUpIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" className={btnTiny} disabled aria-label="เลื่อนลง">
+                                    <ArrowDownIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" className={btnTiny} onClick={() => removeSelected(q.id)} aria-label="เอาออก">
+                                    <XIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ));
+                  })()}
+                </div>
               ) : (
                 <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {selectedQuestions.map((q, i) => (

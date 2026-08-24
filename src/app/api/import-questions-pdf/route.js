@@ -159,7 +159,11 @@ export async function POST(request) {
     required: ['questions'],
   };
 
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  // "-latest" tracks Google's newest stable flash release automatically —
+  // pinning a specific version (e.g. gemini-2.5-flash) means it silently
+  // falls behind as Google ships new generations, with nothing here to
+  // notice or update it.
+  const model = process.env.GEMINI_MODEL || 'gemini-flash-latest';
   const geminiRes = await fetchGeminiWithRetry(model, apiKey, prompt, pdfBase64, responseSchema);
   if (geminiRes.error) {
     return Response.json({ error: geminiRes.error, detail: geminiRes.detail }, { status: 502 });

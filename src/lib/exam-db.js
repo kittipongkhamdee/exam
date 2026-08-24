@@ -503,6 +503,8 @@ export async function getRoundMonitor(supabase, roundId) {
 
   return {
     id: round.id,
+    pin: round.pin,
+    unlock_pin: round.unlock_pin,
     opens_at: round.opens_at,
     closes_at: round.closes_at,
     duration_minutes: round.duration_minutes,

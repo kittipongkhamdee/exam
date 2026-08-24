@@ -308,6 +308,13 @@ function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
           <div className="text-xs text-gray-500 mt-0.5">
             {monitor.subject_name} (ชั้น {formatGradeRoom(monitor.grade_level, monitor.room)}) · {formatThaiTime(monitor.opens_at)} – {formatThaiTime(monitor.closes_at)}
           </div>
+          {monitor.unlock_pin && (
+            <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 mt-1.5">
+              <LockIcon className="h-3.5 w-3.5 text-amber-700" />
+              <span className="text-xs text-amber-800">รหัสปลดล็อก</span>
+              <span className="font-mono font-bold tracking-widest text-amber-900">{monitor.unlock_pin}</span>
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-3 text-xs">
           <span className="font-bold text-green-700">{submitted}<span className="text-gray-500 font-normal"> ส่งแล้ว</span></span>

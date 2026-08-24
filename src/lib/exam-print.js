@@ -51,7 +51,7 @@ const CHOICE_INDENT = 25;
 const MAX_IMAGE_H = 200;
 const TEXT_LINE_H = 22;
 const CHOICE_LINE_H = 20;
-const BLOCK_GAP = 23;
+const BLOCK_GAP = 12;
 const FOOTER_RESERVE = 20;
 const LOGO_SIZE = 74;
 

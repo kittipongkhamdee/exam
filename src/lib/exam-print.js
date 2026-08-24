@@ -40,8 +40,8 @@ const CONT_FONT = `14px ${FONT}`;
 const INSTRUCTION_FONT = `13px ${FONT}`;
 // Same size/weight as BODY_FONT — the question number is just "1. ", "2. "
 // inline with the question text now, not a bold "ข้อ 1." label.
-const QNUM_FONT = `15px ${FONT}`;
-const BODY_FONT = `15px ${FONT}`;
+const QNUM_FONT = `14px ${FONT}`;
+const BODY_FONT = `14px ${FONT}`;
 const CHOICE_FONT = `14px ${FONT}`;
 
 const CONTENT_X = MARGIN;

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { listMyExamRounds, listAllExamRoundsWithTeacher, getRoundReport, setRoundResultsVisible, getItemAnalysisForRound, resetExamAttempt } from '../lib/exam-db';
-import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
+import { formatGradeRoom, formatThaiDateTime, formatDuration } from '../lib/format';
 import ItemAnalysisTable from './ItemAnalysisTable';
 import { exportItemAnalysisExcel, exportItemAnalysisPdf } from '../lib/item-analysis-export';
 import ConfirmDialog from './ConfirmDialog';
@@ -274,6 +274,7 @@ export default function ExamReportTool() {
                     <th className="pb-2 pr-3 font-semibold">ชื่อ-สกุล</th>
                     <th className="pb-2 pr-3 font-semibold">สถานะ</th>
                     <th className="pb-2 pr-3 font-semibold">ส่งเมื่อ</th>
+                    <th className="pb-2 pr-3 font-semibold">ใช้เวลา</th>
                     <th className="pb-2 pr-3 font-semibold">คะแนน</th>
                     <th className="pb-2 pr-3 font-semibold">สลับหน้าจอ</th>
                     <th className="pb-2 font-semibold"></th>
@@ -288,6 +289,7 @@ export default function ExamReportTool() {
                         <td className="py-2 pr-3 text-gray-900">{r.student_name}</td>
                         <td className="py-2 pr-3"><span className={pill + ' ' + status.cls}>{status.label}</span></td>
                         <td className="py-2 pr-3 text-gray-500 text-xs">{formatThaiDateTime(r.submitted_at)}</td>
+                        <td className="py-2 pr-3 text-gray-500 text-xs">{formatDuration(r.started_at, r.submitted_at) || '—'}</td>
                         <td className="py-2 pr-3 text-gray-900">
                           {r.status === 'submitted'
                             ? (r.total_points != null && r.earned_points != null && r.total_points !== r.total_questions

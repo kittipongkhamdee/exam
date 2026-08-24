@@ -104,20 +104,25 @@ async function loadQuestionImages(supabase, questions) {
 }
 
 function letterheadChildren({ schoolName, examTitle, subjectLine, scoreTimeLine, logo }) {
+  // Centered — matches exam-print.js's PDF letterhead, itself matching the
+  // traditional bordered exam-cover-page layout (a small logo badge next
+  // to a centered title block) a teacher shared as the reference.
   const textParagraphs = [];
   if (schoolName) {
     textParagraphs.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
       children: [new TextRun({ text: schoolName, bold: true, size: '14pt' })],
     }));
   }
   if (examTitle) {
     textParagraphs.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
       children: [new TextRun({ text: examTitle, bold: true, size: '13pt' })],
     }));
   }
-  textParagraphs.push(new Paragraph({ children: [new TextRun({ text: subjectLine, size: '11pt' })] }));
+  textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: subjectLine, size: '11pt' })] }));
   if (scoreTimeLine) {
-    textParagraphs.push(new Paragraph({ children: [new TextRun({ text: scoreTimeLine, size: '11pt' })] }));
+    textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: scoreTimeLine, size: '11pt' })] }));
   }
 
   if (!logo) return textParagraphs;

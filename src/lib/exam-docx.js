@@ -18,6 +18,8 @@
 import {
   Document, Packer, Paragraph, TextRun, ImageRun, Header,
   AlignmentType, BorderStyle, WidthType, Table, TableRow, TableCell, SectionType,
+  HorizontalPositionAlign, HorizontalPositionRelativeFrom,
+  VerticalPositionAlign, VerticalPositionRelativeFrom, TextWrappingType,
 } from 'docx';
 import { choiceLetters, insertThaiZwsp } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
@@ -125,48 +127,38 @@ async function loadQuestionImages(supabase, questions) {
   return images;
 }
 
+// Logo floats as an independent badge pinned top-left instead of sharing a
+// table row with the title text — a nested table's percentage-width cell
+// was squeezing school/title/subject/score into whatever narrow column was
+// left over, so it never actually centered across the true page width. As
+// a floating image (wrap: NONE, so it never pushes text around) anchored
+// to the containing cell (layoutInCell), the text paragraphs below are
+// free to be plain full-width centered paragraphs — matching how
+// exam-print.js's PDF letterhead already centers its title across the
+// whole box width, independent of the logo.
 function letterheadChildren({ schoolName, examTitle, subjectLine, scoreTimeLine, logo }) {
-  // Centered — matches exam-print.js's PDF letterhead, itself matching the
-  // traditional bordered exam-cover-page layout (a small logo badge next
-  // to a centered title block) a teacher shared as the reference.
-  const textParagraphs = [];
-  if (schoolName) {
-    textParagraphs.push(new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [run({ text: schoolName, bold: true, size: '14pt' })],
-    }));
-  }
-  if (examTitle) {
-    textParagraphs.push(new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [run({ text: examTitle, bold: true, size: '13pt' })],
-    }));
-  }
-  textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [run({ text: subjectLine, size: '11pt' })] }));
-  if (scoreTimeLine) {
-    textParagraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [run({ text: scoreTimeLine, size: '11pt' })] }));
-  }
+  const lines = [];
+  if (schoolName) lines.push({ text: schoolName, bold: true, size: '14pt' });
+  if (examTitle) lines.push({ text: examTitle, bold: true, size: '13pt' });
+  lines.push({ text: subjectLine, size: '11pt' });
+  if (scoreTimeLine) lines.push({ text: scoreTimeLine, size: '11pt' });
 
-  if (!logo) return textParagraphs;
-
-  return [new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: NO_BORDERS,
-    rows: [new TableRow({
-      children: [
-        new TableCell({
-          width: { size: 15, type: WidthType.PERCENTAGE },
-          borders: NO_BORDERS,
-          children: [new Paragraph({ children: [new ImageRun(logo)] })],
-        }),
-        new TableCell({
-          width: { size: 85, type: WidthType.PERCENTAGE },
-          borders: NO_BORDERS,
-          children: textParagraphs,
-        }),
-      ],
-    })],
-  })];
+  return lines.map((opts, i) => new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: [
+      ...(i === 0 && logo ? [new ImageRun({
+        ...logo,
+        floating: {
+          horizontalPosition: { relative: HorizontalPositionRelativeFrom.COLUMN, align: HorizontalPositionAlign.LEFT },
+          verticalPosition: { relative: VerticalPositionRelativeFrom.PARAGRAPH, align: VerticalPositionAlign.TOP },
+          wrap: { type: TextWrappingType.NONE },
+          layoutInCell: true,
+          allowOverlap: false,
+        },
+      })] : []),
+      run(opts),
+    ],
+  }));
 }
 
 function instructionsBox(instructions) {

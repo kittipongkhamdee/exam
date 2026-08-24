@@ -39,6 +39,15 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Gemini habitually appends "?" (or the full-width "？") to Thai question
+// text — an English-phrasing habit that reads oddly in Thai, where a
+// question mark isn't conventionally used this way. Strip one or more
+// trailing question marks (and the whitespace before them) so a teacher
+// never has to manually clean this off every generated question.
+function stripTrailingQuestionMark(text) {
+  return text.replace(/\s*[?？]+\s*$/u, '');
+}
+
 /**
  * POSTs to Gemini's generateContent endpoint, retrying transient failures
  * (503 overloaded, 429 rate-limited, timeouts, network errors) with
@@ -230,7 +239,7 @@ ${topicLines}
       subject_id: subjectId,
       indicator_id: indicators.length === 1 ? indicators[0].id : null,
       difficulty,
-      question_text: q.question_text.trim(),
+      question_text: stripTrailingQuestionMark(q.question_text.trim()),
       choices: q.choices.map(c => String(c).trim()),
       correct_choice: q.correct_choice,
       explanation: (q.explanation || '').trim(),

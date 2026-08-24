@@ -94,7 +94,7 @@ export async function createQuiz(supabase, params) {
 export async function getQuizWithAnswerKey(supabase, quizId) {
   const { data: quiz, error: quizErr } = await supabase
     .from('omr_quizzes')
-    .select('id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, paper_layout, cols, created_at')
+    .select('id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, paper_layout, cols, created_at, set_code')
     .eq('id', quizId)
     .single();
   if (quizErr) throw quizErr;
@@ -122,6 +122,7 @@ export async function getQuizWithAnswerKey(supabase, quizId) {
     paperLayout: quiz.paper_layout,
     cols: quiz.cols,
     createdAt: quiz.created_at,
+    setCode: quiz.set_code,
     answerKey,
   };
 }

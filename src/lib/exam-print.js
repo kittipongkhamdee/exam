@@ -167,7 +167,7 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
       // can spot at a glance while matching a stack of printed papers to
       // the right ชุดข้อสอบ during grading, as their number of sets grows.
       ctx.textAlign = 'right';
-      ctx.font = `bold 12px ${FONT}`;
+      ctx.font = `12px ${FONT}`;
       ctx.fillStyle = '#000';
       ctx.fillText(setCodeLabel, contentX0 + contentW, cy + 10);
       ctx.textAlign = 'left';
@@ -236,7 +236,7 @@ function drawPageHeader(ctx, { schoolName, examTitle, subjectLine, scoreTimeLine
     ctx.fillText(`${contTitle} (ต่อ)`, MARGIN, y + 13);
     if (setCodeLabel) {
       ctx.textAlign = 'right';
-      ctx.font = `bold 12px ${FONT}`;
+      ctx.font = `12px ${FONT}`;
       ctx.fillText(setCodeLabel, PAGE_W - MARGIN, y + 13);
       ctx.textAlign = 'left';
     }

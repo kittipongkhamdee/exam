@@ -22,15 +22,27 @@ import {
 import { choiceLetters, insertThaiZwsp } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
 
+// No run in this file ever set a `font` — every question paper has been
+// rendered in whatever Word substitutes for Thai in its own default
+// (Latin) font, not any actual Thai typeface. "TH Sarabun New" is the
+// standard font Thai schools/government documents are conventionally
+// expected to use (also this exact "thai-docx" skill's own default) —
+// distinct from "Sarabun", the Google Fonts family exam-print.js's PDF
+// path loads as a webfont, which isn't something a .docx can embed or
+// rely on being installed on whatever machine opens it.
+const THAI_FONT = 'TH Sarabun New';
+
 // A real Word document lets Word's own layout engine decide line breaks —
 // unlike exam-print.js's canvas, which wraps text itself — but Word has no
 // built-in sense of Thai word boundaries to break on. Every TextRun's text
 // goes through insertThaiZwsp() first, splicing an invisible zero-width
 // space between each word omr-core's own Thai segmenter finds, so Word
 // actually has somewhere sensible to break instead of wrapping wherever it
-// likes (or not at all).
+// likes (or not at all). Every run is also explicitly set to THAI_FONT
+// (overridable via options.font) rather than relying solely on the
+// document's default run style to cascade it everywhere.
 function run(options) {
-  return new TextRun({ ...options, text: insertThaiZwsp(options.text) });
+  return new TextRun({ font: THAI_FONT, ...options, text: insertThaiZwsp(options.text) });
 }
 
 const PAGE_MARGIN = '10mm';
@@ -314,7 +326,7 @@ export async function generateExamQuestionPaperDocx(supabase, {
     styles: {
       default: {
         document: {
-          run: { language: { value: 'th-TH', eastAsia: 'th-TH', bidirectional: 'th-TH' } },
+          run: { font: THAI_FONT, language: { value: 'th-TH', eastAsia: 'th-TH', bidirectional: 'th-TH' } },
         },
       },
     },

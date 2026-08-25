@@ -84,6 +84,15 @@ function ChevronDownIcon(props) {
   );
 }
 
+function SearchIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
 function PencilIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -164,7 +173,9 @@ function groupBySubject(items) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
-  return [...groups.entries()].map(([name, rows]) => ({ name, rows }));
+  return [...groups.entries()]
+    .map(([name, rows]) => ({ name, rows }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }));
 }
 
 // Image upload/preview/remove control shown only on manual (source:
@@ -264,6 +275,7 @@ export default function BankTool() {
 
   const [bankQuestions, setBankQuestions] = useState([]);
   const [bankLoading, setBankLoading] = useState(true);
+  const [bankSearch, setBankSearch] = useState('');
   const [qualityStats, setQualityStats] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -925,9 +937,33 @@ export default function BankTool() {
         {bankLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!bankLoading && bankQuestions.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีข้อสอบในคลัง</div>}
         {bankQuestions.length > 0 && (
-          <div className="max-h-[32rem] overflow-y-auto -mx-5 px-5 space-y-2">
-            {groupBySubject(bankQuestions).map(group => {
-              const expanded = expandedGroups.has(group.name);
+          <>
+            <div className="relative mb-3">
+              <SearchIcon className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={bankSearch}
+                onChange={e => setBankSearch(e.target.value)}
+                placeholder="ค้นหาคำถาม, วิชา, ชั้น/ห้อง..."
+                className={inputCls + ' w-full pl-9'}
+              />
+            </div>
+            <div className="max-h-[32rem] overflow-y-auto -mx-5 px-5 space-y-2">
+              {(() => {
+                const term = bankSearch.trim().toLowerCase();
+                const filteredGroups = groupBySubject(bankQuestions)
+                  .map(group => ({
+                    ...group,
+                    rows: term
+                      ? group.rows.filter(q => group.name.toLowerCase().includes(term) || q.question_text?.toLowerCase().includes(term))
+                      : group.rows,
+                  }))
+                  .filter(group => group.rows.length > 0);
+                if (term && filteredGroups.length === 0) {
+                  return <div className="text-sm text-gray-500 py-2">ไม่พบข้อสอบที่ตรงกับคำค้นหา</div>;
+                }
+                return filteredGroups.map(group => {
+              const expanded = term ? true : expandedGroups.has(group.name);
               return (
                 <div key={group.name} className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
@@ -1056,8 +1092,10 @@ export default function BankTool() {
                   )}
                 </div>
               );
-            })}
-          </div>
+                });
+              })()}
+            </div>
+          </>
         )}
       </div>
 

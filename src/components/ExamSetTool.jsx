@@ -846,7 +846,14 @@ export default function ExamSetTool() {
 
             <div>
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className={label}>ลำดับข้อที่เลือก ({selectedQuestions.length} ข้อ, รวม {totalPoints} คะแนน)</label>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <label className={label}>ลำดับข้อที่เลือก</label>
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-600 text-white text-sm font-bold shadow-sm">
+                    {selectedQuestions.length} ข้อ
+                    <span className="opacity-60">·</span>
+                    รวม {totalPoints} คะแนน
+                  </span>
+                </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-semibold text-gray-400">เรียงตาม</span>
                   <div className="flex gap-1 bg-gray-100 p-0.5 rounded-full">

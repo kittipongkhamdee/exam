@@ -5,7 +5,7 @@ import DashboardShell from '@/components/DashboardShell';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { listAllScanPhotos, getScanPhotoUrl, deleteScanPhoto, listAllQuizzes, deleteQuiz } from '@/lib/omr-db';
-import { getConfigValue, setConfigValue } from '@/lib/config-db';
+import { getConfigValue, getConfigValues, setConfigValue } from '@/lib/config-db';
 import { resizeImageToFit } from '@/lib/image-resize';
 import { formatStudentName } from '@/lib/student-name';
 import { listExamAuditLog, EXAM_AUDIT_ACTION_LABEL, listTeacherLastLogins } from '@/lib/exam-db';
@@ -693,14 +693,10 @@ function BrandingPanel() {
   useEffect(() => {
     (async () => {
       try {
-        const [n, d, l] = await Promise.all([
-          getConfigValue(supabase, 'exam_app_name'),
-          getConfigValue(supabase, 'exam_app_description'),
-          getConfigValue(supabase, 'exam_app_logo'),
-        ]);
-        setName(n || '');
-        setDescription(d || '');
-        setLogo(l || '');
+        const cfg = await getConfigValues(supabase, ['exam_app_name', 'exam_app_description', 'exam_app_logo']);
+        setName(cfg.exam_app_name || '');
+        setDescription(cfg.exam_app_description || '');
+        setLogo(cfg.exam_app_logo || '');
       } catch (err) {
         setError(err.message || 'โหลดค่าไม่สำเร็จ');
       } finally {

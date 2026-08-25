@@ -12,7 +12,7 @@ import { listMySubjects, listMyBankQuestions } from '../lib/bank-db';
 import { listMyExamSets, getExamSetWithQuestions, saveExamSet, deleteExamSet, syncPrintedOmrQuiz, copyExamSetToSubject, getBankQuestionQualityStats, examSetHasSubmittedAttempts } from '../lib/exam-db';
 import { generateExamQuestionPaperPdf } from '../lib/exam-print';
 import { generateExamQuestionPaperDocx } from '../lib/exam-docx';
-import { getConfigValue } from '../lib/config-db';
+import { getConfigValues } from '../lib/config-db';
 import { formatGradeRoom } from '../lib/format';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -371,11 +371,8 @@ export default function ExamSetTool() {
   useEffect(() => {
     (async () => {
       try {
-        const [name, logo] = await Promise.all([
-          getConfigValue(supabase, 'exam_app_name'),
-          getConfigValue(supabase, 'exam_app_logo'),
-        ]);
-        setBrandDefaults({ name: name || '', logo: logo || '' });
+        const cfg = await getConfigValues(supabase, ['exam_app_name', 'exam_app_logo']);
+        setBrandDefaults({ name: cfg.exam_app_name || '', logo: cfg.exam_app_logo || '' });
       } catch {
         // best-effort
       }

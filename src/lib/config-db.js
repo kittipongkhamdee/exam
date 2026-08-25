@@ -19,6 +19,20 @@ export async function getConfigValue(supabase, key) {
 }
 
 /**
+ * Same as getConfigValue but for several keys in one request — callers that
+ * need multiple config values at once (e.g. brand name/description/logo on
+ * every page load) should use this instead of one getConfigValue per key.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string[]} keys
+ * @returns {Promise<Record<string, string>>} keys missing from the table are omitted, not ''
+ */
+export async function getConfigValues(supabase, keys) {
+  const { data, error } = await supabase.from('config').select('key, value').in('key', keys);
+  if (error) throw error;
+  return Object.fromEntries((data ?? []).map(row => [row.key, row.value]));
+}
+
+/**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} key
  * @param {string} value

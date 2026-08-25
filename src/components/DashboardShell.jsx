@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { getConfigValue } from '../lib/config-db';
+import { getConfigValues } from '../lib/config-db';
 import { getPublicStats } from '../lib/public-stats';
 
 const DEFAULT_APP_NAME = 'ระบบสอบวัดผล';
@@ -79,14 +79,10 @@ export default function DashboardShell({ children }) {
     if (!session) return;
     (async () => {
       try {
-        const [n, d, l] = await Promise.all([
-          getConfigValue(supabase, 'exam_app_name'),
-          getConfigValue(supabase, 'exam_app_description'),
-          getConfigValue(supabase, 'exam_app_logo'),
-        ]);
-        setBrandName(n || '');
-        setBrandDescription(d || '');
-        setBrandLogo(l || '');
+        const cfg = await getConfigValues(supabase, ['exam_app_name', 'exam_app_description', 'exam_app_logo']);
+        setBrandName(cfg.exam_app_name || '');
+        setBrandDescription(cfg.exam_app_description || '');
+        setBrandLogo(cfg.exam_app_logo || '');
       } catch {
         // best-effort — fall back to defaults
       }

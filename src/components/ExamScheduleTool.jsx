@@ -528,7 +528,12 @@ export default function ExamScheduleTool() {
           <div className="space-y-4">
             {groupBySubject(rounds).map(group => (
               <div key={group.name}>
-                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{group.name}</div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="shrink-0 h-6 w-6 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                    <ClipboardIcon className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="text-sm font-bold text-gray-800">{group.name}</div>
+                </div>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {group.rows.map(r => {
                     const status = computeStatus(r);

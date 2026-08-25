@@ -918,26 +918,35 @@ export default function BankTool() {
       )}
 
       <div className={card}>
-        <div className="font-semibold text-gray-900 mb-3">ข้อสอบที่บันทึกไว้แล้ว</div>
+        <div className="flex items-center gap-2 mb-4">
+          <BankIcon className="h-4 w-4 text-gray-400" />
+          <div className="font-semibold text-gray-900">ข้อสอบที่บันทึกไว้แล้ว</div>
+        </div>
         {bankLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!bankLoading && bankQuestions.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีข้อสอบในคลัง</div>}
         {bankQuestions.length > 0 && (
-          <div className="max-h-[32rem] overflow-y-auto -mx-5 px-5">
+          <div className="max-h-[32rem] overflow-y-auto -mx-5 px-5 space-y-2">
             {groupBySubject(bankQuestions).map(group => {
               const expanded = expandedGroups.has(group.name);
               return (
-                <div key={group.name}>
+                <div key={group.name} className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.name)}
-                    className="w-full flex items-center gap-2 pt-3 pb-1.5 first:pt-0 text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left bg-gray-50 hover:bg-gray-100 transition-colors"
                   >
-                    <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{group.name}</span>
-                    <span className="text-[11px] text-gray-400">({group.rows.length})</span>
-                    <div className="h-px flex-1 bg-gray-100" />
+                    <span className="shrink-0 h-7 w-7 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                      <BankIcon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="flex-1 min-w-0 text-sm font-semibold text-gray-800 truncate">{group.name}</span>
+                    <span className="shrink-0 inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-bold">
+                      {group.rows.length}
+                    </span>
+                    <ChevronDownIcon className={"h-4 w-4 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
                   </button>
-                  {expanded && group.rows.map(q => (
+                  {expanded && (
+                  <div className="px-3 pt-1 pb-2">
+                  {group.rows.map(q => (
                     editingId === q.id ? (
                       <div key={q.id} className="border border-indigo-200 rounded-lg p-4 my-2">
                         <textarea
@@ -1043,6 +1052,8 @@ export default function BankTool() {
                       </div>
                     )
                   ))}
+                  </div>
+                  )}
                 </div>
               );
             })}

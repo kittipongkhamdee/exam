@@ -17,8 +17,17 @@ const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง'
 // client-side) since the client check is only a courtesy.
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-const GEMINI_MAX_ATTEMPTS = 3;
-const GEMINI_ATTEMPT_TIMEOUT_MS = 45000;
+// See generate-questions/route.js's GEMINI_MODEL_SCHEDULE comment: retries
+// fall back to the older, more consistently provisioned gemini-2.5-flash
+// after the first attempt rather than hammering "-latest" (whatever
+// Google's newest release currently is) again — verified live that a
+// larger request can fail repeatedly against a newly-released model while
+// the same request succeeds reliably against the older one.
+const GEMINI_MODEL_SCHEDULE = [
+  { model: process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 45000 },
+  { model: 'gemini-2.5-flash', timeoutMs: 45000 },
+  { model: 'gemini-2.5-flash', timeoutMs: 45000 },
+];
 const GEMINI_RETRY_DELAYS_MS = [1000, 2000];
 const GEMINI_RETRYABLE_STATUSES = new Set([429, 503]);
 
@@ -32,13 +41,14 @@ function sleep(ms) {
  * does. Returns { data } on success or { error, detail } once every attempt
  * is exhausted.
  */
-async function fetchGeminiWithRetry(model, apiKey, prompt, pdfBase64, responseSchema) {
+async function fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema) {
   let lastError = 'ติดต่อ Gemini API ไม่สำเร็จ';
   let lastDetail = '';
 
-  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= GEMINI_MODEL_SCHEDULE.length; attempt++) {
+    const { model, timeoutMs } = GEMINI_MODEL_SCHEDULE[attempt - 1];
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_ATTEMPT_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
@@ -53,6 +63,12 @@ async function fetchGeminiWithRetry(model, apiKey, prompt, pdfBase64, responseSc
           generationConfig: {
             responseMimeType: 'application/json',
             responseSchema,
+            // See generate-questions/route.js's comment on this same
+            // setting — extracting questions from a PDF into the given
+            // schema doesn't need extended reasoning, and disabling it cuts
+            // generation time substantially (verified live on the sibling
+            // route: ~8-9s vs 23-31s for a comparably large response).
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
         signal: controller.signal,
@@ -74,7 +90,7 @@ async function fetchGeminiWithRetry(model, apiKey, prompt, pdfBase64, responseSc
       clearTimeout(timeout);
     }
 
-    if (attempt < GEMINI_MAX_ATTEMPTS) {
+    if (attempt < GEMINI_MODEL_SCHEDULE.length) {
       await sleep(GEMINI_RETRY_DELAYS_MS[attempt - 1]);
     }
   }
@@ -159,12 +175,7 @@ export async function POST(request) {
     required: ['questions'],
   };
 
-  // "-latest" tracks Google's newest stable flash release automatically —
-  // pinning a specific version (e.g. gemini-2.5-flash) means it silently
-  // falls behind as Google ships new generations, with nothing here to
-  // notice or update it.
-  const model = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-  const geminiRes = await fetchGeminiWithRetry(model, apiKey, prompt, pdfBase64, responseSchema);
+  const geminiRes = await fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema);
   if (geminiRes.error) {
     return Response.json({ error: geminiRes.error, detail: geminiRes.detail }, { status: 502 });
   }

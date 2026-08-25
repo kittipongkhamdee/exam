@@ -321,6 +321,10 @@ export default function ExamSetTool() {
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-90 inline-flex items-center justify-center gap-2';
   const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
   const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
+  const btnTinyIndigo = 'bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-indigo-100 transition inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
+  const btnTinySky = 'bg-sky-50 text-sky-700 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-sky-100 transition inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
+  const btnTinyAmber = 'bg-amber-50 text-amber-700 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-amber-100 transition inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
+  const btnTinyRed = 'bg-red-50 text-red-600 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-red-100 transition inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
   const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
 
   const [subjects, setSubjects] = useState([]);
@@ -1015,16 +1019,16 @@ export default function ExamSetTool() {
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap max-w-full shrink-0">
-                        <button className={btnTiny} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
+                        <button className={btnTinyIndigo} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
                           <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังโหลด...' : 'พิมพ์ข้อสอบ (A4)'}
                         </button>
-                        <button className={btnTiny} onClick={() => openCopyDialog(s)}>
+                        <button className={btnTinySky} onClick={() => openCopyDialog(s)}>
                           <CopyIcon className="h-3.5 w-3.5" /> คัดลอกไปอีกห้อง
                         </button>
-                        <button className={btnTiny} onClick={() => startEdit(s)}>
+                        <button className={btnTinyAmber} onClick={() => startEdit(s)}>
                           <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
                         </button>
-                        <button className={btnTiny} onClick={() => setDeleteTarget(s)}>
+                        <button className={btnTinyRed} onClick={() => setDeleteTarget(s)}>
                           <TrashIcon className="h-3.5 w-3.5" /> ลบ
                         </button>
                       </div>

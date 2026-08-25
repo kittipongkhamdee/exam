@@ -219,6 +219,9 @@ export default function ExamScheduleTool() {
   const btn = 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-90 inline-flex items-center justify-center gap-2';
   const btnSecondary = 'bg-gray-100 text-gray-900 px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
   const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200 inline-flex items-center gap-1';
+  const btnTinyIndigo = 'bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-indigo-100 transition inline-flex items-center gap-1';
+  const btnTinyAmber = 'bg-amber-50 text-amber-700 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-amber-100 transition inline-flex items-center gap-1';
+  const btnTinyRed = 'bg-red-50 text-red-600 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-red-100 transition inline-flex items-center gap-1';
   const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
 
   const [examSets, setExamSets] = useState([]);
@@ -510,10 +513,10 @@ export default function ExamScheduleTool() {
           <div className="font-semibold text-gray-900">รอบสอบที่ตั้งไว้</div>
           {rounds.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={btnTiny} onClick={() => triggerPrint('proctor')}>
+              <button type="button" className={btnTinyIndigo} onClick={() => triggerPrint('proctor')}>
                 <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์รายละเอียดรอบสอบ (ครูคุมสอบ)
               </button>
-              <button type="button" className={btnTiny} onClick={() => triggerPrint('student')}>
+              <button type="button" className={btnTinyIndigo} onClick={() => triggerPrint('student')}>
                 <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR เข้าสอบ (แจกนักเรียน)
               </button>
             </div>
@@ -551,10 +554,10 @@ export default function ExamScheduleTool() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <button className={btnTiny} onClick={() => startEdit(r)}>
+                          <button className={btnTinyAmber} onClick={() => startEdit(r)}>
                             <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
                           </button>
-                          <button className={btnTiny} onClick={() => setDeleteTarget(r)}>
+                          <button className={btnTinyRed} onClick={() => setDeleteTarget(r)}>
                             <TrashIcon className="h-3.5 w-3.5" /> ลบ
                           </button>
                         </div>

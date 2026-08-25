@@ -26,12 +26,24 @@ const COGNITIVE_LABEL = {
 
 // Gemini returns 503 (model overloaded) and 429 (rate limited) fairly often
 // under normal load — both are meant to be retried, not surfaced as a
-// failure on the first try. Bounded to fit comfortably inside maxDuration
-// (60s) alongside the Supabase queries around it: 3 attempts, a 15s
-// per-attempt timeout so one hung attempt can't eat the whole budget, and a
-// short exponential backoff between attempts.
-const GEMINI_MAX_ATTEMPTS = 3;
-const GEMINI_ATTEMPT_TIMEOUT_MS = 15000;
+// failure on the first try. A bigger request (more questions asked for in
+// one call) takes Gemini longer to generate, which measurably raises how
+// often it lands mid-generation on an overloaded moment — verified live: a
+// 15-question batch against "-latest" (whatever Google's newest release
+// currently is — often still capacity-constrained right after release)
+// failed with 503 on every one of 6 attempts across two test runs, while
+// the same exact request against the older, more provisioned
+// gemini-2.5-flash succeeded 6/6. So retry attempts after the first fall
+// back to that older release instead of hammering the same possibly-
+// congested model again — a same-model retry does little when the model
+// itself, not just the moment, is the bottleneck. GEMINI_MODEL still
+// overrides the first attempt only; fallback stays fixed since it exists
+// specifically as the known-reliable option.
+const GEMINI_MODEL_SCHEDULE = [
+  { model: process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 15000 },
+  { model: 'gemini-2.5-flash', timeoutMs: 15000 },
+  { model: 'gemini-2.5-flash', timeoutMs: 15000 },
+];
 const GEMINI_RETRY_DELAYS_MS = [1000, 2000];
 const GEMINI_RETRYABLE_STATUSES = new Set([429, 503]);
 
@@ -51,16 +63,18 @@ function stripTrailingQuestionMark(text) {
 /**
  * POSTs to Gemini's generateContent endpoint, retrying transient failures
  * (503 overloaded, 429 rate-limited, timeouts, network errors) with
- * exponential backoff. Returns { data } on success or { error, detail } once
- * every attempt is exhausted.
+ * exponential backoff — stepping through GEMINI_MODEL_SCHEDULE rather than
+ * retrying the same model each time (see its comment). Returns { data } on
+ * success or { error, detail } once every attempt is exhausted.
  */
-async function fetchGeminiWithRetry(model, apiKey, prompt, responseSchema) {
+async function fetchGeminiWithRetry(apiKey, prompt, responseSchema) {
   let lastError = 'ติดต่อ Gemini API ไม่สำเร็จ';
   let lastDetail = '';
 
-  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= GEMINI_MODEL_SCHEDULE.length; attempt++) {
+    const { model, timeoutMs } = GEMINI_MODEL_SCHEDULE[attempt - 1];
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_ATTEMPT_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
@@ -70,6 +84,14 @@ async function fetchGeminiWithRetry(model, apiKey, prompt, responseSchema) {
           generationConfig: {
             responseMimeType: 'application/json',
             responseSchema,
+            // This is straightforward structured generation from a clear
+            // prompt + schema, not a task that benefits from extended
+            // reasoning — but Gemini 3.x's flash models think by default
+            // regardless. Verified live: a 15-question batch (this app's
+            // max) took 23-31s with thinking on vs a consistent ~8-9s with
+            // it off — the difference between comfortably fitting this
+            // route's retry budget and not.
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
         signal: controller.signal,
@@ -91,7 +113,7 @@ async function fetchGeminiWithRetry(model, apiKey, prompt, responseSchema) {
       clearTimeout(timeout);
     }
 
-    if (attempt < GEMINI_MAX_ATTEMPTS) {
+    if (attempt < GEMINI_MODEL_SCHEDULE.length) {
       await sleep(GEMINI_RETRY_DELAYS_MS[attempt - 1]);
     }
   }
@@ -213,12 +235,7 @@ ${topicLines}
     required: ['questions'],
   };
 
-  // "-latest" tracks Google's newest stable flash release automatically —
-  // pinning a specific version (e.g. gemini-2.5-flash) means it silently
-  // falls behind as Google ships new generations, with nothing here to
-  // notice or update it.
-  const model = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-  const geminiRes = await fetchGeminiWithRetry(model, apiKey, prompt, responseSchema);
+  const geminiRes = await fetchGeminiWithRetry(apiKey, prompt, responseSchema);
   if (geminiRes.error) {
     return Response.json({ error: geminiRes.error, detail: geminiRes.detail }, { status: 502 });
   }

@@ -330,6 +330,12 @@ function SparkleIcon(props) {
 // Reads/writes public.config's gemini_api_key row — the same shared
 // key/value table and key name the ปพ.5 system already uses from its own
 // settings page, so a key entered there or here works for both.
+// Must match the model literal in src/app/api/generate-questions/route.js
+// and src/app/api/import-questions-pdf/route.js — this is only a display
+// label (the actual Gemini call happens server-side in those routes), so
+// nothing breaks if it drifts, but the teacher would see a stale name here.
+const GEMINI_MODEL_ALIAS = 'gemini-flash-latest';
+
 function AISettingsPanel() {
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(true);
@@ -337,6 +343,9 @@ function AISettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
+  const [checkingModel, setCheckingModel] = useState(false);
+  const [resolvedModel, setResolvedModel] = useState(null);
+  const [checkModelError, setCheckModelError] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -361,6 +370,36 @@ function AISettingsPanel() {
       setError(err.message || 'บันทึกไม่สำเร็จ');
     } finally {
       setSaving(false);
+    }
+  }
+
+  // "-latest" resolves to whatever Google's current stable release is —
+  // the only way to see what that actually is right now is a real
+  // generateContent call (models.get on the alias just describes the
+  // alias itself, not what it resolves to). Kept as cheap as a real call
+  // gets: 1 output token, thinking off, so this is a manual "check now"
+  // button rather than something run automatically on every page load.
+  async function handleCheckModel() {
+    setCheckingModel(true);
+    setResolvedModel(null);
+    setCheckModelError(null);
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ALIAS}:generateContent?key=${encodeURIComponent(value.trim())}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'hi' }] }],
+          generationConfig: { maxOutputTokens: 1, thinkingConfig: { thinkingBudget: 0 } },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || `Gemini API ผิดพลาด (${res.status})`);
+      if (!data.modelVersion) throw new Error('ไม่พบเวอร์ชันโมเดลในผลลัพธ์');
+      setResolvedModel(data.modelVersion);
+    } catch (err) {
+      setCheckModelError(err.message || 'ตรวจสอบไม่สำเร็จ');
+    } finally {
+      setCheckingModel(false);
     }
   }
 
@@ -396,6 +435,17 @@ function AISettingsPanel() {
           </div>
           {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
           {saved && <div className="text-sm text-green-600 mt-2">บันทึกแล้ว</div>}
+
+          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-gray-700">
+              โมเดลที่ตั้งไว้ในระบบ: <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{GEMINI_MODEL_ALIAS}</span>
+            </span>
+            <button type="button" className={btnTiny} onClick={handleCheckModel} disabled={checkingModel || !value.trim()}>
+              {checkingModel ? 'กำลังตรวจสอบ...' : 'ตรวจสอบเวอร์ชันปัจจุบัน'}
+            </button>
+            {resolvedModel && <span className="text-sm text-green-700">ขณะนี้คือ <span className="font-mono text-xs bg-green-50 px-1.5 py-0.5 rounded">{resolvedModel}</span></span>}
+            {checkModelError && <span className="text-sm text-red-600">{checkModelError}</span>}
+          </div>
         </>
       )}
     </div>

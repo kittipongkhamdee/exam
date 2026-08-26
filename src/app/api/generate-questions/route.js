@@ -6,11 +6,9 @@ import { createClient } from '@supabase/supabase-js';
 // allows it; it's a no-op cap elsewhere.
 export const maxDuration = 60;
 
-// Supabase (ap-southeast-1) and most of this app's traffic are both in/near
-// Southeast Asia, but Vercel's account-wide default region is US East —
-// pin this route to Singapore instead so its Supabase/Gemini round trips
-// don't cross the Pacific twice.
-export const preferredRegion = 'sin1';
+// Function region is set project-wide in vercel.json (regions: ["sin1"]) —
+// the route-level `preferredRegion` export is deprecated in this Next.js
+// version and has no effect.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zwtulepvmlngcrbcrrki.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_XSAOmXfp00l6Lh0xLwXERQ_4UEgkWhS';

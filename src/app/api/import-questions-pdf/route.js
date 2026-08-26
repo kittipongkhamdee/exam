@@ -5,6 +5,9 @@ import { createClient } from '@supabase/supabase-js';
 // and a PDF extraction call can take longer than the default 10s.
 export const maxDuration = 60;
 
+// See generate-questions/route.js's preferredRegion comment — same reasoning.
+export const preferredRegion = 'sin1';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zwtulepvmlngcrbcrrki.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_XSAOmXfp00l6Lh0xLwXERQ_4UEgkWhS';
 

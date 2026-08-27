@@ -234,6 +234,7 @@ export default function ExamScheduleTool() {
   const [scheduleType, setScheduleType] = useState('adhoc');
   const [autoRevealResults, setAutoRevealResults] = useState(false);
   const [requireLocation, setRequireLocation] = useState(false);
+  const [manualStart, setManualStart] = useState(false);
   // Admin's system-wide master switch (Settings → ตรวจสอบตำแหน่งนักเรียน) —
   // the "บังคับแชร์ตำแหน่งก่อนเข้าสอบ" checkbox below only appears when
   // this is on, so a teacher isn't offered a control that start_exam_attempt
@@ -303,6 +304,7 @@ export default function ExamScheduleTool() {
     setScheduleType('adhoc');
     setAutoRevealResults(false);
     setRequireLocation(false);
+    setManualStart(false);
     setFormError(null);
   }
 
@@ -317,6 +319,7 @@ export default function ExamScheduleTool() {
     setScheduleType(r.schedule_type || 'adhoc');
     setAutoRevealResults(!!r.auto_reveal_results);
     setRequireLocation(!!r.require_location);
+    setManualStart(!!r.manual_start);
     setFormError(null);
   }
 
@@ -342,6 +345,7 @@ export default function ExamScheduleTool() {
         scheduleType,
         autoRevealResults,
         requireLocation,
+        manualStart,
       });
       resetForm();
       refreshRounds();
@@ -490,6 +494,16 @@ export default function ExamScheduleTool() {
               </div>
             )}
 
+            <div className={field + ' mt-3'}>
+              <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={manualStart} onChange={e => setManualStart(e.target.checked)} />
+                ต้องรอครูคุมสอบกดเริ่มสอบ
+              </label>
+              <p className="text-xs text-gray-400 mt-0.5">
+                นักเรียนที่เข้ามาในช่วงเปิดสอบจะเห็นหน้ารอ จนกว่าครูคุมสอบจะกด &quot;เริ่มสอบ&quot; ที่หน้าคุมสอบ — เวลาทำต่อคนยังนับจากตอนที่นักเรียนแต่ละคนเริ่มทำจริงเหมือนเดิม ไม่ใช่จากตอนกดเริ่มสอบ ปิดไว้ (ค่าเริ่มต้น) คือให้นักเรียนเข้าสอบได้ทันทีที่ถึงเวลาเปิดสอบตามปกติ
+              </p>
+            </div>
+
             {formError && <div className="text-sm text-red-600 mt-3">{formError}</div>}
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -552,6 +566,11 @@ export default function ExamScheduleTool() {
                             )}
                             {r.require_location && (
                               <span className={pill + ' bg-rose-50 text-rose-700'}>บังคับแชร์ตำแหน่ง</span>
+                            )}
+                            {r.manual_start && (
+                              <span className={pill + ' ' + (r.started_by_teacher_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                                {r.started_by_teacher_at ? 'เริ่มสอบแล้ว' : 'รอครูกดเริ่มสอบ'}
+                              </span>
                             )}
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">

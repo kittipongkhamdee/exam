@@ -325,6 +325,12 @@ function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
           <div className="text-xs text-gray-500 mt-0.5">
             {monitor.subject_name} (ชั้น {formatGradeRoom(monitor.grade_level, monitor.room)}) · {formatThaiTime(monitor.opens_at)} – {formatThaiTime(monitor.closes_at)}
           </div>
+          {monitor.pin && (
+            <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1 mt-1.5">
+              <span className="text-xs text-indigo-800">PIN</span>
+              <span className="font-mono font-bold tracking-widest text-indigo-900">{monitor.pin}</span>
+            </div>
+          )}
           {monitor.unlock_pin && (
             <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 mt-1.5">
               <LockIcon className="h-3.5 w-3.5 text-amber-700" />

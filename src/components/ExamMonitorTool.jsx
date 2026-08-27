@@ -32,7 +32,7 @@ import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabaseClient';
 import {
   getRoundMonitor, getRoomMonitor, listMonitorableRounds,
-  proctorUnlockAttempt, proctorLockAttempt, listProctorAssignmentsForDate,
+  proctorUnlockAttempt, proctorLockAttempt, openExamRound, listProctorAssignmentsForDate,
 } from '../lib/exam-db';
 import { getConfigValue } from '../lib/config-db';
 import { distanceMeters } from '../lib/geo';
@@ -267,6 +267,19 @@ function StudentCard({ row, flagged, onUnlock, onLock, unlocking, locking }) {
 function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
   const [unlockingId, setUnlockingId] = useState(null);
   const [lockingId, setLockingId] = useState(null);
+  const [opening, setOpening] = useState(false);
+
+  async function handleOpenRound() {
+    setOpening(true);
+    try {
+      await openExamRound(supabase, monitor.id);
+      onUnlockDone();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'เริ่มสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+      setOpening(false);
+    }
+  }
 
   async function handleUnlock(attemptId) {
     setUnlockingId(attemptId);
@@ -318,6 +331,22 @@ function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
               <span className="text-xs text-amber-800">รหัสปลดล็อก</span>
               <span className="font-mono font-bold tracking-widest text-amber-900">{monitor.unlock_pin}</span>
             </div>
+          )}
+          {monitor.manual_start && (
+            monitor.started_by_teacher_at ? (
+              <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 mt-1.5">
+                <span className="text-xs font-semibold text-emerald-800">เริ่มสอบแล้ว</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 bg-indigo-600 text-white rounded-lg px-3 py-1.5 mt-1.5 text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                disabled={opening}
+                onClick={handleOpenRound}
+              >
+                {opening ? 'กำลังเริ่มสอบ...' : 'เริ่มสอบ — เปิดให้นักเรียนเข้าทำได้'}
+              </button>
+            )
           )}
         </div>
         <div className="flex flex-wrap gap-3 text-xs">

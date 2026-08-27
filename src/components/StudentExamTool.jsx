@@ -830,6 +830,51 @@ export default function StudentExamTool() {
     });
   }
 
+  // "รอครูคุมสอบเริ่มสอบ" — a manual_start รอบสอบ the student is otherwise
+  // eligible to join (within opens_at/closes_at) but the proctor hasn't
+  // pressed "เริ่มสอบ" yet. Unlike showTooEarlyDialog there's no known
+  // target time to count down to, so this just polls quietly and retries
+  // login on its own once the round opens — no action needed from the
+  // student beyond waiting on this screen.
+  const WAITING_FOR_TEACHER_POLL_MS = 4000;
+  async function showWaitingForTeacherDialog(data, pinVal, studentCodeVal) {
+    const setTitle = escapeHtml(data.exam_set_title);
+    let retried = false;
+    let pollInterval;
+    async function poll() {
+      if (retried) return;
+      try {
+        const { data: retryData, error } = await supabase.rpc('start_exam_attempt', {
+          p_pin: pinVal.trim(),
+          p_student_code: studentCodeVal.trim(),
+        });
+        if (error) return; // transient — try again on the next tick
+        if (retryData.blocked !== 'waiting_for_teacher') {
+          retried = true;
+          clearInterval(pollInterval);
+          Swal.close();
+          login(pinVal, studentCodeVal, { showRulesNotice: true });
+        }
+      } catch {
+        // transient — try again on the next tick
+      }
+    }
+    await Swal.fire({
+      icon: 'info',
+      title: 'รอครูคุมสอบเริ่มการสอบ',
+      html: `การสอบ &quot;${setTitle}&quot; ยังไม่เปิดให้เข้าทำ — ครูคุมสอบจะกดเริ่มสอบเมื่อพร้อม<br>ระบบจะพาเข้าสอบให้อัตโนมัติทันทีที่เริ่ม ไม่ต้องกดอะไรเพิ่ม`,
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      didOpen: () => {
+        pollInterval = setInterval(poll, WAITING_FOR_TEACHER_POLL_MS);
+      },
+      willClose: () => {
+        clearInterval(pollInterval);
+      },
+    });
+  }
+
   // "เข้าสอบสายเกินเวลา" — the PIN is real but closes_at has already passed.
   async function showTooLateDialog(data) {
     const opensAtText = formatThaiDateTime(data.opens_at, { dateStyle: 'long', timeStyle: 'short' });
@@ -862,6 +907,11 @@ export default function StudentExamTool() {
         clearSession();
         setPhase('login');
         showTooLateDialog(data);
+        return;
+      }
+      if (data.blocked === 'waiting_for_teacher') {
+        setPhase('login');
+        showWaitingForTeacherDialog(data, pinVal.trim(), studentCodeVal.trim());
         return;
       }
       if (data.submitted) {

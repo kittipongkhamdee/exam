@@ -269,7 +269,7 @@ export async function listMyExamRounds(supabase, opts = {}) {
   const { data, error } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, auto_reveal_results, require_location, schedule_type, created_at,
+      id, exam_set_id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, auto_reveal_results, require_location, manual_start, started_by_teacher_at, schedule_type, created_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .in('exam_set_id', examSetIds)
@@ -281,9 +281,9 @@ export async function listMyExamRounds(supabase, opts = {}) {
 /**
  * Create or update a รอบสอบ.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc', autoRevealResults?: boolean, requireLocation?: boolean }} args
+ * @param {{ id?: string, examSetId: string, pin: string, unlockPin: string, opensAt: string, closesAt: string, durationMinutes: number, scheduleType?: 'scheduled'|'adhoc', autoRevealResults?: boolean, requireLocation?: boolean, manualStart?: boolean }} args
  */
-export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType, autoRevealResults, requireLocation }) {
+export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, opensAt, closesAt, durationMinutes, scheduleType, autoRevealResults, requireLocation, manualStart }) {
   const { data: { user } } = await supabase.auth.getUser();
   const row = {
     exam_set_id: examSetId,
@@ -295,6 +295,7 @@ export async function saveExamRound(supabase, { id, examSetId, pin, unlockPin, o
     schedule_type: scheduleType || 'adhoc',
     auto_reveal_results: !!autoRevealResults,
     require_location: !!requireLocation,
+    manual_start: !!manualStart,
   };
   if (id) {
     const { error } = await supabase.from('online_exam_rounds').update(row).eq('id', id);
@@ -457,7 +458,7 @@ export async function getRoundMonitor(supabase, roundId) {
   const { data: round, error: roundError } = await supabase
     .from('online_exam_rounds')
     .select(`
-      id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, schedule_type,
+      id, pin, unlock_pin, opens_at, closes_at, duration_minutes, results_visible, schedule_type, manual_start, started_by_teacher_at,
       online_exam_sets ( title, subjects ( subject_name, subject_code, grade_level, room ) )
     `)
     .eq('id', roundId)
@@ -511,6 +512,8 @@ export async function getRoundMonitor(supabase, roundId) {
     closes_at: round.closes_at,
     duration_minutes: round.duration_minutes,
     schedule_type: round.schedule_type,
+    manual_start: round.manual_start,
+    started_by_teacher_at: round.started_by_teacher_at,
     exam_set_title: round.online_exam_sets?.title,
     subject_name: subject?.subject_name,
     grade_level: subject?.grade_level,
@@ -603,6 +606,20 @@ export async function listMonitorableRounds(supabase) {
 export async function proctorUnlockAttempt(supabase, attemptId) {
   const { error } = await supabase.rpc('proctor_unlock_exam_attempt', { p_attempt_id: attemptId });
   if (error) throw error;
+}
+
+/**
+ * Opens a manual_start รอบสอบ so every student waiting on it can begin —
+ * same authorization as proctorUnlockAttempt (owner teacher / admin /
+ * assigned proctor). No-op if the round isn't manual_start or is already
+ * open. Returns the resulting started_by_teacher_at.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} roundId
+ */
+export async function openExamRound(supabase, roundId) {
+  const { data, error } = await supabase.rpc('proctor_open_exam_round', { p_round_id: roundId });
+  if (error) throw error;
+  return data?.started_by_teacher_at ?? null;
 }
 
 /**

@@ -32,7 +32,7 @@ import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabaseClient';
 import {
   getRoundMonitor, getRoomMonitor, listMonitorableRounds,
-  proctorUnlockAttempt, proctorLockAttempt, openExamRound, listProctorAssignmentsForDate,
+  proctorUnlockAttempt, proctorLockAttempt, openExamRound, cancelExamRoundStart, listProctorAssignmentsForDate,
 } from '../lib/exam-db';
 import { getConfigValue } from '../lib/config-db';
 import { distanceMeters } from '../lib/geo';
@@ -268,6 +268,7 @@ function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
   const [unlockingId, setUnlockingId] = useState(null);
   const [lockingId, setLockingId] = useState(null);
   const [opening, setOpening] = useState(false);
+  const [cancelingOpen, setCancelingOpen] = useState(false);
 
   async function handleOpenRound() {
     setOpening(true);
@@ -278,6 +279,24 @@ function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
       Swal.fire({ icon: 'error', title: 'เริ่มสอบไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
     } finally {
       setOpening(false);
+    }
+  }
+
+  async function handleCancelOpenRound() {
+    const confirmed = await Swal.fire({
+      icon: 'warning', title: 'ยกเลิกการเริ่มสอบ?',
+      text: 'นักเรียนที่เข้าสอบไปแล้วจะทำต่อได้ตามปกติ แต่นักเรียนที่ยังไม่เข้าจะต้องรอครูกดเริ่มสอบใหม่อีกครั้ง',
+      showCancelButton: true, confirmButtonText: 'ยกเลิกการเริ่มสอบ', cancelButtonText: 'ปิด', confirmButtonColor: '#d97706',
+    });
+    if (!confirmed.isConfirmed) return;
+    setCancelingOpen(true);
+    try {
+      await cancelExamRoundStart(supabase, monitor.id);
+      onUnlockDone();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'ยกเลิกไม่สำเร็จ', text: err.message || 'กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+      setCancelingOpen(false);
     }
   }
 
@@ -325,35 +344,45 @@ function RoundMonitorCard({ monitor, minDistance, onUnlockDone }) {
           <div className="text-xs text-gray-500 mt-0.5">
             {monitor.subject_name} (ชั้น {formatGradeRoom(monitor.grade_level, monitor.room)}) · {formatThaiTime(monitor.opens_at)} – {formatThaiTime(monitor.closes_at)}
           </div>
-          {monitor.pin && (
-            <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1 mt-1.5">
-              <span className="text-xs text-indigo-800">PIN</span>
-              <span className="font-mono font-bold tracking-widest text-indigo-900">{monitor.pin}</span>
-            </div>
-          )}
-          {monitor.unlock_pin && (
-            <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 mt-1.5">
-              <LockIcon className="h-3.5 w-3.5 text-amber-700" />
-              <span className="text-xs text-amber-800">รหัสปลดล็อก</span>
-              <span className="font-mono font-bold tracking-widest text-amber-900">{monitor.unlock_pin}</span>
-            </div>
-          )}
-          {monitor.manual_start && (
-            monitor.started_by_teacher_at ? (
-              <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 mt-1.5">
-                <span className="text-xs font-semibold text-emerald-800">เริ่มสอบแล้ว</span>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            {monitor.pin && (
+              <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1">
+                <span className="text-xs text-indigo-800">PIN</span>
+                <span className="font-mono font-bold tracking-widest text-indigo-900">{monitor.pin}</span>
               </div>
-            ) : (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 bg-indigo-600 text-white rounded-lg px-3 py-1.5 mt-1.5 text-xs font-bold hover:opacity-90 disabled:opacity-50"
-                disabled={opening}
-                onClick={handleOpenRound}
-              >
-                {opening ? 'กำลังเริ่มสอบ...' : 'เริ่มสอบ — เปิดให้นักเรียนเข้าทำได้'}
-              </button>
-            )
-          )}
+            )}
+            {monitor.unlock_pin && (
+              <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+                <LockIcon className="h-3.5 w-3.5 text-amber-700" />
+                <span className="text-xs text-amber-800">รหัสปลดล็อก</span>
+                <span className="font-mono font-bold tracking-widest text-amber-900">{monitor.unlock_pin}</span>
+              </div>
+            )}
+            {monitor.manual_start && (
+              monitor.started_by_teacher_at ? (
+                <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1">
+                  <span className="text-xs font-semibold text-emerald-800">เริ่มสอบแล้ว</span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-emerald-700 underline hover:text-emerald-900 disabled:opacity-50"
+                    disabled={cancelingOpen}
+                    onClick={handleCancelOpenRound}
+                  >
+                    {cancelingOpen ? 'กำลังยกเลิก...' : 'ยกเลิก'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 bg-indigo-600 text-white rounded-lg px-3 py-1.5 text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                  disabled={opening}
+                  onClick={handleOpenRound}
+                >
+                  {opening ? 'กำลังเริ่มสอบ...' : 'เริ่มสอบ — เปิดให้นักเรียนเข้าทำได้'}
+                </button>
+              )
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-3 text-xs">
           <span className="font-bold text-green-700">{submitted}<span className="text-gray-500 font-normal"> ส่งแล้ว</span></span>

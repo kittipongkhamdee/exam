@@ -623,6 +623,21 @@ export async function openExamRound(supabase, roundId) {
 }
 
 /**
+ * Undoes openExamRound — clears started_by_teacher_at so a manual_start
+ * รอบสอบ goes back to "รอครูกดเริ่มสอบ". Students who already logged in and
+ * got an attempt row are unaffected (start_exam_attempt only re-checks
+ * manual_start/started_by_teacher_at on a student's first login, not on
+ * resume); this only stops students who haven't logged in yet until the
+ * proctor presses "เริ่มสอบ" again. Same authorization as openExamRound.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} roundId
+ */
+export async function cancelExamRoundStart(supabase, roundId) {
+  const { error } = await supabase.rpc('proctor_cancel_exam_round_start', { p_round_id: roundId });
+  if (error) throw error;
+}
+
+/**
  * Whether a locked attempt is still locked, for StudentExamTool.jsx to poll
  * while its own "หน้าจอถูกล็อก" prompt is open — closing it the moment the
  * proctoring teacher unlocks from the live monitor (a different browser),

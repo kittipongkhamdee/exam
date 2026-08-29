@@ -758,12 +758,17 @@ export default function BankTool() {
         {subjectId && sameCodeRooms.length > 0 && (
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1.5">
-              <label className={label}>บันทึกเข้าห้องอื่นด้วย (ไม่บังคับ)</label>
+              <label className={label}>บันทึกเข้าห้อง</label>
               <button type="button" className={btnTiny} onClick={toggleAllSaveRooms}>
-                {allSaveRoomsSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                {allSaveRoomsSelected ? 'ยกเลิกห้องอื่นทั้งหมด' : 'เลือกห้องอื่นทั้งหมด'}
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
+              <label className="inline-flex items-center gap-1.5 border border-indigo-200 bg-indigo-50 rounded-lg px-2.5 py-1.5 text-sm text-indigo-800 font-medium">
+                <input type="checkbox" checked disabled />
+                ชั้น {formatGradeRoom(selectedSubject.grade_level, selectedSubject.room)}
+                <span className="text-[10px] font-normal text-indigo-500">(ที่เลือกไว้ด้านบน)</span>
+              </label>
               {sameCodeRooms.map(s => (
                 <label key={s.id} className="inline-flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
                   <input type="checkbox" checked={saveRoomIds.includes(s.id)} onChange={() => toggleSaveRoom(s.id)} />
@@ -772,7 +777,7 @@ export default function BankTool() {
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-1.5">
-              ข้อสอบที่บันทึกในขั้นตอนที่ 2 จะถูกบันทึกซ้ำเข้าคลังของห้องที่ติ๊กไว้ด้วย (คนละชุดข้อมูลต่อห้อง แก้ไขภายหลังจะไม่ซิงก์กัน)
+              ข้อสอบที่บันทึกในขั้นตอนที่ 2 จะเข้าคลังของห้องที่เลือกไว้ด้านบนเสมอ ติ๊กห้องอื่นเพิ่มถ้าต้องการบันทึกซ้ำเข้าห้องนั้นด้วย (คนละชุดข้อมูลต่อห้อง แก้ไขภายหลังจะไม่ซิงก์กัน)
             </p>
           </div>
         )}

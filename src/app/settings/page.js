@@ -106,7 +106,7 @@ function TeacherGroupHeader({ name, count, expanded, onToggle }) {
     >
       <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
       <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{name}</span>
-      <span className="text-[11px] text-gray-400">({count})</span>
+      <span className="inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 text-[10px] font-bold">{count}</span>
       <div className="h-px flex-1 bg-gray-100" />
     </button>
   );
@@ -270,6 +270,11 @@ function QuizzesPanel() {
           <SheetIcon className="h-4 w-4" />
         </div>
         <div className="font-semibold text-gray-900">ชุดข้อสอบทั้งหมดในระบบ</div>
+        {!loading && quizzes.length > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-bold">
+            {quizzes.length}
+          </span>
+        )}
       </div>
       <p className="mt-1 text-sm text-gray-500 mb-4">
         รายการชุดข้อสอบของครูทุกคน แอดมินลบชุดข้อสอบของครูคนใดก็ได้ (ลบแล้วเฉลย ผลตรวจ และรูปที่เก็บไว้ของชุดนั้นจะหายไปทั้งหมด กู้คืนไม่ได้)

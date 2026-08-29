@@ -933,6 +933,11 @@ export default function BankTool() {
         <div className="flex items-center gap-2 mb-4">
           <BankIcon className="h-4 w-4 text-gray-400" />
           <div className="font-semibold text-gray-900">ข้อสอบที่บันทึกไว้แล้ว</div>
+          {!bankLoading && bankQuestions.length > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-bold">
+              {bankQuestions.length}
+            </span>
+          )}
         </div>
         {bankLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!bankLoading && bankQuestions.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีข้อสอบในคลัง</div>}

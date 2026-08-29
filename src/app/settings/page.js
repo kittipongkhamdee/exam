@@ -164,6 +164,11 @@ function ScanPhotosPanel() {
           <PhotoIcon className="h-4 w-4" />
         </div>
         <div className="font-semibold text-gray-900">รูปกระดาษคำตอบที่ครูเก็บไว้ทั้งหมด</div>
+        {!loading && photos.length > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-bold">
+            {photos.length}
+          </span>
+        )}
       </div>
       <p className="mt-1 text-sm text-gray-500 mb-4">
         เฉพาะครูที่เปิด &ldquo;เก็บรูปกระดาษคำตอบไว้ดูย้อนหลัง&rdquo; ในหน้าสแกนตรวจเท่านั้นที่จะมีรูปที่นี่ แอดมินลบรูปของครูคนใดก็ได้ (ข้อมูลคะแนน/เฉลยไม่หาย ลบแค่รูป)

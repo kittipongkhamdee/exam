@@ -368,6 +368,15 @@ export default function ExamSetTool() {
   const [copyForm, setCopyForm] = useState(null);
   const [copySubmitting, setCopySubmitting] = useState(false);
 
+  // Rooms teaching the same subject_code as the selected วิชา, offered as
+  // an optional "also create for these rooms" checklist when creating a
+  // brand-new ชุดข้อสอบ (not when editing one — an existing set stays
+  // scoped to its own subject). Ticking any of these runs the exact same
+  // copyExamSetToSubject the standalone "คัดลอกไปอีกห้อง" button uses, just
+  // looped once per ticked room right after the primary set is saved,
+  // instead of requiring that button pressed once per room afterward.
+  const [targetRoomIds, setTargetRoomIds] = useState([]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -438,6 +447,7 @@ export default function ExamSetTool() {
     setPointsById({});
     setSortMode('manual');
     setFormError(null);
+    setTargetRoomIds([]);
   }
 
   async function startEdit(set) {
@@ -521,6 +531,22 @@ export default function ExamSetTool() {
   const selectedQuestions = selectedIds.map(id => questionsById.get(id)).filter(Boolean);
   const totalPoints = selectedIds.reduce((sum, id) => sum + (pointsById[id] ?? 1), 0);
 
+  const selectedSubject = subjects.find(s => s.id === subjectId) || null;
+  // Only offer rooms that share the selected subject's own subject_code —
+  // a subject row with no code set (legacy data) matches nothing, since
+  // there's no reliable signal it's "the same course" otherwise.
+  const sameCodeRooms = selectedSubject?.subject_code
+    ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code)
+    : [];
+  const allTargetRoomsSelected = sameCodeRooms.length > 0 && sameCodeRooms.every(s => targetRoomIds.includes(s.id));
+
+  function toggleTargetRoom(id) {
+    setTargetRoomIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+  function toggleAllTargetRooms() {
+    setTargetRoomIds(allTargetRoomsSelected ? [] : sameCodeRooms.map(s => s.id));
+  }
+
   // Groups selectedQuestions by indicator_id — sorted by indicator_code, a
   // trailing "ไม่มีตัวชี้วัด" group last for anything with none — without
   // touching selectedIds itself. Used both to render the grouped list (sort
@@ -578,13 +604,34 @@ export default function ExamSetTool() {
       const orderedIds = sortMode === 'indicator'
         ? groupedByIndicator(selectedQuestions).flatMap(g => g.rows.map(q => q.id))
         : selectedIds;
-      await saveExamSet(supabase, {
+      const newSetId = await saveExamSet(supabase, {
         id: editingSetId, subjectId, title: title.trim(),
         questions: orderedIds.map(id => ({ id, points: pointsById[id] ?? 1 })),
         groupByIndicator: sortMode === 'indicator',
       });
+
+      // Sequential, not Promise.all — target-room counts are small (a
+      // handful at most) and this way one failure doesn't abort the rest,
+      // it just gets counted and reported after the loop.
+      let copyFailures = 0;
+      if (!editingSetId) {
+        for (const targetSubjectId of targetRoomIds) {
+          try {
+            await copyExamSetToSubject(supabase, { examSetId: newSetId, targetSubjectId, title: title.trim() });
+          } catch {
+            copyFailures++;
+          }
+        }
+      }
+
       resetForm();
       refreshSets();
+      if (copyFailures > 0) {
+        Swal.fire({
+          icon: 'warning', title: 'สร้างชุดข้อสอบสำเร็จบางส่วน',
+          text: `สร้างชุดข้อสอบหลักสำเร็จ แต่คัดลอกไปห้องอื่นไม่สำเร็จ ${copyFailures} ห้อง — ลองคัดลอกด้วยปุ่ม "คัดลอกไปอีกห้อง" ที่รายการชุดข้อสอบด้านล่างได้`,
+        });
+      }
     } catch (err) {
       setFormError(err.message || 'บันทึกไม่สำเร็จ');
     } finally {
@@ -748,7 +795,7 @@ export default function ExamSetTool() {
         <div className={row}>
           <div className={field}>
             <label className={label}>วิชา</label>
-            <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSelectedIds([]); }}>
+            <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSelectedIds([]); setTargetRoomIds([]); }}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
                 <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
@@ -764,6 +811,28 @@ export default function ExamSetTool() {
             />
           </div>
         </div>
+
+        {subjectId && !editingSetId && sameCodeRooms.length > 0 && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className={label}>สร้างให้ห้องอื่นด้วย (ไม่บังคับ)</label>
+              <button type="button" className={btnTiny} onClick={toggleAllTargetRooms}>
+                {allTargetRoomsSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sameCodeRooms.map(s => (
+                <label key={s.id} className="inline-flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                  <input type="checkbox" checked={targetRoomIds.includes(s.id)} onChange={() => toggleTargetRoom(s.id)} />
+                  ชั้น {formatGradeRoom(s.grade_level, s.room)}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1.5">
+              คัดลอกข้อที่เลือกไปสร้างเป็นชุดข้อสอบแยกให้แต่ละห้องที่ติ๊กไว้ด้วย (เหมือนปุ่ม &ldquo;คัดลอกไปอีกห้อง&rdquo; แต่ทำให้พร้อมกันตอนสร้าง)
+            </p>
+          </div>
+        )}
 
         {subjectId && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-7">
@@ -988,7 +1057,11 @@ export default function ExamSetTool() {
             disabled={!subjectId || !title.trim() || selectedIds.length === 0 || saving}
             onClick={handleSave}
           >
-            <SaveIcon className="h-4 w-4" /> {saving ? 'กำลังบันทึก...' : (editingSetId ? 'บันทึกการแก้ไข' : 'สร้างชุดข้อสอบ')}
+            <SaveIcon className="h-4 w-4" /> {saving
+              ? 'กำลังบันทึก...'
+              : editingSetId
+                ? 'บันทึกการแก้ไข'
+                : targetRoomIds.length > 0 ? `สร้างชุดข้อสอบ (${targetRoomIds.length + 1} ห้อง)` : 'สร้างชุดข้อสอบ'}
           </button>
           {editingSetId && (
             <button type="button" className={btnSecondary} disabled={saving} onClick={resetForm}>ยกเลิก</button>

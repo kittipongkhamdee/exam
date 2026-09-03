@@ -1054,22 +1054,24 @@ export default function ExamSetTool() {
                         <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
                         <span className="min-w-0 text-gray-700">{q.question_text}</span>
                       </div>
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-gray-500">คะแนน</span>
-                          <input
-                            type="number" min={0.01} step="any"
-                            className="w-14 px-1.5 py-1 border border-gray-300 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            value={pointsById[q.id] ?? 1}
-                            onChange={e => updatePoints(q.id, e.target.value)}
-                            aria-label={`คะแนนข้อ ${i + 1}`}
-                          />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button type="button" className={btnTiny} onClick={() => removeSelected(q.id)} aria-label="เอาออก">
-                            <XIcon className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs text-gray-500">คะแนน</span>
+                        <input
+                          type="number" min={0.01} step="any"
+                          className="w-14 px-1.5 py-1 border border-gray-300 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          value={pointsById[q.id] ?? 1}
+                          onChange={e => updatePoints(q.id, e.target.value)}
+                          aria-label={`คะแนนข้อ ${i + 1}`}
+                        />
+                        <button type="button" className={btnTiny} disabled={i === 0} onClick={() => reorderSelected(i, i - 1)} aria-label="เลื่อนขึ้น">
+                          <ArrowUpIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" className={btnTiny} disabled={i === selectedQuestions.length - 1} onClick={() => reorderSelected(i, i + 1)} aria-label="เลื่อนลง">
+                          <ArrowDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" className={btnTiny} onClick={() => removeSelected(q.id)} aria-label="เอาออก">
+                          <XIcon className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}

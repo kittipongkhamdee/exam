@@ -108,6 +108,7 @@ export default function OMRPrepareTool() {
   const [existingQuizzes, setExistingQuizzes] = useState([]);
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [loadQuizError, setLoadQuizError] = useState(null);
+  const [refreshingQuizzes, setRefreshingQuizzes] = useState(false);
 
   // Every quiz across every subject this teacher owns — lets the teacher
   // find and open/delete a quiz directly without picking its subject
@@ -267,6 +268,23 @@ export default function OMRPrepareTool() {
       }
     })();
   }, [subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Manual refresh for "ชุดข้อสอบที่มีอยู่แล้ว" — the effect above only
+  // reloads this list when subjectId itself changes, so a quiz created or
+  // re-printed elsewhere (e.g. "พิมพ์ข้อสอบ (A4)" in ข้อสอบ, in another tab
+  // or after coming back to this one) while the same subject stays selected
+  // here never shows up without this.
+  async function refreshExistingQuizzes() {
+    if (!subjectId) return;
+    setRefreshingQuizzes(true);
+    try {
+      setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
+    } catch {
+      // best-effort — keep whatever list was already showing
+    } finally {
+      setRefreshingQuizzes(false);
+    }
+  }
 
   async function handleLoadQuiz(id) {
     if (!id) return;
@@ -621,7 +639,16 @@ export default function OMRPrepareTool() {
           </div>
           {subjectId && (
             <div className={field}>
-              <label className={label}>ชุดข้อสอบที่มีอยู่แล้ว</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={label}>ชุดข้อสอบที่มีอยู่แล้ว</label>
+                <button
+                  type="button" className={btnTiny + ' inline-flex items-center gap-1'}
+                  onClick={refreshExistingQuizzes} disabled={refreshingQuizzes}
+                  title="โหลดรายการใหม่ — เผื่อเพิ่งพิมพ์/แก้ไขชุดข้อสอบมาจากที่อื่น"
+                >
+                  <RefreshIcon className={'h-3 w-3' + (refreshingQuizzes ? ' animate-spin' : '')} /> รีเฟรช
+                </button>
+              </div>
               <select className={inputCls} value={quizId || ''} onChange={e => handleLoadQuiz(e.target.value)} disabled={loadingQuiz}>
                 <option value="">— สร้างชุดใหม่ —</option>
                 {existingQuizzes.map((q, i) => (
@@ -895,6 +922,15 @@ function PencilIcon(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function RefreshIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 12a9 9 0 0 1 15.3-6.4L21 8M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16M3 21v-5h5" />
     </svg>
   );
 }

@@ -534,6 +534,16 @@ export default function ExamSetTool() {
   // reset on drop/dragend/mouse-leave so nothing lingers highlighted.
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  // Brief same dark highlight as a dragged row, but for the arrow-button
+  // path — flashIndex is the row that just moved, cleared a moment later so
+  // it reads as a "this one moved" pulse rather than a lingering state.
+  const [flashIndex, setFlashIndex] = useState(null);
+
+  useEffect(() => {
+    if (flashIndex === null) return;
+    const t = setTimeout(() => setFlashIndex(null), 500);
+    return () => clearTimeout(t);
+  }, [flashIndex]);
 
   function reorderSelected(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
@@ -543,6 +553,11 @@ export default function ExamSetTool() {
       next.splice(toIndex, 0, moved);
       return next;
     });
+  }
+
+  function moveByArrow(index, dir) {
+    reorderSelected(index, index + dir);
+    setFlashIndex(index + dir);
   }
 
   function endDrag() {
@@ -1046,7 +1061,9 @@ export default function ExamSetTool() {
                       onDragEnd={endDrag}
                       className={
                         'flex items-start justify-between gap-3.5 px-3.5 py-3.5 text-sm cursor-grab active:cursor-grabbing transition-colors ' +
-                        (dragIndex === i ? 'opacity-40' : dragOverIndex === i ? 'bg-indigo-50 ring-2 ring-inset ring-indigo-400' : '')
+                        (dragIndex === i || flashIndex === i
+                          ? 'bg-indigo-200 ring-2 ring-inset ring-indigo-500'
+                          : dragOverIndex === i ? 'bg-indigo-50 ring-2 ring-inset ring-indigo-300' : '')
                       }
                     >
                       <div className="flex items-start gap-2.5 min-w-0">
@@ -1063,10 +1080,10 @@ export default function ExamSetTool() {
                           onChange={e => updatePoints(q.id, e.target.value)}
                           aria-label={`คะแนนข้อ ${i + 1}`}
                         />
-                        <button type="button" className={btnTiny} disabled={i === 0} onClick={() => reorderSelected(i, i - 1)} aria-label="เลื่อนขึ้น">
+                        <button type="button" className={btnTiny} disabled={i === 0} onClick={() => moveByArrow(i, -1)} aria-label="เลื่อนขึ้น">
                           <ArrowUpIcon className="h-3.5 w-3.5" />
                         </button>
-                        <button type="button" className={btnTiny} disabled={i === selectedQuestions.length - 1} onClick={() => reorderSelected(i, i + 1)} aria-label="เลื่อนลง">
+                        <button type="button" className={btnTiny} disabled={i === selectedQuestions.length - 1} onClick={() => moveByArrow(i, 1)} aria-label="เลื่อนลง">
                           <ArrowDownIcon className="h-3.5 w-3.5" />
                         </button>
                         <button type="button" className={btnTiny} onClick={() => removeSelected(q.id)} aria-label="เอาออก">

@@ -258,6 +258,16 @@ function XIcon(props) {
   );
 }
 
+function GripIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+    </svg>
+  );
+}
+
 function PrinterIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -517,14 +527,27 @@ export default function ExamSetTool() {
     setSelectedIds(prev => prev.filter(x => x !== id));
   }
 
-  function moveSelected(index, dir) {
+  // Drag-to-reorder for "ลำดับข้อที่เลือก" (manual sort mode only — the
+  // indicator-grouped view orders by indicator, not manually). dragIndex is
+  // the row currently being dragged, dragOverIndex is whichever row the
+  // pointer is over right now (drives the drop-target highlight); both
+  // reset on drop/dragend/mouse-leave so nothing lingers highlighted.
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  function reorderSelected(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
     setSelectedIds(prev => {
       const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
       return next;
     });
+  }
+
+  function endDrag() {
+    setDragIndex(null);
+    setDragOverIndex(null);
   }
 
   const questionsById = new Map(availableQuestions.map(q => [q.id, q]));
@@ -835,7 +858,7 @@ export default function ExamSetTool() {
         )}
 
         {subjectId && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-7">
+          <div className="mt-4 grid grid-cols-1 gap-7">
             <div>
               <div className="flex items-center justify-between">
                 <label className={label}>ข้อสอบในคลัง (ติ๊กเพื่อเพิ่มเข้าชุด)</label>
@@ -1013,8 +1036,21 @@ export default function ExamSetTool() {
               ) : (
                 <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {selectedQuestions.map((q, i) => (
-                    <div key={q.id} className="flex items-start justify-between gap-3.5 px-3.5 py-3.5 text-sm">
+                    <div
+                      key={q.id}
+                      draggable
+                      onDragStart={() => setDragIndex(i)}
+                      onDragOver={e => { e.preventDefault(); if (dragIndex !== null && dragOverIndex !== i) setDragOverIndex(i); }}
+                      onDragLeave={() => setDragOverIndex(prev => (prev === i ? null : prev))}
+                      onDrop={e => { e.preventDefault(); if (dragIndex !== null) reorderSelected(dragIndex, i); endDrag(); }}
+                      onDragEnd={endDrag}
+                      className={
+                        'flex items-start justify-between gap-3.5 px-3.5 py-3.5 text-sm cursor-grab active:cursor-grabbing transition-colors ' +
+                        (dragIndex === i ? 'opacity-40' : dragOverIndex === i ? 'bg-indigo-50 ring-2 ring-inset ring-indigo-400' : '')
+                      }
+                    >
                       <div className="flex items-start gap-2.5 min-w-0">
+                        <GripIcon className="h-4 w-4 text-gray-300 shrink-0 mt-0.5" />
                         <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
                         <span className="min-w-0 text-gray-700">{q.question_text}</span>
                       </div>
@@ -1030,12 +1066,6 @@ export default function ExamSetTool() {
                           />
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <button type="button" className={btnTiny} disabled={i === 0} onClick={() => moveSelected(i, -1)} aria-label="เลื่อนขึ้น">
-                            <ArrowUpIcon className="h-3.5 w-3.5" />
-                          </button>
-                          <button type="button" className={btnTiny} disabled={i === selectedQuestions.length - 1} onClick={() => moveSelected(i, 1)} aria-label="เลื่อนลง">
-                            <ArrowDownIcon className="h-3.5 w-3.5" />
-                          </button>
                           <button type="button" className={btnTiny} onClick={() => removeSelected(q.id)} aria-label="เอาออก">
                             <XIcon className="h-3.5 w-3.5" />
                           </button>

@@ -875,7 +875,7 @@ export default function ExamSetTool() {
         {subjectId && (
           <div className="mt-4 grid grid-cols-1 gap-7">
             <div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-wrap">
                 <label className={label}>ข้อสอบในคลัง (ติ๊กเพื่อเพิ่มเข้าชุด)</label>
                 {availableQuestions.length > 0 && (
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 cursor-pointer">

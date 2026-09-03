@@ -64,6 +64,20 @@ import { saveBankQuestions } from './bank-db';
 
 /**
  * List this teacher's ชุดข้อสอบ, each with its subject and question count.
+ *
+ * Also flags `printed_out_of_sync`: true when this set already has a
+ * printed OMR answer sheet (printed_quiz_id) whose question count no
+ * longer matches the set's current question count — a cheap, reliable
+ * signal that the set was edited (questions added/removed) after the
+ * last "พิมพ์ข้อสอบ (A4)", so the printed answer key is stale. Editing
+ * a ชุดข้อสอบ never re-syncs the printed quiz on its own — only
+ * pressing "พิมพ์ข้อสอบ (A4)" again does (see syncPrintedOmrQuiz) — so
+ * without this flag a teacher who edits after printing has no way to
+ * know the answer sheet they already handed out no longer matches.
+ * This can't catch every edit (e.g. swapping one question for another
+ * of the same count, or fixing a correct_choice, leaves the count
+ * unchanged), but it catches the common case cheaply with no extra
+ * query.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ subjectId?: string }} [opts]
  */
@@ -72,19 +86,24 @@ export async function listMyExamSets(supabase, opts = {}) {
   let query = supabase
     .from('online_exam_sets')
     .select(`
-      id, subject_id, title, created_at, set_code,
+      id, subject_id, title, created_at, set_code, printed_quiz_id,
       subjects!inner ( subject_name, subject_code, grade_level, room, user_id ),
-      online_exam_set_questions ( count )
+      online_exam_set_questions ( count ),
+      omr_quizzes ( num_questions )
     `)
     .eq('subjects.user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
   if (opts.subjectId) query = query.eq('subject_id', opts.subjectId);
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).map(s => ({
-    ...s,
-    question_count: s.online_exam_set_questions?.[0]?.count ?? 0,
-  }));
+  return (data || []).map(s => {
+    const question_count = s.online_exam_set_questions?.[0]?.count ?? 0;
+    return {
+      ...s,
+      question_count,
+      printed_out_of_sync: !!s.printed_quiz_id && s.omr_quizzes != null && s.omr_quizzes.num_questions !== question_count,
+    };
+  });
 }
 
 /**

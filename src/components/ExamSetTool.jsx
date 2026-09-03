@@ -1092,6 +1092,9 @@ export default function ExamSetTool() {
                           <span className={pill + ' bg-slate-100 text-slate-700 font-mono'}>รหัส {String(s.set_code).padStart(3, '0')}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
+                        {s.printed_out_of_sync && (
+                          <div className="text-xs text-amber-700 mt-0.5">⚠ แก้ไขชุดข้อสอบหลังพิมพ์ครั้งล่าสุด — กด &ldquo;พิมพ์ข้อสอบ (A4)&rdquo; อีกครั้งเพื่ออัปเดตกระดาษคำตอบ (OMR) ให้ตรงกัน</div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap max-w-full shrink-0">
                         <button className={btnTinyIndigo} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>

@@ -78,6 +78,12 @@ import { saveBankQuestions } from './bank-db';
  * of the same count, or fixing a correct_choice, leaves the count
  * unchanged), but it catches the common case cheaply with no extra
  * query.
+ *
+ * Also flags `printed_has_scans`: true when the linked printed OMR
+ * quiz already has at least one student's scanned result — deleteExamSet
+ * only takes the linked quiz down with it when this is false (see there);
+ * a teacher who's about to delete a set can see up front whether its
+ * answer sheet will go too or has to be removed by hand at "กระดาษคำตอบ".
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ subjectId?: string }} [opts]
  */
@@ -89,7 +95,7 @@ export async function listMyExamSets(supabase, opts = {}) {
       id, subject_id, title, created_at, set_code, printed_quiz_id,
       subjects!inner ( subject_name, subject_code, grade_level, room, user_id ),
       online_exam_set_questions ( count ),
-      omr_quizzes ( num_questions )
+      omr_quizzes ( num_questions, omr_scan_results ( count ) )
     `)
     .eq('subjects.user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
@@ -102,6 +108,7 @@ export async function listMyExamSets(supabase, opts = {}) {
       ...s,
       question_count,
       printed_out_of_sync: !!s.printed_quiz_id && s.omr_quizzes != null && s.omr_quizzes.num_questions !== question_count,
+      printed_has_scans: !!s.printed_quiz_id && (s.omr_quizzes?.omr_scan_results?.[0]?.count ?? 0) > 0,
     };
   });
 }
@@ -203,10 +210,36 @@ export async function saveExamSet(supabase, { id, subjectId, title, questions, g
 /**
  * Delete a ชุดข้อสอบ (cascades to its question list and any scheduled
  * รอบสอบ).
+ *
+ * Also takes its printed OMR answer sheet (printed_quiz_id) down with it —
+ * but only if nobody has scanned a result against that sheet yet, same
+ * "safe to replace" rule syncPrintedOmrQuiz already uses when re-printing.
+ * Once a real scan result exists the sheet is left alone (and orphaned,
+ * printed_quiz_id having pointed at it) so a teacher never loses graded
+ * student data just by deleting the ชุดข้อสอบ it came from — they'd need to
+ * delete that sheet by hand from "กระดาษคำตอบ" instead.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} id
  */
 export async function deleteExamSet(supabase, id) {
+  const { data: setRow, error: fetchError } = await supabase
+    .from('online_exam_sets')
+    .select('printed_quiz_id')
+    .eq('id', id)
+    .single();
+  if (fetchError) throw fetchError;
+
+  if (setRow.printed_quiz_id) {
+    const { count, error: countError } = await supabase
+      .from('omr_scan_results')
+      .select('id', { count: 'exact', head: true })
+      .eq('quiz_id', setRow.printed_quiz_id);
+    if (countError) throw countError;
+    if (!count) {
+      await deleteQuiz(supabase, setRow.printed_quiz_id);
+    }
+  }
+
   const { error } = await supabase.from('online_exam_sets').delete().eq('id', id);
   if (error) throw error;
 }

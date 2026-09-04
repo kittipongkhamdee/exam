@@ -101,6 +101,14 @@ function PrintOptionsDialog({ open, initial, onCancel, onConfirm, submitting }) 
             </div>
           </div>
           <div className={fieldCls}>
+            <label className={labelCls}>รูปแบบตัวเลือก</label>
+            <select className={inputCls} value={form.choiceScheme} onChange={e => update('choiceScheme', e.target.value)}>
+              <option value="thai">ก ข ค ง</option>
+              <option value="en">A B C D</option>
+              <option value="num">1 2 3 4</option>
+            </select>
+          </div>
+          <div className={fieldCls}>
             <label className={labelCls}>คำชี้แจง (บรรทัดละ 1 ข้อ)</label>
             <textarea className={inputCls + ' min-h-24'} value={form.instructionsText} onChange={e => update('instructionsText', e.target.value)} />
           </div>
@@ -705,6 +713,7 @@ export default function ExamSetTool() {
         durationMinutes: '',
         instructionsText: defaultInstructions(numQuestions, totalScore),
         columns: 2,
+        choiceScheme: 'thai',
         hasLogo: !!brandDefaults.logo,
         includeLogo: !!brandDefaults.logo,
       });
@@ -727,6 +736,7 @@ export default function ExamSetTool() {
         questions: full.questions,
         existingQuizId: full.printed_quiz_id,
         setCode: full.set_code,
+        choiceScheme: form.choiceScheme,
       });
       const genArgs = {
         title: full.title,
@@ -742,6 +752,7 @@ export default function ExamSetTool() {
         durationMinutes: form.durationMinutes,
         instructions: form.instructionsText.split('\n').map(s => s.trim()).filter(Boolean),
         columns: form.columns,
+        choiceScheme: form.choiceScheme,
         logoDataUrl: form.includeLogo ? brandDefaults.logo : null,
       };
       if (form.format === 'docx') {
@@ -1171,7 +1182,12 @@ export default function ExamSetTool() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="ยืนยันลบชุดข้อสอบ"
-        message={deleteTarget ? `ลบชุดข้อสอบ "${deleteTarget.title}"?\n\nรอบสอบที่ตั้งไว้จากชุดนี้จะถูกลบไปด้วย` : ''}
+        message={deleteTarget
+          ? `ลบชุดข้อสอบ "${deleteTarget.title}"?\n\nรอบสอบที่ตั้งไว้จากชุดนี้จะถูกลบไปด้วย`
+            + (deleteTarget.printed_quiz_id
+              ? '\n\n⚠ ชุดนี้มีกระดาษคำตอบ (OMR) ที่เคยพิมพ์ไว้แล้ว — กระดาษคำตอบและเฉลยจะไม่ถูกลบไปด้วย ถ้าต้องการลบกระดาษคำตอบ ต้องไปลบเองที่หน้า "กระดาษคำตอบ"'
+              : '')
+          : ''}
         confirmLabel="ลบชุดข้อสอบ"
         danger
         loading={deleting}

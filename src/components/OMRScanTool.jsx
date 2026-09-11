@@ -17,7 +17,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
-  findFiducialsWithOrientation, readBubbles, drawGradedOverlay, choiceLetters,
+  findFiducialsWithOrientation, findFiducials, toGray, readBubbles, drawGradedOverlay, choiceLetters,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
@@ -37,6 +37,21 @@ function pageOptsForQuiz(quiz) {
   }
   return { pageW: TOP_BOTTOM_PAGE_W, pageH: TOP_BOTTOM_PAGE_H, layoutStyle: 'topBottom', cols: undefined };
 }
+
+// Live corner-detection overlay (camera preview, before capture) — a cheap
+// per-tick pass with findFiducials() alone, never the expensive
+// findFiducialsWithOrientation() the real scan uses (that tries all 4
+// rotations and fully decodes each one just to score it — far too slow to
+// run several times a second). This is only ever a visual "getting warmer"
+// aid plus an auto-capture trigger; the actual capture still goes through
+// the same full/accurate runScan() pipeline as a manual "ถ่ายภาพ" tap, so a
+// live-preview false positive or miss here can never produce a wrongly
+// graded result — at worst it fails to auto-fire and the teacher taps the
+// button themselves.
+const LIVE_DETECT_INTERVAL_MS = 350;
+const LIVE_DETECT_MAX_DIM = 480; // downscale target (longest side) for the analysis frame
+const LIVE_DETECT_STABLE_TICKS = 3; // consecutive all-4-found ticks required before auto-capturing
+const LIVE_DETECT_ASPECT_TOLERANCE = 0.35; // matches findFiducialsWithOrientation's own check
 
 // "Rapid" scan mode skips picking a student up front and instead matches
 // the decoded ID (from the bubbled student-ID grid, already read by every
@@ -102,6 +117,15 @@ export default function OMRScanTool() {
   const cameraStreamRef = useRef(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState(null);
+
+  // Live fiducial-detection overlay state — see the LIVE_DETECT_* constants
+  // above for why this stays a cheap, separate pass from the real scan.
+  const liveDetectTimerRef = useRef(null);
+  const liveDetectCanvasRef = useRef(null); // reused offscreen canvas for the downscaled analysis frame
+  const liveDetectBusyRef = useRef(false); // guards against a slow tick overlapping the next interval
+  const alignedStreakRef = useRef(0);
+  const overlayCanvasRef = useRef(null); // the visible <canvas> drawn on top of the video
+  const [liveAligned, setLiveAligned] = useState(false); // all 4 corners found & aspect-plausible this tick
 
   const [savingResult, setSavingResult] = useState(false);
   const [saveResultError, setSaveResultError] = useState(null);
@@ -302,6 +326,130 @@ export default function OMRScanTool() {
     reader.readAsDataURL(file);
   }
 
+  // Draws one green (aligned) or amber (partial) "L" bracket per detected
+  // corner, plus a connecting outline once all 4 are found — a lightweight
+  // viewfinder-style indicator, not a precision guide.
+  function drawCornerBracket(ctx, x, y, dx, dy, size, lineWidth) {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + dy * size);
+    ctx.stroke();
+  }
+
+  function drawLiveOverlay(corners, w, h, aligned) {
+    const canvas = overlayCanvasRef.current;
+    if (!canvas) return;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    const color = aligned ? '#22c55e' : '#facc15';
+    const bracketSize = Math.max(16, Math.min(w, h) * 0.09);
+    const lineWidth = Math.max(2, Math.min(w, h) * 0.012);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = aligned ? 10 : 0;
+    // corners order matches findFiducials' own quadrant order: tl, tr, bl, br
+    const dirs = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
+    corners.forEach((c, i) => {
+      if (!c) return;
+      const [dx, dy] = dirs[i];
+      drawCornerBracket(ctx, c.x, c.y, dx, dy, bracketSize, lineWidth);
+    });
+    if (aligned) {
+      const [tl, tr, bl, br] = corners;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(tl.x, tl.y);
+      ctx.lineTo(tr.x, tr.y);
+      ctx.lineTo(br.x, br.y);
+      ctx.lineTo(bl.x, bl.y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function clearLiveOverlay() {
+    const canvas = overlayCanvasRef.current;
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // One tick of the live-preview corner check — see the LIVE_DETECT_*
+  // constants above for why this stays deliberately cheap (downscaled
+  // frame, findFiducials alone, no orientation search). "Aligned" also
+  // requires the detected quad's aspect ratio to plausibly match the
+  // quiz's actual page shape (same check findFiducialsWithOrientation does
+  // for real), so 4 stray dark blobs that happen to sit near the 4 corners
+  // don't read as "ready" and auto-fire a capture.
+  function runLiveDetectTick() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || liveDetectBusyRef.current) return;
+    liveDetectBusyRef.current = true;
+    try {
+      const scale = Math.min(1, LIVE_DETECT_MAX_DIM / Math.max(video.videoWidth, video.videoHeight));
+      const w = Math.max(1, Math.round(video.videoWidth * scale));
+      const h = Math.max(1, Math.round(video.videoHeight * scale));
+      const canvas = liveDetectCanvasRef.current || (liveDetectCanvasRef.current = document.createElement('canvas'));
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const gray = toGray(imgData);
+      const { corners } = findFiducials(gray, w, h);
+      const allFound = corners.every(c => c !== null);
+      let aligned = false;
+      if (allFound && selectedQuiz) {
+        const [tl, tr, bl] = corners;
+        const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+        const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+        if (topW > 0 && leftH > 0) {
+          const { pageW, pageH } = pageOptsForQuiz(selectedQuiz);
+          const detectedRatio = leftH / topW;
+          aligned = Math.abs(Math.log(detectedRatio / (pageH / pageW))) <= LIVE_DETECT_ASPECT_TOLERANCE;
+        }
+      }
+      if (allFound) drawLiveOverlay(corners, w, h, aligned);
+      else clearLiveOverlay();
+      setLiveAligned(aligned);
+      if (aligned) {
+        alignedStreakRef.current += 1;
+        if (alignedStreakRef.current >= LIVE_DETECT_STABLE_TICKS) {
+          stopLiveDetect();
+          capturePhoto();
+          return;
+        }
+      } else {
+        alignedStreakRef.current = 0;
+      }
+    } catch {
+      // best-effort — a failed tick just skips this round, the next interval retries
+    } finally {
+      liveDetectBusyRef.current = false;
+    }
+  }
+
+  function startLiveDetect() {
+    stopLiveDetect();
+    liveDetectTimerRef.current = setInterval(runLiveDetectTick, LIVE_DETECT_INTERVAL_MS);
+  }
+
+  function stopLiveDetect() {
+    if (liveDetectTimerRef.current) {
+      clearInterval(liveDetectTimerRef.current);
+      liveDetectTimerRef.current = null;
+    }
+    alignedStreakRef.current = 0;
+    liveDetectBusyRef.current = false;
+    setLiveAligned(false);
+    clearLiveOverlay();
+  }
+
   async function openCamera() {
     setCameraError(null);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -329,12 +477,14 @@ export default function OMRScanTool() {
           videoRef.current.play().catch(() => {});
         }
       });
+      startLiveDetect();
     } catch {
       setCameraError('เปิดกล้องไม่สำเร็จ — ตรวจสอบว่าอนุญาตให้เว็บนี้ใช้กล้อง หรือลองอัปโหลดรูปแทน');
     }
   }
 
   function closeCamera() {
+    stopLiveDetect();
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach(t => t.stop());
       cameraStreamRef.current = null;
@@ -362,6 +512,7 @@ export default function OMRScanTool() {
 
   useEffect(() => {
     return () => {
+      if (liveDetectTimerRef.current) clearInterval(liveDetectTimerRef.current);
       if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
     };
   }, []);
@@ -670,6 +821,13 @@ export default function OMRScanTool() {
           <div className="mt-2">
             <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-black">
               <video ref={videoRef} playsInline muted className="w-full block" />
+              <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+              <div className={
+                'absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold shadow ' +
+                (liveAligned ? 'bg-green-600 text-white' : 'bg-black/60 text-white')
+              }>
+                {liveAligned ? 'จัดกรอบพอดี — กำลังถ่าย...' : 'จัดกระดาษให้เห็นมุมทั้ง 4 ชัดเจน'}
+              </div>
             </div>
             <div className="flex gap-2 mt-2.5">
               <button className={btn + ' flex-1 inline-flex items-center justify-center gap-2'} onClick={capturePhoto}>
@@ -677,7 +835,7 @@ export default function OMRScanTool() {
               </button>
               <button className={btnSecondary} onClick={closeCamera}>ยกเลิก</button>
             </div>
-            <div className="text-[11px] text-gray-500 mt-1.5">จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ</div>
+            <div className="text-[11px] text-gray-500 mt-1.5">จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม — ระบบจะถ่ายให้อัตโนมัติเมื่อจัดกรอบพอดี หรือกดถ่ายภาพเองก็ได้</div>
           </div>
         )}
 

@@ -17,7 +17,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
-  findFiducialsWithOrientation, findFiducials, toGray, readBubbles, drawGradedOverlay, choiceLetters,
+  findFiducialsWithOrientation, findFiducials, toGray, assessImageQuality, readBubbles, drawGradedOverlay, choiceLetters,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
@@ -52,6 +52,31 @@ const LIVE_DETECT_INTERVAL_MS = 350;
 const LIVE_DETECT_MAX_DIM = 480; // downscale target (longest side) for the analysis frame
 const LIVE_DETECT_STABLE_TICKS = 3; // consecutive all-4-found ticks required before auto-capturing
 const LIVE_DETECT_ASPECT_TOLERANCE = 0.35; // matches findFiducialsWithOrientation's own check
+
+// Downscale target for the one-off blur/glare check run on an actual capture
+// (as opposed to every live-preview tick) — a bit larger than the live-detect
+// frame since this only runs once per capture, not several times a second.
+const QUALITY_CHECK_MAX_DIM = 640;
+
+// Best-effort blur/glare check on a just-captured photo, downscaled first so
+// this stays cheap. Never throws — a captured photo that somehow can't be
+// downscaled/read here should still go through the real scan untouched;
+// this check is advisory only, never a gate on scanning.
+function computeCaptureQuality(srcCanvas) {
+  try {
+    const scale = Math.min(1, QUALITY_CHECK_MAX_DIM / Math.max(srcCanvas.width, srcCanvas.height));
+    const w = Math.max(1, Math.round(srcCanvas.width * scale));
+    const h = Math.max(1, Math.round(srcCanvas.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(srcCanvas, 0, 0, w, h);
+    const gray = toGray(ctx.getImageData(0, 0, w, h));
+    return assessImageQuality(gray, w, h);
+  } catch {
+    return null;
+  }
+}
 
 // "Rapid" scan mode skips picking a student up front and instead matches
 // the decoded ID (from the bubbled student-ID grid, already read by every
@@ -241,6 +266,14 @@ export default function OMRScanTool() {
           srcCanvas.width = img.width; srcCanvas.height = img.height;
           srcCanvas.getContext('2d').drawImage(img, 0, 0);
 
+          // Cheap blur/glare check on the captured photo — advisory only,
+          // never blocks scanning: a miscalibrated heuristic must never
+          // stop a real exam-day scan from going through. Used below to
+          // enrich the "corners not found" error with a likely cause, and
+          // to flag a successful-but-suspect result for the teacher to
+          // double check.
+          const quality = computeCaptureQuality(srcCanvas);
+
           // Live camera captures can come out rotated relative to how the
           // photo visually looked (a getUserMedia quirk on some devices) —
           // findFiducialsWithOrientation tries all 4 quarter-turns and picks
@@ -254,7 +287,10 @@ export default function OMRScanTool() {
           const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
 
           if (!best) {
-            setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' });
+            let hint = '';
+            if (quality?.blurry) hint = ' ภาพอาจเบลอ ลองถือกล้องให้นิ่งขึ้นหรือรอโฟกัสก่อนถ่าย';
+            else if (quality?.overexposed) hint = ' ภาพอาจสว่างเกินไป (แสงแฟลช/สะท้อน) ลองถ่ายในที่แสงสม่ำเสมอขึ้น';
+            setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' + hint });
             setScanStage('done');
             return;
           }
@@ -295,6 +331,7 @@ export default function OMRScanTool() {
             decodedId, graded, correct, total: selectedQuiz.numQuestions, blank, ambiguous,
             earnedPoints, totalPoints,
             score: totalPoints ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : 0,
+            qualityWarning: quality?.blurry ? 'blur' : quality?.overexposed ? 'glare' : null,
           });
           setScanStage('done');
         } catch {
@@ -868,6 +905,13 @@ export default function OMRScanTool() {
                   รหัสที่อ่านได้จากกระดาษ: <strong className="text-gray-700">{scanResult.decodedId}</strong>
                   {rapidMode && !studentId ? ' — ระบบจับคู่ชื่อให้อัตโนมัติจากรหัสนี้' : ' — ตรวจสอบว่าตรงกับนักเรียนที่เลือกไว้'}
                 </div>
+                {scanResult.qualityWarning && (
+                  <div className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
+                    ⚠ {scanResult.qualityWarning === 'blur'
+                      ? 'ภาพอาจเบลอเล็กน้อย — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ให้ถือกล้องนิ่งขึ้น'
+                      : 'ภาพอาจสว่างเกินไป (แสงแฟลช/สะท้อน) — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ในที่แสงสม่ำเสมอขึ้น'}
+                  </div>
+                )}
                 {effectiveStudent && scannedStudentIds.has(effectiveStudent.id) && !savedResultId && (
                   <div className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
                     ⚠ {formatStudentName(effectiveStudent)} เคยถูกสแกนแล้ว — บันทึกซ้ำจะเพิ่มผลใหม่อีกรายการ

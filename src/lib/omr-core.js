@@ -787,6 +787,59 @@ function toGray(imgData) {
   return gray;
 }
 
+// Untuned starting points for the heuristics below — real classroom photos
+// (varying phones, lighting, paper) will likely need these adjusted after
+// some real-world testing. Kept deliberately conservative (few false
+// positives) since callers use these as soft, advisory warnings only.
+const OVEREXPOSED_GRAY_THRESHOLD = 250;
+const OVEREXPOSED_FRACTION_THRESHOLD = 0.15;
+const BLUR_VARIANCE_THRESHOLD = 150;
+
+// Cheap, no-reference quality check for a captured photo, meant to catch the
+// two most common phone-camera failure modes before/alongside scanning:
+// motion/focus blur and flash glare or blown-out highlights. Both metrics
+// are computed in a single pass over a (ideally downscaled) grayscale image
+// so this stays fast enough to run on every capture, not just live preview.
+//
+// Blur: variance of the Laplacian. The Laplacian response at each interior
+// pixel (4*center - 4 neighbors) is large wherever there's a sharp edge and
+// near zero over smooth/blurry gradients. A sharp photo (crisp bubble
+// outlines, print text) has many strong edge responses scattered through
+// the image, so the variance of that response map is high; a blurry photo's
+// responses cluster near zero, so the variance is low.
+//
+// Glare/overexposure: fraction of pixels that are near-pure-white. Ordinary
+// photographed white paper under ambient light rarely saturates to 255 over
+// a large area; a large near-white fraction usually means direct flash
+// reflection or a blown-out highlight washing out part of the page.
+function assessImageQuality(gray, width, height) {
+  let overexposedCount = 0;
+  for (let i = 0; i < gray.length; i++) {
+    if (gray[i] > OVEREXPOSED_GRAY_THRESHOLD) overexposedCount++;
+  }
+  const overexposedFraction = overexposedCount / gray.length;
+
+  let sum = 0, sumSq = 0, count = 0;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = y * width + x;
+      const lap = 4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - width] - gray[i + width];
+      sum += lap;
+      sumSq += lap * lap;
+      count++;
+    }
+  }
+  const mean = count ? sum / count : 0;
+  const variance = count ? (sumSq / count) - (mean * mean) : 0;
+
+  return {
+    blurVariance: variance,
+    blurry: variance < BLUR_VARIANCE_THRESHOLD,
+    overexposedFraction,
+    overexposed: overexposedFraction > OVEREXPOSED_FRACTION_THRESHOLD,
+  };
+}
+
 // Find the 4 solid-black square markers near the 4 corners of the page.
 // Instead of averaging all dark pixels in a quadrant (which gets dragged off-target
 // by background clutter like desk surface, shadows, or hands), find the largest
@@ -1257,6 +1310,7 @@ export {
   fillTextClipped,
   drawSheet,
   toGray,
+  assessImageQuality,
   findFiducials,
   findFiducialsWithOrientation,
   otsuThreshold,

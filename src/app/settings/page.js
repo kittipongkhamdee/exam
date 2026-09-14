@@ -667,6 +667,153 @@ function ExamProximityCheckPanel() {
   );
 }
 
+function SlidersIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h13M21 18h-1" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
+    </svg>
+  );
+}
+
+// A single labeled on/off row — reused for each OMR scanning feature below
+// instead of one switch per panel (ExamProximityCheckPanel's pattern),
+// since this panel groups several independent toggles together.
+function ToggleRow({ label, description, checked, onChange }) {
+  return (
+    <label className="flex items-start gap-3 cursor-pointer select-none py-2.5 border-b border-gray-100 last:border-b-0">
+      <span
+        role="switch" aria-checked={checked}
+        onClick={onChange}
+        className={"relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors mt-0.5 " + (checked ? 'bg-indigo-600' : 'bg-gray-300')}
+      >
+        <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (checked ? 'translate-x-6' : 'translate-x-1')} />
+      </span>
+      <span>
+        <span className="block text-sm text-gray-800 font-medium">{label}</span>
+        {description && <span className="block text-xs text-gray-500 mt-0.5">{description}</span>}
+      </span>
+    </label>
+  );
+}
+
+// Reads/writes public.config's omr_*_enabled rows — the same master-switch
+// pattern as ExamProximityCheckPanel, one row per feature so each can be
+// turned off independently if it ever misbehaves for a particular phone/
+// lighting setup, without having to touch the others. All four default to
+// enabled when unset (missing config row = "never explicitly turned off"),
+// matching OMRScanTool's own DEFAULT_FEATURE_FLAGS.
+const OMR_FEATURE_CONFIG_KEYS = {
+  liveDetect: 'omr_live_detect_enabled',
+  qualityWarning: 'omr_quality_warning_enabled',
+  liveQualityHint: 'omr_live_quality_hint_enabled',
+  subpixelRefine: 'omr_subpixel_refine_enabled',
+};
+
+function OMRScanFeaturesPanel() {
+  const [flags, setFlags] = useState({ liveDetect: true, qualityWarning: true, liveQualityHint: true, subpixelRefine: true });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await getConfigValues(supabase, Object.values(OMR_FEATURE_CONFIG_KEYS));
+        setFlags({
+          liveDetect: cfg[OMR_FEATURE_CONFIG_KEYS.liveDetect] !== 'false',
+          qualityWarning: cfg[OMR_FEATURE_CONFIG_KEYS.qualityWarning] !== 'false',
+          liveQualityHint: cfg[OMR_FEATURE_CONFIG_KEYS.liveQualityHint] !== 'false',
+          subpixelRefine: cfg[OMR_FEATURE_CONFIG_KEYS.subpixelRefine] !== 'false',
+        });
+      } catch (err) {
+        setError(err.message || 'โหลดค่าไม่สำเร็จ');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  function toggle(key) {
+    setFlags(f => ({ ...f, [key]: !f[key] }));
+    setSaved(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await Promise.all(
+        Object.entries(OMR_FEATURE_CONFIG_KEYS).map(([key, configKey]) =>
+          setConfigValue(supabase, configKey, flags[key] ? 'true' : 'false')
+        )
+      );
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-500 text-white flex items-center justify-center shrink-0">
+          <SlidersIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">ฟีเจอร์การสแกนกระดาษคำตอบ</div>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        เปิด/ปิดฟีเจอร์ช่วยตรวจข้อสอบด้วยกล้องแต่ละอย่างแยกกัน ปิดเป็นรายฟีเจอร์ได้ถ้าฟีเจอร์ไหนติดขัดกับมือถือ/สภาพแสงของโรงเรียน โดยไม่กระทบฟีเจอร์อื่น — ทุกอย่างเป็นแค่ตัวช่วย ไม่มีผลต่อวิธีตรวจให้คะแนนที่ถูกต้องอยู่แล้ว
+      </p>
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : (
+        <>
+          <div>
+            <ToggleRow
+              label="กรอบเขียวอัตโนมัติ + ถ่ายภาพให้เอง"
+              description="ตรวจจับมุมกระดาษแบบเรียลไทม์ตอนถือกล้อง ขึ้นกรอบเขียวและถ่ายภาพให้อัตโนมัติเมื่อจัดกระดาษพอดีในเฟรม ปิดแล้วต้องกดถ่ายภาพเอง"
+              checked={flags.liveDetect}
+              onChange={() => toggle('liveDetect')}
+            />
+            <ToggleRow
+              label="คำเตือนคุณภาพภาพหลังสแกน"
+              description="แจ้งเตือนถ้าภาพที่ถ่ายอาจเบลอ แสงจ้าเกินไป หรือกระดาษเอียง/ไม่แบนราบ ให้ครูตรวจคะแนนซ้ำ (ไม่บล็อกการบันทึกผล)"
+              checked={flags.qualityWarning}
+              onChange={() => toggle('qualityWarning')}
+            />
+            <ToggleRow
+              label="คำเตือนคุณภาพภาพแบบเรียลไทม์"
+              description="ขึ้นข้อความเตือนเบลอ/แสงจ้าบนหน้าจอกล้องระหว่างถือถ่าย ก่อนกดถ่ายภาพจริง (ทำงานร่วมกับกรอบเขียวด้านบน)"
+              checked={flags.liveQualityHint}
+              onChange={() => toggle('liveQualityHint')}
+            />
+            <ToggleRow
+              label="ปรับตำแหน่งจุดมุมกระดาษละเอียดขึ้น"
+              description="ปรับตำแหน่งจุดดำ 4 มุมที่ตรวจจับได้ให้แม่นยำขึ้นระดับต่ำกว่าพิกเซล ช่วยให้อ่านคำตอบแม่นยำขึ้นเล็กน้อย"
+              checked={flags.subpixelRefine}
+              onChange={() => toggle('subpixelRefine')}
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-3">
+            <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={handleSave} disabled={saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+            {saved && <span className="text-sm text-green-600">บันทึกแล้ว</span>}
+          </div>
+          {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function TagIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -993,6 +1140,7 @@ function SettingsContent() {
       <BrandingPanel />
       <QuizzesPanel />
       <ScanPhotosPanel />
+      <OMRScanFeaturesPanel />
       <AISettingsPanel />
       <ExamSecurityPanel />
       <ExamProximityCheckPanel />

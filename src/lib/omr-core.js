@@ -840,12 +840,55 @@ function assessImageQuality(gray, width, height) {
   };
 }
 
+// Untuned starting point, like the thresholds above — how many degrees a
+// corner angle may deviate from a true 90° before it's flagged.
+const CORNER_ANGLE_DEVIATION_THRESHOLD_DEG = 12;
+
+// Detects (but, deliberately, does not attempt to correct) a badly skewed
+// or non-planar capture from the 4 fiducial corners alone. The single
+// 4-point homography readBubbles/warpImage rely on assumes the sheet was a
+// flat rectangle photographed straight-on; a curled page or a steep camera
+// angle instead produces a corner quadrilateral whose interior angles
+// drift away from 90°. With only 4 corner markers printed on the sheet (no
+// interior control points), there isn't enough information to model or
+// undo a curl/lens-distortion — this only measures how far the quad is
+// from a right-angled rectangle and flags it as a warning, honest about
+// not being able to fix it: the teacher is in a much better position to
+// just retake the photo flatter/more square-on than any correction we
+// could guess at without real calibration photos.
+function assessCornerGeometry(corners) {
+  const [tl, tr, bl, br] = corners;
+  function angleAt(p, a, b) {
+    const v1x = a.x - p.x, v1y = a.y - p.y;
+    const v2x = b.x - p.x, v2y = b.y - p.y;
+    const mag1 = Math.hypot(v1x, v1y), mag2 = Math.hypot(v2x, v2y);
+    if (mag1 === 0 || mag2 === 0) return 90;
+    const cos = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (mag1 * mag2)));
+    return Math.acos(cos) * 180 / Math.PI;
+  }
+  const angles = [
+    angleAt(tl, tr, bl),
+    angleAt(tr, tl, br),
+    angleAt(bl, tl, br),
+    angleAt(br, tr, bl),
+  ];
+  const maxAngleDeviation = Math.max(...angles.map(a => Math.abs(a - 90)));
+  return {
+    maxAngleDeviation,
+    skewed: maxAngleDeviation > CORNER_ANGLE_DEVIATION_THRESHOLD_DEG,
+  };
+}
+
 // Find the 4 solid-black square markers near the 4 corners of the page.
 // Instead of averaging all dark pixels in a quadrant (which gets dragged off-target
 // by background clutter like desk surface, shadows, or hands), find the largest
 // compact dark connected blob in each quadrant using flood fill, and use its
 // bounding-box center. This is robust to a dark background around the page.
-function findFiducials(gray, width, height) {
+// opts.subpixelRefine (default true) controls whether each found corner's
+// coarse blob centroid gets refined to sub-pixel precision — see
+// refineCentroidSubpixel below. Exposed as an option (rather than always
+// on) so callers can offer it as an admin-toggleable feature.
+function findFiducials(gray, width, height, opts = {}) {
   const quadrants = [
     { x0: 0, y0: 0, x1: width*0.35, y1: height*0.35, cornerX: 0, cornerY: 0 },
     { x0: width*0.65, y0: 0, x1: width, y1: height*0.35, cornerX: width, cornerY: 0 },
@@ -868,7 +911,7 @@ function findFiducials(gray, width, height) {
   // blob nearest the physical corner, by construction of the page layout.
   const corners = quadrants.map(qd => {
     const localThreshold = otsuThresholdRegion(gray, width, height, qd);
-    const candidates = findBlobCandidates(gray, width, height, qd, localThreshold);
+    const candidates = findBlobCandidates(gray, width, height, qd, localThreshold, opts);
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => {
       const da = (a.x-qd.cornerX)**2 + (a.y-qd.cornerY)**2;
@@ -952,7 +995,7 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
     const ctx = canvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const gray = toGray(imgData);
-    const { corners } = findFiducials(gray, canvas.width, canvas.height);
+    const { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine: readOpts.subpixelRefine });
     if (corners.some(c => c === null)) continue;
     const [tl, tr, bl] = corners;
     const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
@@ -1001,10 +1044,39 @@ function otsuThresholdRegion(gray, width, height, region) {
   return threshold;
 }
 
+// Refines a blob's coarse (hard-threshold) mass centroid to sub-pixel
+// precision. findBlobCandidates below decides pixel membership with a
+// binary in/out mask, so a pixel only partially covered by the printed
+// marker (an anti-aliased or JPEG-blurred edge — the norm for a phone
+// photo, not the exception) is either fully counted or not counted at
+// all, quantizing the true edge position to whole pixels. Re-weighting a
+// small window around the blob by how far below the threshold each pixel
+// actually is (rather than a hard 0/1 mask) lets those partial edge
+// pixels contribute proportionally, landing closer to the marker's real
+// center than the binary version can.
+function refineCentroidSubpixel(gray, width, height, bbox, threshold) {
+  const pad = 1;
+  const x0 = Math.max(0, Math.floor(bbox.minX) - pad);
+  const y0 = Math.max(0, Math.floor(bbox.minY) - pad);
+  const x1 = Math.min(width, Math.ceil(bbox.maxX) + pad + 1);
+  const y1 = Math.min(height, Math.ceil(bbox.maxY) + pad + 1);
+  let sumW = 0, sumX = 0, sumY = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const w = Math.max(0, threshold - gray[y * width + x]);
+      sumW += w; sumX += w * x; sumY += w * y;
+    }
+  }
+  if (sumW <= 0) return null;
+  return { x: sumX / sumW, y: sumY / sumW };
+}
+
 // Flood-fill based connected-component search: returns ALL plausibly
 // marker-shaped dark blobs within a region (not just the largest one),
 // so the caller can pick the most geometrically sensible candidate.
-function findBlobCandidates(gray, width, height, region, threshold) {
+// opts.subpixelRefine (default true) applies refineCentroidSubpixel to
+// each surviving blob.
+function findBlobCandidates(gray, width, height, region, threshold, opts = {}) {
   const x0 = Math.max(0, Math.floor(region.x0));
   const y0 = Math.max(0, Math.floor(region.y0));
   const x1 = Math.min(width, Math.ceil(region.x1));
@@ -1063,8 +1135,12 @@ function findBlobCandidates(gray, width, height, region, threshold) {
         // Mass centroid (average position of all dark pixels in the blob)
         // rather than the bounding-box midpoint — more stable than the
         // bbox center under asymmetric blur/shadow/JPEG smearing on one
-        // edge of the marker.
-        results.push({ x: sumX / count, y: sumY / count, count, bw, bh });
+        // edge of the marker. refineCentroidSubpixel sharpens this further
+        // to sub-pixel precision when enabled (see above).
+        const refined = opts.subpixelRefine === false
+          ? null
+          : refineCentroidSubpixel(gray, width, height, { minX, maxX, minY, maxY }, threshold);
+        results.push({ x: refined ? refined.x : sumX / count, y: refined ? refined.y : sumY / count, count, bw, bh });
       }
     }
   }
@@ -1311,6 +1387,7 @@ export {
   drawSheet,
   toGray,
   assessImageQuality,
+  assessCornerGeometry,
   findFiducials,
   findFiducialsWithOrientation,
   otsuThreshold,

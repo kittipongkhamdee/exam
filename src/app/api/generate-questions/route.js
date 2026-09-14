@@ -40,14 +40,22 @@ const COGNITIVE_LABEL = {
 // gemini-2.5-flash succeeded 6/6. So retry attempts after the first fall
 // back to that older release instead of hammering the same possibly-
 // congested model again — a same-model retry does little when the model
-// itself, not just the moment, is the bottleneck. GEMINI_MODEL still
-// overrides the first attempt only; fallback stays fixed since it exists
-// specifically as the known-reliable option.
-const GEMINI_MODEL_SCHEDULE = [
-  { model: process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 15000 },
-  { model: 'gemini-2.5-flash', timeoutMs: 15000 },
-  { model: 'gemini-2.5-flash', timeoutMs: 15000 },
-];
+// itself, not just the moment, is the bottleneck. modelOverride (the
+// admin's public.config gemini_model, from the Settings page) and then
+// GEMINI_MODEL only ever override the first attempt; fallback stays fixed
+// since it exists specifically as the known-reliable option. This also
+// means a typo'd/unsupported model name in modelOverride self-corrects:
+// Gemini reports that as a 4xx, which isn't in GEMINI_RETRYABLE_STATUSES
+// below, so generation fails fast on attempt 1 with a clear error instead
+// of silently falling back — the admin sees the mistake rather than the
+// system quietly ignoring their setting.
+function buildModelSchedule(modelOverride) {
+  return [
+    { model: modelOverride || process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 15000 },
+    { model: 'gemini-2.5-flash', timeoutMs: 15000 },
+    { model: 'gemini-2.5-flash', timeoutMs: 15000 },
+  ];
+}
 const GEMINI_RETRY_DELAYS_MS = [1000, 2000];
 const GEMINI_RETRYABLE_STATUSES = new Set([429, 503]);
 
@@ -67,16 +75,17 @@ function stripTrailingQuestionMark(text) {
 /**
  * POSTs to Gemini's generateContent endpoint, retrying transient failures
  * (503 overloaded, 429 rate-limited, timeouts, network errors) with
- * exponential backoff — stepping through GEMINI_MODEL_SCHEDULE rather than
- * retrying the same model each time (see its comment). Returns { data } on
- * success or { error, detail } once every attempt is exhausted.
+ * exponential backoff — stepping through buildModelSchedule(modelOverride)
+ * rather than retrying the same model each time (see its comment). Returns
+ * { data } on success or { error, detail } once every attempt is exhausted.
  */
-async function fetchGeminiWithRetry(apiKey, prompt, responseSchema) {
+async function fetchGeminiWithRetry(apiKey, prompt, responseSchema, modelOverride) {
   let lastError = 'ติดต่อ Gemini API ไม่สำเร็จ';
   let lastDetail = '';
+  const schedule = buildModelSchedule(modelOverride);
 
-  for (let attempt = 1; attempt <= GEMINI_MODEL_SCHEDULE.length; attempt++) {
-    const { model, timeoutMs } = GEMINI_MODEL_SCHEDULE[attempt - 1];
+  for (let attempt = 1; attempt <= schedule.length; attempt++) {
+    const { model, timeoutMs } = schedule[attempt - 1];
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -117,7 +126,7 @@ async function fetchGeminiWithRetry(apiKey, prompt, responseSchema) {
       clearTimeout(timeout);
     }
 
-    if (attempt < GEMINI_MODEL_SCHEDULE.length) {
+    if (attempt < schedule.length) {
       await sleep(GEMINI_RETRY_DELAYS_MS[attempt - 1]);
     }
   }
@@ -146,12 +155,15 @@ export async function POST(request) {
 
   // Shared config: public.config (key/value, readable by any authenticated
   // session per its own RLS) is the same table the ปพ.5 system already uses
-  // to store this exact key, set from that system's settings page — reusing
+  // to store gemini_api_key, set from that system's settings page — reusing
   // it here means the exam app never needs its own Vercel-side secret for
-  // this. GEMINI_API_KEY (a plain env var) is kept only as a fallback for
-  // local dev, where .env.local is the natural place to put it.
-  const { data: configRow } = await supabase.from('config').select('value').eq('key', 'gemini_api_key').maybeSingle();
-  const apiKey = configRow?.value || process.env.GEMINI_API_KEY;
+  // this. gemini_model is specific to this app (an admin's choice of which
+  // model to try first — see buildModelSchedule above). GEMINI_API_KEY (a
+  // plain env var) is kept only as a fallback for local dev, where
+  // .env.local is the natural place to put it.
+  const { data: configRows } = await supabase.from('config').select('key, value').in('key', ['gemini_api_key', 'gemini_model']);
+  const config = Object.fromEntries((configRows || []).map(r => [r.key, r.value]));
+  const apiKey = config.gemini_api_key || process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return Response.json({ error: 'ยังไม่ได้ตั้งค่า Gemini API Key ในเมนูตั้งค่า' }, { status: 500 });
   }
@@ -239,7 +251,7 @@ ${topicLines}
     required: ['questions'],
   };
 
-  const geminiRes = await fetchGeminiWithRetry(apiKey, prompt, responseSchema);
+  const geminiRes = await fetchGeminiWithRetry(apiKey, prompt, responseSchema, config.gemini_model);
   if (geminiRes.error) {
     return Response.json({ error: geminiRes.error, detail: geminiRes.detail }, { status: 502 });
   }

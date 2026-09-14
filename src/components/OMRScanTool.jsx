@@ -17,10 +17,11 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
-  findFiducialsWithOrientation, findFiducials, toGray, assessImageQuality, readBubbles, drawGradedOverlay, choiceLetters,
+  findFiducialsWithOrientation, findFiducials, toGray, assessImageQuality, assessCornerGeometry, readBubbles, drawGradedOverlay, choiceLetters,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
+import { getConfigValues } from '../lib/config-db';
 import { useAuth } from '../lib/AuthContext';
 import { formatStudentName } from '../lib/student-name';
 import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
@@ -57,6 +58,19 @@ const LIVE_DETECT_ASPECT_TOLERANCE = 0.35; // matches findFiducialsWithOrientati
 // (as opposed to every live-preview tick) — a bit larger than the live-detect
 // frame since this only runs once per capture, not several times a second.
 const QUALITY_CHECK_MAX_DIM = 640;
+
+// Admin-toggleable scanning features (public.config, set at Settings →
+// ตั้งค่าระบบ). Each defaults to enabled — a missing/unset config row means
+// "never explicitly turned off" — matching how DEFAULT_FEATURE_FLAGS below
+// is used before the config fetch resolves, so there's no on/off flicker
+// while it loads.
+const FEATURE_FLAG_CONFIG_KEYS = {
+  liveDetect: 'omr_live_detect_enabled',
+  qualityWarning: 'omr_quality_warning_enabled',
+  liveQualityHint: 'omr_live_quality_hint_enabled',
+  subpixelRefine: 'omr_subpixel_refine_enabled',
+};
+const DEFAULT_FEATURE_FLAGS = { liveDetect: true, qualityWarning: true, liveQualityHint: true, subpixelRefine: true };
 
 // Best-effort blur/glare check on a just-captured photo, downscaled first so
 // this stays cheap. Never throws — a captured photo that somehow can't be
@@ -101,6 +115,11 @@ const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
 const pillOk = pill + ' bg-green-50 text-green-700';
 const pillBad = pill + ' bg-red-50 text-red-600';
 const pillWarn = pill + ' bg-amber-50 text-amber-700';
+const QUALITY_WARNING_LABELS = {
+  blur: 'ภาพอาจเบลอเล็กน้อย — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ให้ถือกล้องนิ่งขึ้น',
+  glare: 'ภาพอาจสว่างเกินไป (แสงแฟลช/สะท้อน) — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ในที่แสงสม่ำเสมอขึ้น',
+  skew: 'กระดาษอาจเอียงหรือไม่แบนราบมากไป — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ให้กระดาษแบนราบและกล้องตั้งฉากกับกระดาษมากขึ้น',
+};
 const imgwrap = 'border border-gray-200 rounded-lg overflow-hidden max-w-full [&_img]:block [&_img]:w-full';
 const stat = 'text-center p-3 rounded-lg bg-gray-50';
 const statN = 'text-xl font-extrabold';
@@ -151,6 +170,27 @@ export default function OMRScanTool() {
   const alignedStreakRef = useRef(0);
   const overlayCanvasRef = useRef(null); // the visible <canvas> drawn on top of the video
   const [liveAligned, setLiveAligned] = useState(false); // all 4 corners found & aspect-plausible this tick
+  const [liveQualityHint, setLiveQualityHint] = useState(null); // 'blur' | 'glare' | null, this tick
+
+  // Admin master switches for the scanning features below (Settings →
+  // ตั้งค่าระบบ) — default to all-on until the real config loads, so a slow
+  // fetch never has features flicker off then back on.
+  const [featureFlags, setFeatureFlags] = useState(DEFAULT_FEATURE_FLAGS);
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await getConfigValues(supabase, Object.values(FEATURE_FLAG_CONFIG_KEYS));
+        setFeatureFlags({
+          liveDetect: cfg[FEATURE_FLAG_CONFIG_KEYS.liveDetect] !== 'false',
+          qualityWarning: cfg[FEATURE_FLAG_CONFIG_KEYS.qualityWarning] !== 'false',
+          liveQualityHint: cfg[FEATURE_FLAG_CONFIG_KEYS.liveQualityHint] !== 'false',
+          subpixelRefine: cfg[FEATURE_FLAG_CONFIG_KEYS.subpixelRefine] !== 'false',
+        });
+      } catch {
+        // best-effort — keep the all-on defaults if config can't be read
+      }
+    })();
+  }, []);
 
   const [savingResult, setSavingResult] = useState(false);
   const [saveResultError, setSaveResultError] = useState(null);
@@ -271,8 +311,10 @@ export default function OMRScanTool() {
           // stop a real exam-day scan from going through. Used below to
           // enrich the "corners not found" error with a likely cause, and
           // to flag a successful-but-suspect result for the teacher to
-          // double check.
-          const quality = computeCaptureQuality(srcCanvas);
+          // double check. Skipped entirely when the admin has turned this
+          // feature off (rather than computed-but-ignored), matching how
+          // liveDetect/subpixelRefine below skip their own work too.
+          const quality = featureFlags.qualityWarning ? computeCaptureQuality(srcCanvas) : null;
 
           // Live camera captures can come out rotated relative to how the
           // photo visually looked (a getUserMedia quirk on some devices) —
@@ -283,6 +325,7 @@ export default function OMRScanTool() {
           const readOpts = {
             numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
             idDigits: selectedQuiz.idDigits, layoutStyle, cols,
+            subpixelRefine: featureFlags.subpixelRefine,
           };
           const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
 
@@ -294,6 +337,17 @@ export default function OMRScanTool() {
             setScanStage('done');
             return;
           }
+
+          // Corner-geometry check: a curled/non-flat page or a steep camera
+          // angle shows up as a corner quadrilateral whose interior angles
+          // drift from 90° — see assessCornerGeometry's own comment for why
+          // this only detects and warns rather than trying to correct it.
+          const geometry = featureFlags.qualityWarning ? assessCornerGeometry(best.corners) : null;
+          const qualityWarnings = [
+            quality?.blurry && 'blur',
+            quality?.overexposed && 'glare',
+            geometry?.skewed && 'skew',
+          ].filter(Boolean);
 
           const warped = best.warped;
           const { responses, studentId: decodedId, layout } = readBubbles(warped, { ...readOpts, pageW, pageH });
@@ -331,7 +385,7 @@ export default function OMRScanTool() {
             decodedId, graded, correct, total: selectedQuiz.numQuestions, blank, ambiguous,
             earnedPoints, totalPoints,
             score: totalPoints ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : 0,
-            qualityWarning: quality?.blurry ? 'blur' : quality?.overexposed ? 'glare' : null,
+            qualityWarnings,
           });
           setScanStage('done');
         } catch {
@@ -438,8 +492,21 @@ export default function OMRScanTool() {
       ctx.drawImage(video, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
       const gray = toGray(imgData);
-      const { corners } = findFiducials(gray, w, h);
+      const { corners } = findFiducials(gray, w, h, { subpixelRefine: featureFlags.subpixelRefine });
       const allFound = corners.every(c => c !== null);
+
+      // Reuses the same downscaled gray buffer already built above for
+      // corner detection — negligible extra cost, so this can run every
+      // tick rather than throttled further. Shown only while not yet
+      // aligned (the aligned pill already covers that state), as a hint
+      // toward WHY alignment might be failing before the real, full-res
+      // scan ever runs.
+      if (featureFlags.liveQualityHint) {
+        const q = assessImageQuality(gray, w, h);
+        setLiveQualityHint(q.blurry ? 'blur' : q.overexposed ? 'glare' : null);
+      } else {
+        setLiveQualityHint(null);
+      }
       let aligned = false;
       if (allFound && selectedQuiz) {
         const [tl, tr, bl] = corners;
@@ -484,6 +551,7 @@ export default function OMRScanTool() {
     alignedStreakRef.current = 0;
     liveDetectBusyRef.current = false;
     setLiveAligned(false);
+    setLiveQualityHint(null);
     clearLiveOverlay();
   }
 
@@ -514,7 +582,7 @@ export default function OMRScanTool() {
           videoRef.current.play().catch(() => {});
         }
       });
-      startLiveDetect();
+      if (featureFlags.liveDetect) startLiveDetect();
     } catch {
       setCameraError('เปิดกล้องไม่สำเร็จ — ตรวจสอบว่าอนุญาตให้เว็บนี้ใช้กล้อง หรือลองอัปโหลดรูปแทน');
     }
@@ -858,13 +926,21 @@ export default function OMRScanTool() {
           <div className="mt-2">
             <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-black">
               <video ref={videoRef} playsInline muted className="w-full block" />
-              <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
-              <div className={
-                'absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold shadow ' +
-                (liveAligned ? 'bg-green-600 text-white' : 'bg-black/60 text-white')
-              }>
-                {liveAligned ? 'จัดกรอบพอดี — กำลังถ่าย...' : 'จัดกระดาษให้เห็นมุมทั้ง 4 ชัดเจน'}
-              </div>
+              {featureFlags.liveDetect && (
+                <>
+                  <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+                  <div className={
+                    'absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold shadow ' +
+                    (liveAligned ? 'bg-green-600 text-white' : 'bg-black/60 text-white')
+                  }>
+                    {liveAligned
+                      ? 'จัดกรอบพอดี — กำลังถ่าย...'
+                      : liveQualityHint === 'blur' ? 'ภาพเบลอ — ถือกล้องให้นิ่งขึ้น'
+                      : liveQualityHint === 'glare' ? 'แสงจ้าเกินไป — ลองหลบแสงสะท้อน'
+                      : 'จัดกระดาษให้เห็นมุมทั้ง 4 ชัดเจน'}
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex gap-2 mt-2.5">
               <button className={btn + ' flex-1 inline-flex items-center justify-center gap-2'} onClick={capturePhoto}>
@@ -872,7 +948,11 @@ export default function OMRScanTool() {
               </button>
               <button className={btnSecondary} onClick={closeCamera}>ยกเลิก</button>
             </div>
-            <div className="text-[11px] text-gray-500 mt-1.5">จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม — ระบบจะถ่ายให้อัตโนมัติเมื่อจัดกรอบพอดี หรือกดถ่ายภาพเองก็ได้</div>
+            <div className="text-[11px] text-gray-500 mt-1.5">
+              {featureFlags.liveDetect
+                ? 'จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม — ระบบจะถ่ายให้อัตโนมัติเมื่อจัดกรอบพอดี หรือกดถ่ายภาพเองก็ได้'
+                : 'จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ'}
+            </div>
           </div>
         )}
 
@@ -905,13 +985,11 @@ export default function OMRScanTool() {
                   รหัสที่อ่านได้จากกระดาษ: <strong className="text-gray-700">{scanResult.decodedId}</strong>
                   {rapidMode && !studentId ? ' — ระบบจับคู่ชื่อให้อัตโนมัติจากรหัสนี้' : ' — ตรวจสอบว่าตรงกับนักเรียนที่เลือกไว้'}
                 </div>
-                {scanResult.qualityWarning && (
-                  <div className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
-                    ⚠ {scanResult.qualityWarning === 'blur'
-                      ? 'ภาพอาจเบลอเล็กน้อย — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ให้ถือกล้องนิ่งขึ้น'
-                      : 'ภาพอาจสว่างเกินไป (แสงแฟลช/สะท้อน) — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ในที่แสงสม่ำเสมอขึ้น'}
+                {scanResult.qualityWarnings?.map(w => (
+                  <div key={w} className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
+                    ⚠ {QUALITY_WARNING_LABELS[w]}
                   </div>
-                )}
+                ))}
                 {effectiveStudent && scannedStudentIds.has(effectiveStudent.id) && !savedResultId && (
                   <div className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
                     ⚠ {formatStudentName(effectiveStudent)} เคยถูกสแกนแล้ว — บันทึกซ้ำจะเพิ่มผลใหม่อีกรายการ

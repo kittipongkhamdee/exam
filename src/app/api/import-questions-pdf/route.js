@@ -19,17 +19,20 @@ const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง'
 // client-side) since the client check is only a courtesy.
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-// See generate-questions/route.js's GEMINI_MODEL_SCHEDULE comment: retries
+// See generate-questions/route.js's buildModelSchedule comment: retries
 // fall back to the older, more consistently provisioned gemini-2.5-flash
 // after the first attempt rather than hammering "-latest" (whatever
 // Google's newest release currently is) again — verified live that a
 // larger request can fail repeatedly against a newly-released model while
-// the same request succeeds reliably against the older one.
-const GEMINI_MODEL_SCHEDULE = [
-  { model: process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 45000 },
-  { model: 'gemini-2.5-flash', timeoutMs: 45000 },
-  { model: 'gemini-2.5-flash', timeoutMs: 45000 },
-];
+// the same request succeeds reliably against the older one. modelOverride
+// is the admin's public.config gemini_model (Settings page).
+function buildModelSchedule(modelOverride) {
+  return [
+    { model: modelOverride || process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 45000 },
+    { model: 'gemini-2.5-flash', timeoutMs: 45000 },
+    { model: 'gemini-2.5-flash', timeoutMs: 45000 },
+  ];
+}
 const GEMINI_RETRY_DELAYS_MS = [1000, 2000];
 const GEMINI_RETRYABLE_STATUSES = new Set([429, 503]);
 
@@ -43,12 +46,13 @@ function sleep(ms) {
  * does. Returns { data } on success or { error, detail } once every attempt
  * is exhausted.
  */
-async function fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema) {
+async function fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema, modelOverride) {
   let lastError = 'ติดต่อ Gemini API ไม่สำเร็จ';
   let lastDetail = '';
+  const schedule = buildModelSchedule(modelOverride);
 
-  for (let attempt = 1; attempt <= GEMINI_MODEL_SCHEDULE.length; attempt++) {
-    const { model, timeoutMs } = GEMINI_MODEL_SCHEDULE[attempt - 1];
+  for (let attempt = 1; attempt <= schedule.length; attempt++) {
+    const { model, timeoutMs } = schedule[attempt - 1];
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -92,7 +96,7 @@ async function fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema) {
       clearTimeout(timeout);
     }
 
-    if (attempt < GEMINI_MODEL_SCHEDULE.length) {
+    if (attempt < schedule.length) {
       await sleep(GEMINI_RETRY_DELAYS_MS[attempt - 1]);
     }
   }
@@ -116,8 +120,9 @@ export async function POST(request) {
     return Response.json({ error: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
   }
 
-  const { data: configRow } = await supabase.from('config').select('value').eq('key', 'gemini_api_key').maybeSingle();
-  const apiKey = configRow?.value || process.env.GEMINI_API_KEY;
+  const { data: configRows } = await supabase.from('config').select('key, value').in('key', ['gemini_api_key', 'gemini_model']);
+  const config = Object.fromEntries((configRows || []).map(r => [r.key, r.value]));
+  const apiKey = config.gemini_api_key || process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return Response.json({ error: 'ยังไม่ได้ตั้งค่า Gemini API Key ในเมนูตั้งค่า' }, { status: 500 });
   }
@@ -177,7 +182,7 @@ export async function POST(request) {
     required: ['questions'],
   };
 
-  const geminiRes = await fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema);
+  const geminiRes = await fetchGeminiWithRetry(apiKey, prompt, pdfBase64, responseSchema, config.gemini_model);
   if (geminiRes.error) {
     return Response.json({ error: geminiRes.error, detail: geminiRes.detail }, { status: 502 });
   }

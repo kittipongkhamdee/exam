@@ -32,28 +32,34 @@ const COGNITIVE_LABEL = {
 // under normal load — both are meant to be retried, not surfaced as a
 // failure on the first try. A bigger request (more questions asked for in
 // one call) takes Gemini longer to generate, which measurably raises how
-// often it lands mid-generation on an overloaded moment — verified live: a
-// 15-question batch against "-latest" (whatever Google's newest release
-// currently is — often still capacity-constrained right after release)
-// failed with 503 on every one of 6 attempts across two test runs, while
-// the same exact request against the older, more provisioned
-// gemini-2.5-flash succeeded 6/6. So retry attempts after the first fall
-// back to that older release instead of hammering the same possibly-
-// congested model again — a same-model retry does little when the model
-// itself, not just the moment, is the bottleneck. modelOverride (the
-// admin's public.config gemini_model, from the Settings page) and then
-// GEMINI_MODEL only ever override the first attempt; fallback stays fixed
-// since it exists specifically as the known-reliable option. This also
-// means a typo'd/unsupported model name in modelOverride self-corrects:
-// Gemini reports that as a 4xx, which isn't in GEMINI_RETRYABLE_STATUSES
-// below, so generation fails fast on attempt 1 with a clear error instead
-// of silently falling back — the admin sees the mistake rather than the
-// system quietly ignoring their setting.
+// often it lands mid-generation on an overloaded moment — originally
+// verified live: a 15-question batch against "-latest" (whatever Google's
+// newest release currently is — often still capacity-constrained right
+// after release) failed with 503 on every one of 6 attempts across two
+// test runs, while the same exact request against an older, more
+// provisioned stable release succeeded 6/6. So retry attempts after the
+// first fall back to an older stable release instead of hammering the
+// same possibly-congested model again — a same-model retry does little
+// when the model itself, not just the moment, is the bottleneck.
+// FALLBACK_MODEL needs occasional manual updates as Google retires older
+// generations (Google gave gemini-2.5-flash-lite, a sibling of this exact
+// fallback's generation, a "no longer available to new users" notice as
+// of September 2026 — see ai.google.dev/gemini-api/docs/models for the
+// current list before changing this). modelOverride (the admin's
+// public.config gemini_model, from the Settings page) and then
+// GEMINI_MODEL only ever override the first attempt; the fallback stays
+// fixed since it exists specifically as the known-reliable option. This
+// also means a typo'd/unsupported model name in modelOverride
+// self-corrects: Gemini reports that as a 4xx, which isn't in
+// GEMINI_RETRYABLE_STATUSES below, so generation fails fast on attempt 1
+// with a clear error instead of silently falling back — the admin sees
+// the mistake rather than the system quietly ignoring their setting.
+const FALLBACK_MODEL = 'gemini-3.5-flash';
 function buildModelSchedule(modelOverride) {
   return [
     { model: modelOverride || process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 15000 },
-    { model: 'gemini-2.5-flash', timeoutMs: 15000 },
-    { model: 'gemini-2.5-flash', timeoutMs: 15000 },
+    { model: FALLBACK_MODEL, timeoutMs: 15000 },
+    { model: FALLBACK_MODEL, timeoutMs: 15000 },
   ];
 }
 const GEMINI_RETRY_DELAYS_MS = [1000, 2000];

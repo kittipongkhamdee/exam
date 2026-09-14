@@ -466,7 +466,7 @@ function AISettingsPanel() {
               </button>
             </div>
             <div className="text-[11px] text-gray-400 mt-1">
-              ปล่อยว่างไว้ = ใช้ค่าเริ่มต้น <span className="font-mono">{DEFAULT_GEMINI_MODEL}</span> — ดูชื่อโมเดลที่ใช้ได้ที่ ai.google.dev/gemini-api/docs/models หากพิมพ์ชื่อโมเดลที่ไม่มีจริงหรือไม่รองรับ ระบบจะลองย้อนไปใช้ gemini-2.5-flash แทนโดยอัตโนมัติในการสร้างข้อสอบครั้งถัดไป
+              ปล่อยว่างไว้ = ใช้ค่าเริ่มต้น <span className="font-mono">{DEFAULT_GEMINI_MODEL}</span> — ดูชื่อโมเดลที่ใช้ได้ที่ ai.google.dev/gemini-api/docs/models กดทดสอบก่อนบันทึกเสมอ ถ้าพิมพ์ชื่อโมเดลที่ไม่มีจริงหรือไม่รองรับ ระบบจะขึ้น error ทันทีตอนสร้าง/นำเข้าข้อสอบ (ไม่ได้สลับโมเดลให้อัตโนมัติ)
             </div>
             {resolvedModel && <div className="text-sm text-green-700 mt-1.5">ทดสอบสำเร็จ ขณะนี้ชี้ไปที่ <span className="font-mono text-xs bg-green-50 px-1.5 py-0.5 rounded">{resolvedModel}</span></div>}
             {checkModelError && <div className="text-sm text-red-600 mt-1.5">{checkModelError}</div>}

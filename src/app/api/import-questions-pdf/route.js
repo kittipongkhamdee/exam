@@ -19,18 +19,22 @@ const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง'
 // client-side) since the client check is only a courtesy.
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-// See generate-questions/route.js's buildModelSchedule comment: retries
-// fall back to the older, more consistently provisioned gemini-2.5-flash
-// after the first attempt rather than hammering "-latest" (whatever
-// Google's newest release currently is) again — verified live that a
-// larger request can fail repeatedly against a newly-released model while
-// the same request succeeds reliably against the older one. modelOverride
-// is the admin's public.config gemini_model (Settings page).
+// See generate-questions/route.js's buildModelSchedule comment (FALLBACK_MODEL
+// in particular — keep both files' fallback in sync, and re-check
+// ai.google.dev/gemini-api/docs/models when Google retires another
+// generation): retries fall back to an older, more consistently
+// provisioned stable release after the first attempt rather than
+// hammering "-latest" (whatever Google's newest release currently is)
+// again — verified live that a larger request can fail repeatedly against
+// a newly-released model while the same request succeeds reliably against
+// an older one. modelOverride is the admin's public.config gemini_model
+// (Settings page).
+const FALLBACK_MODEL = 'gemini-3.5-flash';
 function buildModelSchedule(modelOverride) {
   return [
     { model: modelOverride || process.env.GEMINI_MODEL || 'gemini-flash-latest', timeoutMs: 45000 },
-    { model: 'gemini-2.5-flash', timeoutMs: 45000 },
-    { model: 'gemini-2.5-flash', timeoutMs: 45000 },
+    { model: FALLBACK_MODEL, timeoutMs: 45000 },
+    { model: FALLBACK_MODEL, timeoutMs: 45000 },
   ];
 }
 const GEMINI_RETRY_DELAYS_MS = [1000, 2000];

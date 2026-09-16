@@ -365,16 +365,25 @@ export async function generateExamQuestionPaperPdf(supabase, {
   // Canvas text does not automatically wait for a webfont to finish
   // downloading — drawing before Sarabun is loaded silently falls back to
   // the browser default (e.g. Arial) instead of erroring, and the canvas
-  // never re-renders once the font does arrive. Explicitly load the two
-  // weights this file actually draws with (BODY_FONT's light 300, used for
-  // question/choice text, and SCHOOL_FONT's bold) via the Font Loading API
-  // first — passing THAI_GLYPH_SAMPLE as the text argument so the actual
-  // Thai subset loads, not just Latin (see its comment above).
+  // never re-renders once the font does arrive. Explicitly load every
+  // weight this file actually draws with via the Font Loading API first —
+  // passing THAI_GLYPH_SAMPLE as the text argument so the actual Thai
+  // subset loads, not just Latin (see its comment above). Three distinct
+  // weights: BODY_FONT's light 300 (question/choice text), SCHOOL_FONT's
+  // bold 700 (school name, indicator codes), and INSTRUCTION_FONT's
+  // regular 400 (subject/score line, the instructions box, indicator
+  // descriptions) — that last one used to get preloaded "for free" back
+  // when BODY_FONT was also regular 400, which silently stopped once
+  // BODY_FONT moved to light: without its own explicit load here, the
+  // instructions box would draw before regular-weight Sarabun's Thai
+  // subset arrives and fall back to the system default font instead,
+  // visibly mismatched against everything else on the page.
   if (document.fonts) {
     try {
       await Promise.all([
         document.fonts.load(BODY_FONT, THAI_GLYPH_SAMPLE),
         document.fonts.load(SCHOOL_FONT, THAI_GLYPH_SAMPLE),
+        document.fonts.load(INSTRUCTION_FONT, THAI_GLYPH_SAMPLE),
       ]);
     } catch {
       // best-effort — if the Font Loading API itself rejects, still proceed

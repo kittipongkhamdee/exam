@@ -14,7 +14,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
-import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, THAI_GLYPH_SAMPLE } from '../lib/omr-core';
+import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, ensureFontsLoaded } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
@@ -72,6 +72,7 @@ export default function OMRPrepareTool() {
 
   const letters = choiceLetters(scheme, numChoices);
   const [fontReady, setFontReady] = useState(false);
+  const [fontError, setFontError] = useState(null);
 
   const [activeStep, setActiveStep] = useState(0);
   // The answer-key grid (step 2) only switches to a 2-column layout once
@@ -369,28 +370,28 @@ export default function OMRPrepareTool() {
   // Canvas text does not automatically wait for a webfont to finish
   // downloading — if we draw before Sarabun is loaded, the canvas silently
   // falls back to the browser default and never re-renders with the right
-  // font even after it arrives. Explicitly load the specific weights used
-  // (regular + bold) via the Font Loading API and only mark ready once both
-  // resolve, so the sheet always redraws with Sarabun actually applied.
-  // THAI_GLYPH_SAMPLE as the text argument is required, not cosmetic — see
-  // its definition in omr-core.js for why an untargeted load() call never
-  // actually fetches Thai glyphs.
-  useEffect(() => {
-    (async () => {
-      if (!document.fonts) { setFontReady(true); return; }
-      try {
-        await Promise.all([
-          document.fonts.load('10px "Sarabun"', THAI_GLYPH_SAMPLE),
-          document.fonts.load('bold 10px "Sarabun"', THAI_GLYPH_SAMPLE),
-        ]);
-      } finally {
-        setFontReady(true);
-      }
-    })();
+  // font even after it arrives. ensureFontsLoaded verifies (not just
+  // requests) the specific weights used (regular + bold), retrying a few
+  // times — the teacher explicitly never wants a printed answer sheet
+  // silently substituting a fallback font, so a genuine failure here keeps
+  // fontReady false (regenerate() below never draws) and surfaces
+  // fontError instead of quietly drawing with whatever's on hand.
+  const loadFonts = useCallback(() => {
+    setFontError(null);
+    return ensureFontsLoaded(['10px "Sarabun"', 'bold 10px "Sarabun"'])
+      .then(() => setFontReady(true))
+      .catch(err => setFontError(err.message || 'โหลดฟอนต์ไม่สำเร็จ'));
   }, []);
 
+  useEffect(() => {
+    (async () => { await loadFonts(); })();
+  }, [loadFonts]);
+
   const regenerate = useCallback(() => {
-    if (!sheetCanvasRef.current) return;
+    // Never draws until fontReady — otherwise this ran on first mount
+    // regardless (fontReady only reordered a later redraw), so the very
+    // first paint could already be the wrong, fallback-font one.
+    if (!sheetCanvasRef.current || !fontReady) return;
     drawSheet(sheetCanvasRef.current, { title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode }, null);
     setSheetReady(true);
   }, [title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode, fontReady]);
@@ -723,11 +724,17 @@ export default function OMRPrepareTool() {
             <div className={imgwrap} style={{width: 240}}>
               <canvas ref={sheetCanvasRef} className="w-full"/>
             </div>
+            {fontError && (
+              <div className="text-xs text-red-600 mt-2.5 flex items-center gap-2 flex-wrap">
+                <span>{fontError}</span>
+                <button type="button" className={btnTiny} onClick={loadFonts}>ลองใหม่</button>
+              </div>
+            )}
             <div className="flex gap-2 mt-2.5 flex-wrap">
-              <button className={btn + ' inline-flex items-center gap-2'} onClick={downloadSheetHalfA4}>
+              <button className={btn + ' inline-flex items-center gap-2'} onClick={downloadSheetHalfA4} disabled={!sheetReady}>
                 <DownloadIcon className="h-4 w-4" /> ดาวน์โหลด PDF (A4 แนวนอน ซ้าย-ขวา = 2 ชุด)
               </button>
-              <button className={btnSecondary + ' inline-flex items-center gap-2'} onClick={downloadSheetPNG}>
+              <button className={btnSecondary + ' inline-flex items-center gap-2'} onClick={downloadSheetPNG} disabled={!sheetReady}>
                 <DownloadIcon className="h-4 w-4" /> ดาวน์โหลด PNG
               </button>
             </div>

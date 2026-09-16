@@ -49,6 +49,41 @@ const MARGIN = 40;
 // regardless of which specific words a given print job contains.
 const THAI_GLYPH_SAMPLE = 'กขคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮฤฦะัาำิีึืุูเแโใไๅๆ่้๊๋์ฯ0123456789';
 
+// Shared with exam-print.js and OMRPrepareTool.jsx: verifies every font in
+// fontSpecs is actually ready before returning, instead of the more common
+// "fire document.fonts.load() and best-effort try/catch around it" pattern
+// this replaced — the teacher explicitly does not want a printed exam ever
+// silently substituting the browser's own fallback font for Sarabun, even
+// just for one slow/flaky request. document.fonts.load() resolving is not
+// by itself sufficient proof: it can settle even when its underlying fetch
+// didn't actually complete cleanly in every browser, so this always
+// re-confirms with document.fonts.check() (which only reports true once a
+// font is genuinely available for use), retrying the load a few times
+// before giving up. Throws — rather than silently falling through to draw
+// with whatever's on hand — only once real, likely-transient failure (a
+// flaky connection to Google Fonts, most plausibly) survives every retry,
+// so callers should let this reject the whole print/export instead of
+// swallowing it, and show the teacher a clear "ลองใหม่อีกครั้ง" instead of
+// silently handing back a document in the wrong font.
+async function ensureFontsLoaded(fontSpecs, sampleText = THAI_GLYPH_SAMPLE) {
+  if (typeof document === 'undefined' || !document.fonts) return; // no Font Loading API — nothing to verify against
+  for (const spec of fontSpecs) {
+    let ok = false;
+    for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
+      try {
+        await document.fonts.load(spec, sampleText);
+      } catch {
+        // fall through — the check below and the retry loop handle a real failure
+      }
+      ok = document.fonts.check(spec, sampleText);
+      if (!ok && attempt < 3) await new Promise(resolve => setTimeout(resolve, 400 * attempt));
+    }
+    if (!ok) {
+      throw new Error(`โหลดฟอนต์ไม่สำเร็จ (${spec}) — ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่อีกครั้ง`);
+    }
+  }
+}
+
 function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH = PAGE_H, layoutStyle = 'auto', forcedCols) {
   // Returns bubble center coordinates for each question/choice, and ID grid.
   // layoutStyle picks which template to use — 'auto' infers from pageW for
@@ -1378,6 +1413,7 @@ export {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H,
   MARKER, MARGIN,
   THAI_GLYPH_SAMPLE,
+  ensureFontsLoaded,
   buildLayout,
   drawFiducials,
   choiceLetters,

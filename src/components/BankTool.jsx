@@ -166,15 +166,20 @@ function useExpandedGroups() {
   return [expanded, toggle];
 }
 
+// Groups by subject+grade only (not room) — every ห้อง teaching the same
+// วิชา+ชั้น shares one คลัง, matching how AI generation and the "จัดข้อสอบ"
+// question picker already pool bank_questions across sibling ห้อง (same
+// subject_code; see listMyBankQuestions/ExamSetTool's own pooling). A
+// subject_code-less (legacy) row falls back to its own subject_name+grade
+// text, same as everything else with no code to group by.
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
-    const key = `${item.subjects?.subject_name} (ชั้น ${formatGradeRoom(item.subjects?.grade_level, item.subjects?.room)})`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
+    const key = item.subjects?.subject_code || `${item.subjects?.subject_name}__${item.subjects?.grade_level}`;
+    if (!groups.has(key)) groups.set(key, { name: `${item.subjects?.subject_name} (ชั้น ม.${item.subjects?.grade_level})`, rows: [] });
+    groups.get(key).rows.push(item);
   }
-  return [...groups.entries()]
-    .map(([name, rows]) => ({ name, rows }))
+  return [...groups.values()]
     .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }));
 }
 
@@ -1088,7 +1093,12 @@ export default function BankTool() {
                     </span>
                     <ChevronDownIcon className={"h-4 w-4 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
                   </button>
-                  {expanded && (
+                  {expanded && (() => {
+                  // Only worth a room badge per question once this group
+                  // actually pools more than one ห้อง — a teacher with just
+                  // one ห้อง per subject+grade never sees it.
+                  const multiRoom = new Set(group.rows.map(r => r.subjects?.room)).size > 1;
+                  return (
                   <div className="px-3 pt-1 pb-2">
                   {group.rows.map(q => (
                     editingId === q.id ? (
@@ -1174,6 +1184,7 @@ export default function BankTool() {
                               <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTIES.find(d => d.value === q.difficulty)?.label || q.difficulty}</span>
                               {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
                               <span>{q.num_choices} ตัวเลือก</span>
+                              {multiRoom && <span className={pill + ' bg-gray-100 text-gray-500'}>ห้อง {q.subjects?.room}</span>}
                             </div>
                             {qualityStats[q.id] && (qualityStats[q.id].stars !== null || qualityStats[q.id].usageCount > 0) && (
                               <div className="mt-1 flex items-center gap-2 flex-wrap">
@@ -1197,7 +1208,8 @@ export default function BankTool() {
                     )
                   ))}
                   </div>
-                  )}
+                  );
+                  })()}
                 </div>
               );
                 });

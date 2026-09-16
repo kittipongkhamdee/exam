@@ -286,40 +286,6 @@ function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
   return positions;
 }
 
-// Purely decorative border framing the answer sheet's body (name/class/ID
-// box + the question grid) — NOT the title row, which shares the same
-// horizontal band as the two top fiducial markers and stays outside/above
-// the frame. Deliberately never drawn close to any of the 4 marker squares:
-// findFiducials (the scan-time corner finder) flood-fills connected dark
-// blobs, so a border line that touched or ran too close to a marker could
-// merge into one bigger, oddly-shaped blob and fail the scanner's
-// plausible-size/plausible-shape checks — turning a clean "corner found"
-// into "corner missing" for that photo. FRAME_MARKER_GAP is chosen well
-// beyond MARKER's own footprint, on top of MARGIN's already-blank border,
-// so this survives ordinary print/scan artifacts (ink bleed, camera blur,
-// JPEG compression) without a real risk of contact:
-// - top/bottom edges sit below/above the marker rows entirely (by
-//   FRAME_MARKER_GAP past the marker's own edge) — never overlapping the
-//   markers' y-range regardless of x, so the marker rows stay outside the
-//   frame no matter where its left/right edges fall.
-// - left/right edges are pulled a further FRAME_MARGIN_PAD past the
-//   existing content margin (outward, into the blank margin strip) purely
-//   so the line doesn't run directly through the leftmost/rightmost
-//   printed text and bubbles, which already sit flush with MARGIN itself.
-const FRAME_MARKER_GAP = 12;
-const FRAME_MARGIN_PAD = 8;
-function drawContentFrame(ctx, pageW = PAGE_W, pageH = PAGE_H) {
-  const left = MARGIN - FRAME_MARGIN_PAD;
-  const right = pageW - MARGIN + FRAME_MARGIN_PAD;
-  const top = MARGIN + MARKER + FRAME_MARKER_GAP;
-  const bottom = pageH - MARGIN - MARKER - FRAME_MARKER_GAP;
-  ctx.save();
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 1.2;
-  ctx.strokeRect(left, top, right - left, bottom - top);
-  ctx.restore();
-}
-
 // Prints the same "รหัส 007" stamp used on the question paper, right-aligned
 // to just clear the top-right fiducial marker (never over it — that square
 // must stay solid for scan-time corner detection) so a teacher can match a
@@ -558,7 +524,6 @@ function drawSheet(canvas, opts, answers) {
       });
     });
 
-    drawContentFrame(ctx, pageW, pageH);
     return layout;
   }
 
@@ -644,7 +609,6 @@ function drawSheet(canvas, opts, answers) {
       });
     });
 
-    drawContentFrame(ctx, pageW, pageH);
     return layout;
   }
 
@@ -809,7 +773,6 @@ function drawSheet(canvas, opts, answers) {
     });
   });
 
-  drawContentFrame(ctx, pageW, pageH);
   return layout;
 }
 

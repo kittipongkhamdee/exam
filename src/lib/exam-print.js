@@ -22,7 +22,7 @@
 // beyond fetching question images.
 
 import { jsPDF } from 'jspdf';
-import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText, THAI_GLYPH_SAMPLE } from './omr-core';
+import { PAGE_W, PAGE_H, MARGIN, choiceLetters, wrapText, ensureFontsLoaded } from './omr-core';
 import { getBankQuestionImageUrl } from './bank-db';
 
 const PRINT_SCALE = 3; // matches omr-core's PRINT_SCALE — sharp at print resolution
@@ -365,31 +365,16 @@ export async function generateExamQuestionPaperPdf(supabase, {
   // Canvas text does not automatically wait for a webfont to finish
   // downloading — drawing before Sarabun is loaded silently falls back to
   // the browser default (e.g. Arial) instead of erroring, and the canvas
-  // never re-renders once the font does arrive. Explicitly load every
-  // weight this file actually draws with via the Font Loading API first —
-  // passing THAI_GLYPH_SAMPLE as the text argument so the actual Thai
-  // subset loads, not just Latin (see its comment above). Three distinct
-  // weights: BODY_FONT's light 300 (question/choice text), SCHOOL_FONT's
-  // bold 700 (school name, indicator codes), and INSTRUCTION_FONT's
-  // regular 400 (subject/score line, the instructions box, indicator
-  // descriptions) — that last one used to get preloaded "for free" back
-  // when BODY_FONT was also regular 400, which silently stopped once
-  // BODY_FONT moved to light: without its own explicit load here, the
-  // instructions box would draw before regular-weight Sarabun's Thai
-  // subset arrives and fall back to the system default font instead,
-  // visibly mismatched against everything else on the page.
-  if (document.fonts) {
-    try {
-      await Promise.all([
-        document.fonts.load(BODY_FONT, THAI_GLYPH_SAMPLE),
-        document.fonts.load(SCHOOL_FONT, THAI_GLYPH_SAMPLE),
-        document.fonts.load(INSTRUCTION_FONT, THAI_GLYPH_SAMPLE),
-      ]);
-    } catch {
-      // best-effort — if the Font Loading API itself rejects, still proceed
-      // and draw with whatever's available rather than blocking the print.
-    }
-  }
+  // never re-renders once the font does arrive. ensureFontsLoaded verifies
+  // (not just requests) every weight this file actually draws with — the
+  // teacher explicitly never wants a printed exam silently substituting a
+  // fallback font, so this throws (aborting the print with a clear error)
+  // rather than best-effort proceeding if a weight genuinely can't be
+  // confirmed loaded. Three distinct weights: BODY_FONT's light 300
+  // (question/choice text), SCHOOL_FONT's bold 700 (school name, indicator
+  // codes), and INSTRUCTION_FONT's regular 400 (subject/score line, the
+  // instructions box, indicator descriptions).
+  await ensureFontsLoaded([BODY_FONT, SCHOOL_FONT, INSTRUCTION_FONT]);
 
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');

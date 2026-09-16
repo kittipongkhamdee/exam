@@ -39,10 +39,13 @@ const SUBTITLE_FONT = `14px ${FONT}`;
 const CONT_FONT = `14px ${FONT}`;
 const INSTRUCTION_FONT = `13px ${FONT}`;
 // Same size/weight as BODY_FONT — the question number is just "1. ", "2. "
-// inline with the question text now, not a bold "ข้อ 1." label.
-const QNUM_FONT = `13.5px ${FONT}`;
-const BODY_FONT = `13.5px ${FONT}`;
-const CHOICE_FONT = `13.5px ${FONT}`;
+// inline with the question text now, not a bold "ข้อ 1." label. Weight 300
+// (Light) per the teacher's request for thinner question/choice text —
+// needs its own Google Fonts weight (layout.js's Sarabun request) since
+// the default subsetted load only ships 400/500/600/700.
+const QNUM_FONT = `300 13.5px ${FONT}`;
+const BODY_FONT = `300 13.5px ${FONT}`;
+const CHOICE_FONT = `300 13.5px ${FONT}`;
 // Printed above the first question of each new ตัวชี้วัด/ผลการเรียนรู้ group
 // when groupByIndicator is on — see planQuestions/drawQuestionBlock. Code
 // and description run together on the same wrapped block (not a separate
@@ -363,9 +366,10 @@ export async function generateExamQuestionPaperPdf(supabase, {
   // downloading — drawing before Sarabun is loaded silently falls back to
   // the browser default (e.g. Arial) instead of erroring, and the canvas
   // never re-renders once the font does arrive. Explicitly load the two
-  // weights this file actually draws with (regular + bold) via the Font
-  // Loading API first — passing THAI_GLYPH_SAMPLE as the text argument so
-  // the actual Thai subset loads, not just Latin (see its comment above).
+  // weights this file actually draws with (BODY_FONT's light 300, used for
+  // question/choice text, and SCHOOL_FONT's bold) via the Font Loading API
+  // first — passing THAI_GLYPH_SAMPLE as the text argument so the actual
+  // Thai subset loads, not just Latin (see its comment above).
   if (document.fonts) {
     try {
       await Promise.all([

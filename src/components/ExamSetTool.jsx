@@ -205,6 +205,12 @@ function CopyExamSetDialog({ open, initial, subjectOptions, onCancel, onConfirm,
 
 const SOURCE_LABEL = { ai: 'AI สร้าง', manual: 'ครูสร้างเอง' };
 const DIFFICULTY_LABEL = { easy: 'ง่าย', medium: 'ปานกลาง', hard: 'ยาก' };
+// Labels choices ก/ข/ค/ง/... in the bank question picker's expand-to-preview
+// view only — independent of each exam set's own choiceScheme (used only at
+// print time), since this is just a reference view for the teacher while
+// picking questions, not anything printed. Covers up to 6 choices (the
+// bank's own max, see BankTool's numChoices input).
+const THAI_CHOICE_LETTERS = ['ก', 'ข', 'ค', 'ง', 'จ', 'ฉ'];
 
 function SheetIcon(props) {
   return (
@@ -262,6 +268,14 @@ function XIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
@@ -350,6 +364,10 @@ export default function ExamSetTool() {
   const [title, setTitle] = useState('');
   const [availableQuestions, setAvailableQuestions] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
+  // Which bank-question rows are expanded to show their choices in the
+  // picker below — a teacher click on the question text/tags toggles this,
+  // independent of the checkbox (selecting the question for the set).
+  const [expandedQuestionIds, setExpandedQuestionIds] = useState(new Set());
   const [qualityStats, setQualityStats] = useState({});
   const [filterDifficulty, setFilterDifficulty] = useState('');
   const [filterIndicatorId, setFilterIndicatorId] = useState('');
@@ -501,6 +519,14 @@ export default function ExamSetTool() {
   function toggleQuestion(id) {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     setPointsById(prev => (prev[id] !== undefined ? prev : { ...prev, [id]: 1 }));
+  }
+
+  function toggleExpandQuestion(id) {
+    setExpandedQuestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   function toggleSelectAllQuestions() {
@@ -938,25 +964,53 @@ export default function ExamSetTool() {
                     <div className="text-sm text-gray-500 mt-2">ไม่มีข้อสอบที่ตรงกับตัวกรองที่เลือก</div>
                   ) : (
                     <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                      {filteredQuestions.map(q => (
-                        <label key={q.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox" className="mt-0.5"
-                            checked={selectedIds.includes(q.id)}
-                            onChange={() => toggleQuestion(q.id)}
-                          />
-                          <span className="min-w-0">
-                            <span className="text-gray-700">{q.question_text}</span>{' '}
-                            <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
-                              {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
-                            </span>{' '}
-                            <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTY_LABEL[q.difficulty] || q.difficulty}</span>
-                            {qualityStats[q.id]?.stars != null && (
-                              <>{' '}<StarRating stars={qualityStats[q.id].stars} /></>
+                      {filteredQuestions.map(q => {
+                        const isExpanded = expandedQuestionIds.has(q.id);
+                        return (
+                          <div key={q.id}>
+                            <div className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50">
+                              <input
+                                type="checkbox" className="mt-0.5 shrink-0"
+                                checked={selectedIds.includes(q.id)}
+                                onChange={() => toggleQuestion(q.id)}
+                              />
+                              <button
+                                type="button"
+                                className="min-w-0 flex-1 text-left flex items-start gap-1.5 cursor-pointer"
+                                onClick={() => toggleExpandQuestion(q.id)}
+                              >
+                                <span className="min-w-0">
+                                  <span className="text-gray-700">{q.question_text}</span>{' '}
+                                  <span className={pill + (q.source === 'manual' ? ' bg-purple-50 text-purple-700' : ' bg-indigo-50 text-indigo-700')}>
+                                    {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
+                                  </span>{' '}
+                                  <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTY_LABEL[q.difficulty] || q.difficulty}</span>
+                                  {qualityStats[q.id]?.stars != null && (
+                                    <>{' '}<StarRating stars={qualityStats[q.id].stars} /></>
+                                  )}
+                                </span>
+                                <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 mt-0.5 transition-transform " + (isExpanded ? '' : '-rotate-90')} />
+                              </button>
+                            </div>
+                            {isExpanded && (
+                              <div className="pl-9 pr-3 pb-2.5 -mt-0.5 space-y-1">
+                                {(q.choices || []).map((c, ci) => (
+                                  <div
+                                    key={ci}
+                                    className={"text-xs " + (ci === q.correct_choice ? 'text-green-700 font-semibold' : 'text-gray-500')}
+                                  >
+                                    {THAI_CHOICE_LETTERS[ci] || ci + 1}. {c}
+                                    {ci === q.correct_choice && ' ✓'}
+                                  </div>
+                                ))}
+                                {q.explanation && (
+                                  <div className="text-xs text-gray-400 italic pt-0.5">เฉลย: {q.explanation}</div>
+                                )}
+                              </div>
                             )}
-                          </span>
-                        </label>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </>

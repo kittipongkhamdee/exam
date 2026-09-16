@@ -331,6 +331,23 @@ export default function BankTool() {
     ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code)
     : [];
   const allSaveRoomsSelected = sameCodeRooms.length > 0 && sameCodeRooms.every(s => saveRoomIds.includes(s.id));
+
+  // How many bank questions already exist per indicator, pooled across the
+  // selected subject's own room and every sibling room sharing its
+  // subject_code (same pooling BankTool's list view and ExamSetTool's
+  // picker already use — an indicator's coverage doesn't depend on which
+  // room a question happens to be filed under). Computed straight from the
+  // already-loaded bankQuestions (refreshBank fetches every subject's
+  // questions up front) rather than a separate query.
+  const indicatorQuestionCounts = (() => {
+    const poolIds = new Set([subjectId, ...sameCodeRooms.map(s => s.id)]);
+    const counts = {};
+    for (const q of bankQuestions) {
+      if (q.indicator_id == null || !poolIds.has(q.subject_id)) continue;
+      counts[q.indicator_id] = (counts[q.indicator_id] || 0) + 1;
+    }
+    return counts;
+  })();
   // Every room this batch will actually be saved into once "บันทึกเข้า
   // คลังทั้งหมด" is pressed — subjectId's own room only if still ticked,
   // plus whichever sibling rooms are ticked. Can be empty (both untoggled),
@@ -852,7 +869,9 @@ export default function BankTool() {
                 </div>
                 <label className={label}>ตัวชี้วัด (เลือกได้หลายข้อ)</label>
                 <div className="mt-1.5 max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {filteredIndicators.map(ind => (
+                  {filteredIndicators.map(ind => {
+                    const count = indicatorQuestionCounts[ind.id] || 0;
+                    return (
                     <label key={ind.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
                       <input
                         type="checkbox"
@@ -863,10 +882,14 @@ export default function BankTool() {
                       <span>
                         <span className="font-semibold text-gray-700">{ind.indicator_code}</span>{' '}
                         <span className="text-[10px] text-gray-400">({ind.kind})</span>{' '}
+                        <span className={pill + (count > 0 ? ' bg-sky-50 text-sky-700' : ' bg-amber-50 text-amber-700')}>
+                          {count > 0 ? `${count} ข้อ` : 'ยังไม่มีข้อสอบ'}
+                        </span>{' '}
                         <span className="text-gray-600">{ind.indicator_text}</span>
                       </span>
                     </label>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}

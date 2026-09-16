@@ -458,7 +458,18 @@ export default function ExamSetTool() {
     setQuestionsLoading(true);
     (async () => {
       try {
-        const list = await listMyBankQuestions(supabase, { subjectId });
+        // Pools the picker across every ห้อง teaching the same course (same
+        // subject_code) — a subject_code-less (legacy) row still only pools
+        // with itself, same fallback sameCodeRooms below already uses. The
+        // resulting ชุดข้อสอบ still only belongs to subjectId's own ห้อง
+        // (saveExamSet below, unchanged) — only which bank questions are
+        // available to pick from is pooled, not which ห้อง the finished
+        // ชุดข้อสอบ is for.
+        const selected = subjects.find(s => s.id === subjectId);
+        const poolIds = selected?.subject_code
+          ? subjects.filter(s => s.subject_code === selected.subject_code).map(s => s.id)
+          : [subjectId];
+        const list = await listMyBankQuestions(supabase, { subjectIds: poolIds });
         setAvailableQuestions(list);
         // Best-effort and independent of the question list itself — a slow
         // or failed stats query should never block picking questions, it
@@ -473,7 +484,7 @@ export default function ExamSetTool() {
         setQuestionsLoading(false);
       }
     })();
-  }, [subjectId]);
+  }, [subjectId, subjects]);
 
   function resetForm() {
     setEditingSetId(null);

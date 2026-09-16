@@ -152,8 +152,18 @@ export async function listEvalPlanUnitsForSubject(supabase, subjectId) {
 /**
  * List this teacher's saved bank questions, newest first, each with its
  * subject and (if any) source indicator attached.
+ *
+ * opts.subjectIds (plural) is how a caller pools the bank across every
+ * ห้อง teaching the same course — bank_questions is still stored one row
+ * per subjects.id (one per ห้อง), but a subject_code identifies "the same
+ * course, different ห้อง" (see BankTool.jsx/ExamSetTool.jsx's own
+ * sameCodeRooms), so a caller that's already resolved a subject's sibling
+ * ห้อง ids can pass all of them here to read them as one shared pool,
+ * without this module needing to know how that grouping was computed.
+ * opts.subjectId (singular) still exact-matches one row, for a caller that
+ * genuinely wants only that ห้อง's own questions.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ subjectId?: string }} [opts]
+ * @param {{ subjectId?: string, subjectIds?: string[] }} [opts]
  */
 export async function listMyBankQuestions(supabase, opts = {}) {
   const { data: { user } } = await supabase.auth.getUser();
@@ -166,7 +176,8 @@ export async function listMyBankQuestions(supabase, opts = {}) {
     `)
     .eq('subjects.user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
-  if (opts.subjectId) query = query.eq('subject_id', opts.subjectId);
+  if (opts.subjectIds?.length) query = query.in('subject_id', opts.subjectIds);
+  else if (opts.subjectId) query = query.eq('subject_id', opts.subjectId);
   const { data, error } = await query;
   if (error) throw error;
   return data;

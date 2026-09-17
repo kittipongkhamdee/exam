@@ -14,6 +14,29 @@ import { formatGradeRoom } from '../lib/format';
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
 const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+const pill = 'inline-block px-2 py-0.5 rounded-full text-xs font-bold';
+
+// Groups the selected date's proctor assignments by ชั้น (grade level), same
+// collapsible/numbered-per-group treatment as /exam's "ชุดข้อสอบที่สร้างไว้แล้ว"
+// list (see ExamSetTool.jsx) — a school can have several ห้อง assigned per
+// ชั้น on a given day, so grouping by ชั้น first makes the list easier to scan.
+function groupAssignmentsByGrade(assignments) {
+  const groups = new Map();
+  for (const a of assignments) {
+    const key = a.grade_level || '';
+    if (!groups.has(key)) groups.set(key, { name: a.grade_level ? `ชั้น ม.${a.grade_level}` : 'ไม่ระบุชั้น', rows: [] });
+    groups.get(key).rows.push(a);
+  }
+  return [...groups.values()];
+}
+
+function ChevronDownIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
 
 function UsersIcon(props) {
   return (
@@ -52,6 +75,17 @@ export default function ExamProctorAssignmentTool() {
   const [gradeRoomKey, setGradeRoomKey] = useState('');
   const [teacherId, setTeacherId] = useState('');
   const [saving, setSaving] = useState(false);
+  // ชั้น groups the teacher has expanded — every group starts collapsed by
+  // default, same as /exam's "ชุดข้อสอบที่สร้างไว้แล้ว" list.
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
+
+  function toggleGroup(name) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
 
   const refresh = useCallback(async (d) => {
     setLoading(true);
@@ -178,16 +212,37 @@ export default function ExamProctorAssignmentTool() {
           ) : assignments.length === 0 ? (
             <div className="text-sm text-gray-500">ยังไม่มีการมอบหมายครูคุมสอบในวันที่เลือก</div>
           ) : (
-            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-              {assignments.map(a => (
-                <div key={a.id} className="flex items-center justify-between gap-3 text-sm px-3 py-2">
-                  <div>
-                    <span className="font-semibold text-gray-900">ชั้น {formatGradeRoom(a.grade_level, a.room)}</span>
-                    <span className="text-gray-500"> — {a.profiles?.full_name || '(ไม่ระบุชื่อ)'}</span>
+            <div className="space-y-3">
+              {groupAssignmentsByGrade(assignments).map(group => {
+                const expanded = expandedGroups.has(group.name);
+                return (
+                  <div key={group.name}>
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.name)}
+                      className="w-full flex items-center gap-2 mb-2 text-left"
+                    >
+                      <span className="text-sm font-bold text-gray-800">{group.name}</span>
+                      <span className={pill + ' bg-gray-100 text-gray-600'}>{group.rows.length}</span>
+                      <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
+                    </button>
+                    {expanded && (
+                      <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                        {group.rows.map((a, i) => (
+                          <div key={a.id} className="flex items-center justify-between gap-3 text-sm px-3 py-2">
+                            <div>
+                              <span className="text-gray-400 font-normal">{i + 1}.</span>{' '}
+                              <span className="font-semibold text-gray-900">ชั้น {formatGradeRoom(a.grade_level, a.room)}</span>
+                              <span className="text-gray-500"> — {a.profiles?.full_name || '(ไม่ระบุชื่อ)'}</span>
+                            </div>
+                            <button className={btnTiny} onClick={() => handleRemove(a.id)}>ลบ</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <button className={btnTiny} onClick={() => handleRemove(a.id)}>ลบ</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

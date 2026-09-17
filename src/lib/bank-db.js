@@ -92,23 +92,33 @@ function indicatorGradeLevels(subjectGradeLevel) {
 }
 
 /**
- * List the core-curriculum indicators matching a subject's learning area
- * and grade level, for the "เลือกตัวชี้วัด" step of AI question generation.
- * Only covers รายวิชาพื้นฐาน (core subjects) — the reference table has no
- * rows for วิชาเพิ่มเติม (electives), so this returns empty for those and
- * the generation flow falls back to listEvalPlanUnitsForSubject or a
- * free-text topic instead. `kind` optionally narrows to ตัวชี้วัดระหว่างทาง
- * or ปลายทาง — indicators.kind's only two allowed values.
+ * List the core-curriculum indicators matching a subject's learning area,
+ * subject type, and grade level, for the "เลือกตัวชี้วัด" step of AI
+ * question generation. `indicators` rows carry both a subject_group AND a
+ * subject_type/subject_code — a รายวิชาพื้นฐาน (core) row's indicators are
+ * keyed by subject_group + grade_level alone, but a วิชาเพิ่มเติม
+ * (elective) row's indicators are keyed by its own specific subject_code
+ * instead, since electives sharing a broad subject_group (e.g. a computing
+ * elective filed under "วิทยาศาสตร์และเทคโนโลยี") do NOT share that whole
+ * learning area's indicators — matching on subject_group alone would also
+ * pull in every unrelated core indicator in that area (e.g. biology
+ * ตัวชี้วัด showing up for a spreadsheet-program elective). subject_type
+ * null (legacy rows predating this field) is treated as รายวิชาพื้นฐาน,
+ * matching how every other pre-existing subject already behaved.
+ * `kind` optionally narrows to ตัวชี้วัดระหว่างทาง or ปลายทาง —
+ * indicators.kind's only two allowed values.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ subject_group: string, grade_level: string }} subject
+ * @param {{ subject_group: string, subject_type?: string, subject_code?: string, grade_level: string }} subject
  * @param {{ kind?: 'ระหว่างทาง'|'ปลายทาง' }} [opts]
  */
 export async function listIndicatorsForSubject(supabase, subject, opts = {}) {
   let query = supabase
     .from('indicators')
     .select('id, standard_code, indicator_code, indicator_text, kind')
-    .eq('subject_group', subject.subject_group)
     .in('grade_level', indicatorGradeLevels(subject.grade_level));
+  query = subject.subject_type === 'วิชาเพิ่มเติม'
+    ? query.eq('subject_type', 'วิชาเพิ่มเติม').eq('subject_code', subject.subject_code)
+    : query.eq('subject_type', 'รายวิชาพื้นฐาน').eq('subject_group', subject.subject_group);
   if (opts.kind) query = query.eq('kind', opts.kind);
   const { data, error } = await query.order('indicator_code', { ascending: true });
   if (error) throw error;

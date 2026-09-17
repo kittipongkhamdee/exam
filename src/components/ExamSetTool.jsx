@@ -338,10 +338,25 @@ function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
     const key = `${item.subjects?.subject_name} (ชั้น ${formatGradeRoom(item.subjects?.grade_level, item.subjects?.room)})`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
+    if (!groups.has(key)) groups.set(key, { name: key, gradeLevel: item.subjects?.grade_level, rows: [] });
+    groups.get(key).rows.push(item);
   }
-  return [...groups.entries()].map(([name, rows]) => ({ name, rows }));
+  return [...groups.values()];
+}
+
+// Nests groupBySubject's per-subject+room groups one level further, under
+// a ชั้น (grade level) header, so the "ชุดข้อสอบที่สร้างไว้แล้ว" list can
+// be scanned by grade first when a teacher has several รายวิชา/ห้อง per
+// ชั้น. Grade order follows each grade's first appearance in the subject
+// groups, same as groupBySubject's own group order.
+function groupByGradeLevel(subjectGroups) {
+  const grades = new Map();
+  for (const g of subjectGroups) {
+    const key = g.gradeLevel || '';
+    if (!grades.has(key)) grades.set(key, { name: g.gradeLevel ? `ชั้น ม.${g.gradeLevel}` : 'ไม่ระบุชั้น', subjectGroups: [] });
+    grades.get(key).subjectGroups.push(g);
+  }
+  return [...grades.values()];
 }
 
 export default function ExamSetTool() {
@@ -368,6 +383,11 @@ export default function ExamSetTool() {
   // picker below — a teacher click on the question text/tags toggles this,
   // independent of the checkbox (selecting the question for the set).
   const [expandedQuestionIds, setExpandedQuestionIds] = useState(new Set());
+  // Subject+room groups in "ชุดข้อสอบที่สร้างไว้แล้ว" that the teacher has
+  // collapsed — tracked as collapsed (not expanded) so every group starts
+  // open by default, matching this list's behavior before collapsing was
+  // added.
+  const [collapsedExamSetGroups, setCollapsedExamSetGroups] = useState(new Set());
   const [qualityStats, setQualityStats] = useState({});
   const [filterDifficulty, setFilterDifficulty] = useState('');
   const [filterIndicatorId, setFilterIndicatorId] = useState('');
@@ -536,6 +556,14 @@ export default function ExamSetTool() {
     setExpandedQuestionIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleExamSetGroup(name) {
+    setCollapsedExamSetGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
       return next;
     });
   }
@@ -1199,44 +1227,62 @@ export default function ExamSetTool() {
         {setsLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!setsLoading && examSets.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบ</div>}
         {examSets.length > 0 && (
-          <div className="space-y-4">
-            {groupBySubject(examSets).map(group => (
-              <div key={group.name}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="shrink-0 h-6 w-6 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                    <SheetIcon className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="text-sm font-bold text-gray-800">{group.name}</div>
-                </div>
-                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {group.rows.map((s, i) => (
-                    <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
-                      <div className="min-w-0">
-                        <div className="font-medium text-gray-900 flex items-center gap-1.5 flex-wrap">
-                          <span className="text-gray-400 font-normal">{i + 1}.</span> {s.title}
-                          <span className={pill + ' bg-slate-100 text-slate-700 font-mono'}>รหัส {String(s.set_code).padStart(3, '0')}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
-                        {s.printed_out_of_sync && (
-                          <div className="text-xs text-amber-700 mt-0.5">⚠ แก้ไขชุดข้อสอบหลังพิมพ์ครั้งล่าสุด — กด &ldquo;พิมพ์ข้อสอบ (A4)&rdquo; อีกครั้งเพื่ออัปเดตกระดาษคำตอบ (OMR) ให้ตรงกัน</div>
+          <div className="space-y-5">
+            {groupByGradeLevel(groupBySubject(examSets)).map(gradeGroup => (
+              <div key={gradeGroup.name}>
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{gradeGroup.name}</div>
+                <div className="space-y-3">
+                  {gradeGroup.subjectGroups.map(group => {
+                    const expanded = !collapsedExamSetGroups.has(group.name);
+                    return (
+                      <div key={group.name}>
+                        <button
+                          type="button"
+                          onClick={() => toggleExamSetGroup(group.name)}
+                          className="w-full flex items-center gap-2 mb-2 text-left"
+                        >
+                          <span className="shrink-0 h-6 w-6 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                            <SheetIcon className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="text-sm font-bold text-gray-800">{group.name}</span>
+                          <span className={pill + ' bg-gray-100 text-gray-600'}>{group.rows.length}</span>
+                          <ChevronDownIcon className={"h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform " + (expanded ? '' : '-rotate-90')} />
+                        </button>
+                        {expanded && (
+                          <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                            {group.rows.map((s, i) => (
+                              <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
+                                <div className="min-w-0">
+                                  <div className="font-medium text-gray-900 flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-gray-400 font-normal">{i + 1}.</span> {s.title}
+                                    <span className={pill + ' bg-slate-100 text-slate-700 font-mono'}>รหัส {String(s.set_code).padStart(3, '0')}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
+                                  {s.printed_out_of_sync && (
+                                    <div className="text-xs text-amber-700 mt-0.5">⚠ แก้ไขชุดข้อสอบหลังพิมพ์ครั้งล่าสุด — กด &ldquo;พิมพ์ข้อสอบ (A4)&rdquo; อีกครั้งเพื่ออัปเดตกระดาษคำตอบ (OMR) ให้ตรงกัน</div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap max-w-full shrink-0">
+                                  <button className={btnTinyIndigo} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
+                                    <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังโหลด...' : 'พิมพ์ข้อสอบ (A4)'}
+                                  </button>
+                                  <button className={btnTinySky} onClick={() => openCopyDialog(s)}>
+                                    <CopyIcon className="h-3.5 w-3.5" /> คัดลอกไปอีกห้อง
+                                  </button>
+                                  <button className={btnTinyAmber} onClick={() => startEdit(s)}>
+                                    <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
+                                  </button>
+                                  <button className={btnTinyRed} onClick={() => setDeleteTarget(s)}>
+                                    <TrashIcon className="h-3.5 w-3.5" /> ลบ
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap max-w-full shrink-0">
-                        <button className={btnTinyIndigo} disabled={printingId === s.id} onClick={() => openPrintDialog(s)}>
-                          <PrinterIcon className="h-3.5 w-3.5" /> {printingId === s.id ? 'กำลังโหลด...' : 'พิมพ์ข้อสอบ (A4)'}
-                        </button>
-                        <button className={btnTinySky} onClick={() => openCopyDialog(s)}>
-                          <CopyIcon className="h-3.5 w-3.5" /> คัดลอกไปอีกห้อง
-                        </button>
-                        <button className={btnTinyAmber} onClick={() => startEdit(s)}>
-                          <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
-                        </button>
-                        <button className={btnTinyRed} onClick={() => setDeleteTarget(s)}>
-                          <TrashIcon className="h-3.5 w-3.5" /> ลบ
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

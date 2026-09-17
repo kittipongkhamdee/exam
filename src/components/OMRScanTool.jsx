@@ -869,29 +869,36 @@ export default function OMRScanTool() {
       <QuizHeader quiz={selectedQuiz} onChangeQuiz={handleChangeQuiz} scannedCount={roster.length} totalCount={students.length} />
 
       <div className={card + ' mt-4'}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-sm text-gray-500">นักเรียน</div>
-          <button
-            className="text-xs font-semibold text-indigo-600"
-            onClick={() => { setStudentId(''); if (rapidMode) setForcePicker(true); }}
-          >
-            {rapidMode ? 'เลือกนักเรียนเอง' : 'เปลี่ยนนักเรียน'}
-          </button>
-        </div>
-        {rapidMode && !studentId ? (
-          matchedStudent ? (
-            <div className="font-semibold text-gray-900 mb-4">{matchedStudent.student_code} {formatStudentName(matchedStudent)}</div>
-          ) : scanResult && !scanResult.error ? (
-            <div className={pillBad + ' px-3 py-2 text-sm block mb-4'}>
-              ไม่พบนักเรียนที่มีรหัสตรงกับ &ldquo;{scanResult.decodedId}&rdquo; ในห้องนี้ — เลือกนักเรียนเอง
+        {/* Hidden once the camera is actually streaming — this is student-
+            picker/context chrome, not part of taking the photo, so it only
+            competes for attention with the live viewfinder while capturing. */}
+        {!cameraOpen && (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-gray-500">นักเรียน</div>
+              <button
+                className="text-xs font-semibold text-indigo-600"
+                onClick={() => { setStudentId(''); if (rapidMode) setForcePicker(true); }}
+              >
+                {rapidMode ? 'เลือกนักเรียนเอง' : 'เปลี่ยนนักเรียน'}
+              </button>
             </div>
-          ) : (
-            <div className="text-sm text-gray-400 mb-4 flex items-center gap-1.5">
-              <ZapIcon className="h-4 w-4" /> โหมดตรวจรัว — ถ่ายภาพเพื่ออ่านชื่อนักเรียนจากรหัสอัตโนมัติ
-            </div>
-          )
-        ) : (
-          <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {formatStudentName(selectedStudent)}</div>
+            {rapidMode && !studentId ? (
+              matchedStudent ? (
+                <div className="font-semibold text-gray-900 mb-4">{matchedStudent.student_code} {formatStudentName(matchedStudent)}</div>
+              ) : scanResult && !scanResult.error ? (
+                <div className={pillBad + ' px-3 py-2 text-sm block mb-4'}>
+                  ไม่พบนักเรียนที่มีรหัสตรงกับ &ldquo;{scanResult.decodedId}&rdquo; ในห้องนี้ — เลือกนักเรียนเอง
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 mb-4 flex items-center gap-1.5">
+                  <ZapIcon className="h-4 w-4" /> โหมดตรวจรัว — ถ่ายภาพเพื่ออ่านชื่อนักเรียนจากรหัสอัตโนมัติ
+                </div>
+              )
+            ) : (
+              <div className="font-semibold text-gray-900 mb-4">{selectedStudent?.student_code} {formatStudentName(selectedStudent)}</div>
+            )}
+          </>
         )}
 
         {!scanImage && existingResult && !showRescan ? (
@@ -904,7 +911,7 @@ export default function OMRScanTool() {
           />
         ) : (
           <>
-            {!scanImage && (
+            {!scanImage && !cameraOpen && (
               <div className="flex flex-col gap-2">
                 <button className={btn + ' py-4 text-base inline-flex items-center justify-center gap-2'} onClick={openCamera}>
                   <CameraIcon className="h-5 w-5" /> {existingResult ? 'สแกนซ้ำ' : 'ถ่ายภาพกระดาษคำตอบ'}
@@ -948,11 +955,14 @@ export default function OMRScanTool() {
               </button>
               <button className={btnSecondary} onClick={closeCamera}>ยกเลิก</button>
             </div>
-            <div className="text-[11px] text-gray-500 mt-1.5">
-              {featureFlags.liveDetect
-                ? 'จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม — ระบบจะถ่ายให้อัตโนมัติเมื่อจัดกรอบพอดี หรือกดถ่ายภาพเองก็ได้'
-                : 'จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ'}
-            </div>
+            {/* Only shown without liveDetect — with it on, the overlay pill
+                on the video already gives the same guidance in real time,
+                so this would just be a duplicate line of text underneath. */}
+            {!featureFlags.liveDetect && (
+              <div className="text-[11px] text-gray-500 mt-1.5">
+                จัดกระดาษให้เห็นจุดดำทึบทั้ง 4 มุมชัดเจนในเฟรม แล้วกดถ่ายภาพ
+              </div>
+            )}
           </div>
         )}
 

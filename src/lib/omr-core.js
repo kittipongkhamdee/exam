@@ -427,8 +427,15 @@ function drawFillLine(ctx, label, x, y, lineEndX) {
   ctx.beginPath();
   ctx.moveTo(afterLabelX, y + 2);
   ctx.lineTo(lineEndX, y + 2);
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.4;
+  // จุดไข่ปลา (a dotted fill-in line) rather than a solid underline — a
+  // near-zero dash length with a round cap draws as a small round dot, not
+  // a short dash, so this reads as evenly-spaced dots.
+  ctx.lineCap = 'round';
+  ctx.setLineDash([0.1, 4]);
   ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
   return afterLabelX;
 }
 

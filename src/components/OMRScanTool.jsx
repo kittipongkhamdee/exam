@@ -145,7 +145,7 @@ export default function OMRScanTool() {
   // them still fall back to the manual list for one paper (a mis-decode,
   // an ambiguous digit) without leaving rapid mode for the rest of the
   // stack.
-  const [rapidMode, setRapidMode] = useState(false);
+  const [rapidMode, setRapidMode] = useState(true);
   const [forcePicker, setForcePicker] = useState(false);
 
   const [roster, setRoster] = useState([]);

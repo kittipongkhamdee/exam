@@ -384,10 +384,8 @@ export default function ExamSetTool() {
   // independent of the checkbox (selecting the question for the set).
   const [expandedQuestionIds, setExpandedQuestionIds] = useState(new Set());
   // Subject+room groups in "ชุดข้อสอบที่สร้างไว้แล้ว" that the teacher has
-  // collapsed — tracked as collapsed (not expanded) so every group starts
-  // open by default, matching this list's behavior before collapsing was
-  // added.
-  const [collapsedExamSetGroups, setCollapsedExamSetGroups] = useState(new Set());
+  // expanded — every group starts collapsed by default.
+  const [expandedExamSetGroups, setExpandedExamSetGroups] = useState(new Set());
   const [qualityStats, setQualityStats] = useState({});
   const [filterDifficulty, setFilterDifficulty] = useState('');
   const [filterIndicatorId, setFilterIndicatorId] = useState('');
@@ -561,7 +559,7 @@ export default function ExamSetTool() {
   }
 
   function toggleExamSetGroup(name) {
-    setCollapsedExamSetGroups(prev => {
+    setExpandedExamSetGroups(prev => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name); else next.add(name);
       return next;
@@ -1233,7 +1231,7 @@ export default function ExamSetTool() {
                 <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{gradeGroup.name}</div>
                 <div className="space-y-3">
                   {gradeGroup.subjectGroups.map(group => {
-                    const expanded = !collapsedExamSetGroups.has(group.name);
+                    const expanded = expandedExamSetGroups.has(group.name);
                     return (
                       <div key={group.name}>
                         <button

@@ -83,48 +83,8 @@ function StatCard({ icon: Icon, iconBg, value, unit, label }) {
   );
 }
 
-function ShortcutRow({ href, icon: Icon, iconBg, title, desc }) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center gap-3 -mx-2 px-2 py-2.5 rounded-lg hover:bg-gray-50 transition"
-    >
-      <div className={"h-11 w-11 rounded-xl flex items-center justify-center shrink-0 text-white " + iconBg}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="font-semibold text-gray-900">{title}</div>
-        <div className="text-xs text-gray-500 truncate">{desc}</div>
-      </div>
-      <ChevronRightIcon className="h-4 w-4 text-gray-300 shrink-0" />
-    </Link>
-  );
-}
-
-function ShortcutsCard() {
-  const { isAdmin } = useAuth();
-  return (
-    <div className={card + ' mb-6'}>
-      <div className="text-sm font-bold mb-1">⚡ ทางลัด</div>
-      <div className="divide-y divide-gray-100">
-        <ShortcutRow href="/omr/prepare" icon={SheetIcon} iconBg="bg-gradient-to-br from-indigo-600 to-blue-500" title="กระดาษคำตอบ" desc="สร้างชุดข้อสอบและคีย์เฉลย" />
-        <ShortcutRow href="/omr/scan" icon={CameraIcon} iconBg="bg-gradient-to-br from-emerald-600 to-teal-500" title="สแกนตรวจข้อสอบ" desc="ใช้กล้องมือถือตรวจอัตโนมัติ" />
-        <ShortcutRow href="/omr/report" icon={ReportIcon} iconBg="bg-gradient-to-br from-amber-500 to-orange-500" title="รายงานคะแนน" desc="ดูสถิติและส่งออก CSV" />
-        <ShortcutRow href="/exam/schedule" icon={ClipboardIcon} iconBg="bg-gradient-to-br from-fuchsia-600 to-purple-500" title="จัดสอบออนไลน์" desc="ตั้งรอบสอบและรหัส PIN" />
-        <ShortcutRow href="/exam/monitor" icon={MonitorIcon} iconBg="bg-gradient-to-br from-rose-600 to-red-500" title="คุมสอบ" desc="มอนิเตอร์สดขณะกำลังสอบ" />
-        <ShortcutRow href="/exam/report" icon={ReportIcon} iconBg="bg-gradient-to-br from-teal-600 to-cyan-500" title="รายงานสอบออนไลน์" desc="ผลสอบและเปิดเผยคะแนน" />
-        {isAdmin && (
-          <ShortcutRow href="/settings" icon={GearIcon} iconBg="bg-gradient-to-br from-slate-700 to-slate-500" title="ตั้งค่า" desc="การตั้งค่าระบบสำหรับผู้ดูแล" />
-        )}
-      </div>
-    </div>
-  );
-}
-
 // Fetched once by DashboardContent and handed down to StatsGrid and
-// RecentActivityCard, which the user wants rendered on either side of
-// ShortcutsCard rather than back-to-back — a single hook keeps that
-// reordering from requiring two separate fetches of the same data.
+// RecentActivityCard — a single hook so both can share the same fetch.
 function useDashboardData() {
   const [data, setData] = useState(null); // { totalQuizzes, totalScanned, avgScore, notYetScanned, recent }
   const [loading, setLoading] = useState(true);
@@ -363,7 +323,6 @@ function DashboardContent() {
       <SectionLabel>สอบออนไลน์</SectionLabel>
       <ExamStatsGrid data={examData} loading={examLoading} />
 
-      <ShortcutsCard />
       <RecentActivityCard data={data} loading={loading} />
       <ExamActivityCard data={examData} loading={examLoading} />
     </div>
@@ -437,15 +396,6 @@ function ReportIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M4 20V10M12 20V4M20 20v-7" />
-    </svg>
-  );
-}
-
-function GearIcon(props) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
     </svg>
   );
 }

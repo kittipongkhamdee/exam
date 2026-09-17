@@ -1198,7 +1198,12 @@ export default function ExamSetTool() {
         <div className="font-semibold text-gray-900 mb-3">ชุดข้อสอบที่สร้างไว้แล้ว</div>
         {setsLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!setsLoading && examSets.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบ</div>}
-        {examSets.length > 0 && (
+        {examSets.length > 0 && (() => {
+          // Running count across every group (not reset per subject) so a
+          // teacher can refer to "รายการที่ 5" unambiguously regardless of
+          // how many subjects the list is split into.
+          let itemNo = 0;
+          return (
           <div className="space-y-4">
             {groupBySubject(examSets).map(group => (
               <div key={group.name}>
@@ -1209,11 +1214,13 @@ export default function ExamSetTool() {
                   <div className="text-sm font-bold text-gray-800">{group.name}</div>
                 </div>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {group.rows.map(s => (
+                  {group.rows.map(s => {
+                    itemNo += 1;
+                    return (
                     <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
                       <div className="min-w-0">
                         <div className="font-medium text-gray-900 flex items-center gap-1.5 flex-wrap">
-                          {s.title}
+                          <span className="text-gray-400 font-normal">{itemNo}.</span> {s.title}
                           <span className={pill + ' bg-slate-100 text-slate-700 font-mono'}>รหัส {String(s.set_code).padStart(3, '0')}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-0.5">{s.question_count} ข้อ</div>
@@ -1236,12 +1243,14 @@ export default function ExamSetTool() {
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       <ConfirmDialog

@@ -571,9 +571,17 @@ export default function OMRPrepareTool() {
         {!allQuizzesLoading && allQuizzes.length === 0 && (
           <div className="text-sm text-gray-500">ยังไม่มีชุดข้อสอบในระบบ — เลือกวิชาด้านล่างเพื่อเริ่มสร้างชุดแรก</div>
         )}
-        {allQuizzes.length > 0 && (
+        {allQuizzes.length > 0 && (() => {
+          const quizGroups = groupQuizzesBySubject(allQuizzes);
+          // Numbered once across the full flattened list (not just the
+          // expanded groups) so a quiz's number stays the same regardless
+          // of which groups happen to be collapsed at the time.
+          const quizNumbers = new Map();
+          let n = 0;
+          quizGroups.forEach(g => g.rows.forEach(q => quizNumbers.set(q.id, ++n)));
+          return (
           <div className="max-h-72 overflow-y-auto -mx-5 px-5">
-            {groupQuizzesBySubject(allQuizzes).map(group => {
+            {quizGroups.map(group => {
               const expanded = expandedQuizGroups.has(group.name);
               return (
                 <div key={group.name}>
@@ -590,7 +598,9 @@ export default function OMRPrepareTool() {
                   {expanded && group.rows.map(q => (
                     <div key={q.id} className="flex justify-between items-center gap-3 text-sm py-2 border-b border-gray-100 last:border-b-0">
                       <div className="min-w-0">
-                        <div className="font-medium text-gray-900 truncate">{q.title}</div>
+                        <div className="font-medium text-gray-900 truncate">
+                          <span className="text-gray-400 font-normal">{quizNumbers.get(q.id)}.</span> {q.title}
+                        </div>
                         <div className="text-xs text-gray-500 mt-0.5">{q.num_questions} ข้อ · {q.num_choices} ตัวเลือก</div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -607,7 +617,8 @@ export default function OMRPrepareTool() {
               );
             })}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto overflow-y-hidden" role="tablist">

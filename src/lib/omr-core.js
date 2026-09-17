@@ -241,7 +241,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const idRowH = 20, idColGap = 22;
   const idBoxW = 9 * idColGap + 30;
   const idBoxH = idLabelH + idDigits * idRowH + 14;
-  const idBoxY = MARGIN + MARKER + 58; // clears the name line + the ชั้น/เลขที่ line below it
+  const idBoxY = MARGIN + MARKER + 50; // clears the name line + the ชั้น/เลขที่ line below it
   // Keep clear of the top-right fiducial marker, not just the page margin.
   const idBoxX = pageW - MARGIN - MARKER - 10 - idBoxW;
   const idStartX = idBoxX + 16;

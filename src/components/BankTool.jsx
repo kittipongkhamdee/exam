@@ -257,17 +257,6 @@ export default function BankTool() {
 
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
-  // Whether subjectId's own room is itself one of the save targets — on by
-  // default (matches pre-checklist behavior), but toggleable off so a
-  // teacher can save into only a sibling room (e.g. only ม.2/2) without
-  // subjectId's own room, without having to switch what "เลือกวิชา" points
-  // at (which also drives the indicators query below).
-  const [includePrimaryRoom, setIncludePrimaryRoom] = useState(true);
-  // Other rooms sharing subjectId's own subject_code, ticked to also save
-  // every question in this batch into — see saveRoomIds/handleSaveAll
-  // below. Both this and includePrimaryRoom reset whenever subjectId
-  // changes, since the candidate room list depends on it.
-  const [saveRoomIds, setSaveRoomIds] = useState([]);
   const [indicators, setIndicators] = useState([]);
   const [indicatorIds, setIndicatorIds] = useState([]);
   const [units, setUnits] = useState([]);
@@ -325,12 +314,15 @@ export default function BankTool() {
     return opts;
   })();
 
-  // Rooms available to also save into, beyond the selected subjectId
-  // itself — same subject_code, excluding subjectId — see saveRoomIds.
+  // Other rooms sharing subjectId's own subject_code — used only to pool
+  // indicatorQuestionCounts below across every ห้อง teaching this subject
+  // (bank_questions saves always go to subjectId's own room; every sibling
+  // room can already see them via the subject_code pooling in
+  // listMyBankQuestions/ExamSetTool's picker, so there's no separate
+  // "save into other rooms too" step here any more).
   const sameCodeRooms = selectedSubject?.subject_code
     ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code)
     : [];
-  const allSaveRoomsSelected = sameCodeRooms.length > 0 && sameCodeRooms.every(s => saveRoomIds.includes(s.id));
 
   // How many bank questions already exist per indicator, pooled across the
   // selected subject's own room and every sibling room sharing its
@@ -348,18 +340,6 @@ export default function BankTool() {
     }
     return counts;
   })();
-  // Every room this batch will actually be saved into once "บันทึกเข้า
-  // คลังทั้งหมด" is pressed — subjectId's own room only if still ticked,
-  // plus whichever sibling rooms are ticked. Can be empty (both untoggled),
-  // which handleSaveAll refuses to act on.
-  const saveTargetIds = [...(includePrimaryRoom ? [subjectId] : []), ...saveRoomIds];
-
-  function toggleSaveRoom(id) {
-    setSaveRoomIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }
-  function toggleAllSaveRooms() {
-    setSaveRoomIds(allSaveRoomsSelected ? [] : sameCodeRooms.map(s => s.id));
-  }
 
   // Best-effort and independent of the bank list load itself — a slow or
   // failed stats query should never block the question list from showing,
@@ -648,26 +628,11 @@ export default function BankTool() {
   const hasIncompleteDraft = draftQuestions.some(q => !q.question_text.trim() || q.choices.some(c => !c.trim()));
 
   async function handleSaveAll() {
-    if (draftQuestions.length === 0 || saveTargetIds.length === 0) return;
+    if (draftQuestions.length === 0) return;
     setSaving(true);
     try {
-      // Every draft already carries subject_id === subjectId (set at add
-      // time by handleGenerate/handleAddManual/handleImportFile) — the
-      // checklist above can point saveTargetIds at any combination of
-      // subjectId's own room and its siblings (including subjectId's own
-      // room being unticked, saving only into sibling rooms instead), so
-      // this always re-targets every row explicitly rather than assuming
-      // subjectId is one of the targets. Same duplication
-      // ExamSetTool's copyExamSetToSubject does for a whole ชุดข้อสอบ, just
-      // done directly here since these are still unsaved drafts rather than
-      // an already-saved row to clone.
-      const rows = saveTargetIds.length === 1 && saveTargetIds[0] === subjectId
-        ? draftQuestions
-        : saveTargetIds.flatMap(subject_id => draftQuestions.map(q => ({ ...q, subject_id })));
-      await saveBankQuestions(supabase, rows);
+      await saveBankQuestions(supabase, draftQuestions);
       setDraftQuestions([]);
-      setSaveRoomIds([]);
-      setIncludePrimaryRoom(true);
       refreshBank();
     } catch (err) {
       setGenerateError(err.message || 'บันทึกไม่สำเร็จ');
@@ -770,7 +735,7 @@ export default function BankTool() {
         <div className={row}>
           <div className={field}>
             <label className={label}>วิชา</label>
-            <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSaveRoomIds([]); setIncludePrimaryRoom(true); }}>
+            <select className={inputCls} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
               <option value="">— เลือกวิชา —</option>
               {subjectDropdownOptions.map(o => (
                 <option key={o.id} value={o.id}>{o.label}</option>
@@ -792,36 +757,6 @@ export default function BankTool() {
             <input type="number" min={1} max={15} className={inputCls + ' w-24'} value={numQuestions} onChange={e => setNumQuestions(e.target.value)} />
           </div>
         </div>
-
-        {subjectId && sameCodeRooms.length > 0 && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className={label}>บันทึกเข้าห้อง</label>
-              <button type="button" className={btnTiny} onClick={toggleAllSaveRooms}>
-                {allSaveRoomsSelected ? 'ยกเลิกห้องอื่นทั้งหมด' : 'เลือกห้องอื่นทั้งหมด'}
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <label className={'inline-flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-sm font-medium cursor-pointer ' + (includePrimaryRoom ? 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100' : 'border-gray-200 text-gray-500 hover:bg-gray-50')}>
-                <input type="checkbox" checked={includePrimaryRoom} onChange={() => setIncludePrimaryRoom(v => !v)} />
-                ชั้น {formatGradeRoom(selectedSubject.grade_level, selectedSubject.room)}
-                <span className={'text-[10px] font-normal ' + (includePrimaryRoom ? 'text-indigo-500' : 'text-gray-400')}>(ที่เลือกไว้ด้านบน)</span>
-              </label>
-              {sameCodeRooms.map(s => (
-                <label key={s.id} className="inline-flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
-                  <input type="checkbox" checked={saveRoomIds.includes(s.id)} onChange={() => toggleSaveRoom(s.id)} />
-                  ชั้น {formatGradeRoom(s.grade_level, s.room)}
-                </label>
-              ))}
-            </div>
-            {saveTargetIds.length === 0 && (
-              <p className="text-xs text-red-600 mt-1.5">เลือกอย่างน้อย 1 ห้องก่อนจึงจะบันทึกได้</p>
-            )}
-            <p className="text-xs text-gray-500 mt-1.5">
-              ข้อสอบที่บันทึกในขั้นตอนที่ 2 จะเข้าคลังของทุกห้องที่ติ๊กไว้ (คนละชุดข้อมูลต่อห้อง แก้ไขภายหลังจะไม่ซิงก์กัน) — ยกเลิกห้องที่เลือกไว้ด้านบนได้ถ้าต้องการบันทึกเข้าห้องอื่นแทน
-            </p>
-          </div>
-        )}
 
         <div className="mt-4">
           <label className={label}>ประเภทข้อสอบ (เลือกได้หลายข้อ ไม่บังคับเลือก)</label>
@@ -897,11 +832,6 @@ export default function BankTool() {
             {sourceMode === 'units' && (
               <>
                 <label className={label}>หน่วยการเรียนรู้ (เลือก 1 หน่วย — ใช้ตัวชี้วัดที่ผูกไว้กับหน่วยนั้น)</label>
-                {sameCodeRooms.length > 0 && (
-                  <p className="text-xs text-amber-600 mt-0.5">
-                    แผนของ &ldquo;ชั้น {formatGradeRoom(selectedSubject?.grade_level, selectedSubject?.room)}&rdquo; เท่านั้น — ห้องอื่นที่ติ๊กไว้ด้านบนอาจมีแผนของตัวเองต่างกัน
-                  </p>
-                )}
                 <div className="mt-1.5 max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {units.map(u => (
                     <label key={u.id} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
@@ -987,10 +917,8 @@ export default function BankTool() {
         <div className={card}>
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold text-gray-900">2. ตรวจทานร่างข้อสอบ ({draftQuestions.length} ข้อ)</div>
-            <button type="button" className={btn} disabled={saving || hasIncompleteDraft || saveTargetIds.length === 0} onClick={handleSaveAll}>
-              <SaveIcon className="h-4 w-4" /> {saving
-                ? 'กำลังบันทึก...'
-                : saveTargetIds.length > 1 ? `บันทึกเข้าคลังทั้งหมด (${saveTargetIds.length} ห้อง)` : 'บันทึกเข้าคลังทั้งหมด'}
+            <button type="button" className={btn} disabled={saving || hasIncompleteDraft} onClick={handleSaveAll}>
+              <SaveIcon className="h-4 w-4" /> {saving ? 'กำลังบันทึก...' : 'บันทึกเข้าคลังทั้งหมด'}
             </button>
           </div>
           {hasIncompleteDraft && <div className="text-xs text-amber-600 mb-3">กรอกคำถามและตัวเลือกให้ครบทุกข้อก่อนบันทึก</div>}

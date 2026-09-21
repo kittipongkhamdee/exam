@@ -477,7 +477,12 @@ export default function ExamSetTool() {
     (async () => {
       try {
         // Pools the picker across every ห้อง teaching the same course (same
-        // subject_code) — a subject_code-less (legacy) row still only pools
+        // subject_code AND grade_level — a subject_code is only a "same
+        // course, different ห้อง" signal within one ชั้น; a school can end
+        // up reusing the same subject_code across two different ชั้น for
+        // two genuinely different courses, and pooling by subject_code
+        // alone would then wrongly mix those two courses' bank questions
+        // together) — a subject_code-less (legacy) row still only pools
         // with itself, same fallback sameCodeRooms below already uses. The
         // resulting ชุดข้อสอบ still only belongs to subjectId's own ห้อง
         // (saveExamSet below, unchanged) — only which bank questions are
@@ -485,7 +490,7 @@ export default function ExamSetTool() {
         // ชุดข้อสอบ is for.
         const selected = subjects.find(s => s.id === subjectId);
         const poolIds = selected?.subject_code
-          ? subjects.filter(s => s.subject_code === selected.subject_code).map(s => s.id)
+          ? subjects.filter(s => s.subject_code === selected.subject_code && s.grade_level === selected.grade_level).map(s => s.id)
           : [subjectId];
         const list = await listMyBankQuestions(supabase, { subjectIds: poolIds });
         setAvailableQuestions(list);
@@ -641,11 +646,14 @@ export default function ExamSetTool() {
   const totalPoints = selectedIds.reduce((sum, id) => sum + (pointsById[id] ?? 1), 0);
 
   const selectedSubject = subjects.find(s => s.id === subjectId) || null;
-  // Only offer rooms that share the selected subject's own subject_code —
-  // a subject row with no code set (legacy data) matches nothing, since
-  // there's no reliable signal it's "the same course" otherwise.
+  // Only offer rooms that share the selected subject's own subject_code AND
+  // grade_level — a subject_code is only a "same course, different ห้อง"
+  // signal within one ชั้น (a school can reuse the same subject_code across
+  // two different ชั้น for two unrelated courses), and a subject row with
+  // no code set (legacy data) matches nothing, since there's no reliable
+  // signal it's "the same course" otherwise.
   const sameCodeRooms = selectedSubject?.subject_code
-    ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code)
+    ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code && s.grade_level === selectedSubject.grade_level)
     : [];
   const allTargetRoomsSelected = sameCodeRooms.length > 0 && sameCodeRooms.every(s => targetRoomIds.includes(s.id));
 

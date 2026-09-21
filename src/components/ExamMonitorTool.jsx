@@ -233,7 +233,15 @@ function StudentCard({ row, flagged, onUnlock, onLock, unlocking, locking }) {
         {row.status === 'submitted' && row.score !== null && (
           <span className="text-xs font-bold text-gray-700">{row.score}%</span>
         )}
+        {row.status === 'in_progress' && row.total_questions > 0 && row.answered_count !== null && (
+          <span className="text-xs font-bold text-gray-700">
+            {row.answered_count}/{row.total_questions} ({Math.round((row.answered_count / row.total_questions) * 100)}%)
+          </span>
+        )}
       </div>
+      {row.status === 'in_progress' && row.live_correct_count !== null && row.live_correct_count !== undefined && (
+        <div className="mt-0.5 text-[11px] text-gray-400">ถูกแล้ว {row.live_correct_count} ข้อ (จากที่ตอบ)</div>
+      )}
       {row.violation_count > 0 && (
         <div className="mt-1 text-xs font-bold text-red-600">สลับหน้าจอ {row.violation_count} ครั้ง</div>
       )}

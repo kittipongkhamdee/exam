@@ -398,6 +398,11 @@ export default function ExamSetTool() {
   // below. Only the derived order is ever persisted (in handleSave); this
   // never mutates selectedIds itself.
   const [sortMode, setSortMode] = useState('manual');
+  // Per-ชุดข้อสอบ toggles for the online exam's per-student randomization
+  // (see saveExamSet/start_exam_attempt) — both default on, matching the
+  // always-random behavior every set had before these existed.
+  const [shuffleQuestions, setShuffleQuestions] = useState(true);
+  const [shuffleChoices, setShuffleChoices] = useState(true);
   const [bulkPoints, setBulkPoints] = useState(1);
   const [editingSetId, setEditingSetId] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -516,6 +521,8 @@ export default function ExamSetTool() {
     setSelectedIds([]);
     setPointsById({});
     setSortMode('manual');
+    setShuffleQuestions(true);
+    setShuffleChoices(true);
     setFormError(null);
     setTargetRoomIds([]);
   }
@@ -531,6 +538,8 @@ export default function ExamSetTool() {
       setSelectedIds(full.questions.map(q => q.id));
       setPointsById(Object.fromEntries(full.questions.map(q => [q.id, q.points ?? 1])));
       setSortMode(full.group_by_indicator ? 'indicator' : 'manual');
+      setShuffleQuestions(full.shuffle_questions ?? true);
+      setShuffleChoices(full.shuffle_choices ?? true);
       // Best-effort — never block opening the edit form over this check.
       examSetHasSubmittedAttempts(supabase, full.id).then(hasAttempts => {
         if (hasAttempts) {
@@ -725,6 +734,7 @@ export default function ExamSetTool() {
         id: editingSetId, subjectId, title: title.trim(),
         questions: orderedIds.map(id => ({ id, points: pointsById[id] ?? 1 })),
         groupByIndicator: sortMode === 'indicator',
+        shuffleQuestions, shuffleChoices,
       });
 
       // Sequential, not Promise.all — target-room counts are small (a
@@ -954,6 +964,20 @@ export default function ExamSetTool() {
           </div>
         )}
 
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 bg-gray-50 rounded-lg px-3 py-2.5">
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={shuffleQuestions} onChange={e => setShuffleQuestions(e.target.checked)} />
+            สุ่มลำดับคำถามทุกครั้งที่สอบ
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={shuffleChoices} onChange={e => setShuffleChoices(e.target.checked)} />
+            สุ่มลำดับตัวเลือกทุกครั้งที่สอบ
+          </label>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          ปิดสวิตช์เพื่อให้นักเรียนทุกคนเห็นข้อสอบ/ตัวเลือกเรียงลำดับเดียวกันทุกคน (ตามลำดับที่จัดไว้ด้านล่าง) — ข้อสอบที่จัดเป็น &ldquo;กลุ่มคำถามต่อเนื่อง&rdquo; ไว้ที่คลังข้อสอบ (เช่น อ่านบทความแล้วตอบหลายข้อ) จะเรียงติดกันเสมอแม้เปิดสุ่มลำดับคำถามไว้
+        </p>
+
         {subjectId && (
           <div className="mt-4 grid grid-cols-1 gap-7">
             <div>
@@ -1030,6 +1054,11 @@ export default function ExamSetTool() {
                                     {SOURCE_LABEL[q.source] || SOURCE_LABEL.ai}
                                   </span>{' '}
                                   <span className={pill + ' bg-amber-50 text-amber-700'}>{DIFFICULTY_LABEL[q.difficulty] || q.difficulty}</span>
+                                  {q.group_id && (
+                                    <span className={pill + ' bg-teal-50 text-teal-700'} title="ข้อนี้อยู่ในกลุ่มคำถามต่อเนื่อง — จะเรียงติดกันเสมอตอนสอบแม้เปิดสุ่มลำดับคำถามไว้">
+                                      กลุ่ม: {q.bank_question_groups?.label || 'ไม่มีชื่อ'}
+                                    </span>
+                                  )}
                                   {qualityStats[q.id]?.stars != null && (
                                     <>{' '}<StarRating stars={qualityStats[q.id].stars} /></>
                                   )}
@@ -1126,7 +1155,10 @@ export default function ExamSetTool() {
                             <div key={q.id} className="flex items-start justify-between gap-3.5 px-3.5 py-3.5 text-sm">
                               <div className="flex items-start gap-2.5 min-w-0">
                                 <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
-                                <span className="min-w-0 text-gray-700">{q.question_text}</span>
+                                <span className="min-w-0 text-gray-700">
+                                  {q.question_text}{' '}
+                                  {q.group_id && <span className={pill + ' bg-teal-50 text-teal-700'}>กลุ่ม: {q.bank_question_groups?.label || 'ไม่มีชื่อ'}</span>}
+                                </span>
                               </div>
                               <div className="flex flex-col items-end gap-1.5 shrink-0">
                                 <div className="flex items-center gap-1.5">
@@ -1179,7 +1211,10 @@ export default function ExamSetTool() {
                       <div className="flex items-start gap-2.5 min-w-0">
                         <GripIcon className="h-4 w-4 text-gray-300 shrink-0 mt-0.5" />
                         <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5">{i + 1}.</span>
-                        <span className="min-w-0 text-gray-700">{q.question_text}</span>
+                        <span className="min-w-0 text-gray-700">
+                          {q.question_text}{' '}
+                          {q.group_id && <span className={pill + ' bg-teal-50 text-teal-700'}>กลุ่ม: {q.bank_question_groups?.label || 'ไม่มีชื่อ'}</span>}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-xs text-gray-500">คะแนน</span>

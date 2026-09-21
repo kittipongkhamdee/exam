@@ -180,9 +180,10 @@ export async function listMyBankQuestions(supabase, opts = {}) {
   let query = supabase
     .from('bank_questions')
     .select(`
-      id, subject_id, indicator_id, difficulty, num_choices, question_text, choices, correct_choice, explanation, source, image_path, created_at,
+      id, subject_id, indicator_id, difficulty, num_choices, question_text, choices, correct_choice, explanation, source, image_path, created_at, group_id,
       subjects!inner ( subject_name, subject_code, grade_level, room, user_id ),
-      indicators ( indicator_code, indicator_text )
+      indicators ( indicator_code, indicator_text ),
+      bank_question_groups ( label )
     `)
     .eq('subjects.user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
@@ -251,5 +252,50 @@ export async function updateBankQuestion(supabase, id, patch) {
  */
 export async function deleteBankQuestion(supabase, id) {
   const { error } = await supabase.from('bank_questions').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Create a "กลุ่มคำถามต่อเนื่อง" (passage/stimulus-based question cluster —
+ * e.g. one reading passage feeding several dependent questions) and assign
+ * it to the given bank_questions in one step. Any of questionIds that
+ * already belonged to a different group is moved into this new one instead
+ * — a teacher regrouping a mixed selection always ends up with one group,
+ * never a dangling mix.
+ *
+ * Grouped questions stay ungraded/independent everywhere else in the app —
+ * the only place group membership matters is the online exam's per-student
+ * shuffle (see start_exam_attempt), which treats every question sharing a
+ * group_id as one atomic unit: shuffled together as a block (when
+ * shuffle_questions is on) but never split apart or reordered relative to
+ * each other, using their online_exam_set_questions.seq (the order the
+ * teacher built the ชุดข้อสอบ in) to fix their relative order within the
+ * group.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ subjectId: string, label?: string, questionIds: string[] }} args
+ * @returns {Promise<string>} the new group's id
+ */
+export async function createBankQuestionGroup(supabase, { subjectId, label = '', questionIds }) {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('bank_question_groups')
+    .insert({ subject_id: subjectId, label: label.trim(), created_by: user.id })
+    .select('id')
+    .single();
+  if (error) throw error;
+  const { error: assignError } = await supabase.from('bank_questions').update({ group_id: data.id }).in('id', questionIds);
+  if (assignError) throw assignError;
+  return data.id;
+}
+
+/**
+ * Take the given bank_questions out of whatever group they're in (a no-op
+ * for a question that isn't grouped). Pass every member of a group to
+ * dissolve it entirely, or just one to remove that question alone.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string[]} questionIds
+ */
+export async function removeBankQuestionsFromGroup(supabase, questionIds) {
+  const { error } = await supabase.from('bank_questions').update({ group_id: null }).in('id', questionIds);
   if (error) throw error;
 }

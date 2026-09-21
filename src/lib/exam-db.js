@@ -122,9 +122,9 @@ export async function getExamSetWithQuestions(supabase, id) {
   const { data, error } = await supabase
     .from('online_exam_sets')
     .select(`
-      id, subject_id, title, printed_quiz_id, set_code, group_by_indicator,
+      id, subject_id, title, printed_quiz_id, set_code, group_by_indicator, shuffle_questions, shuffle_choices,
       subjects ( subject_name, subject_code, grade_level, room ),
-      online_exam_set_questions ( seq, points, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path, indicator_id, indicators ( indicator_code, indicator_text ) ) )
+      online_exam_set_questions ( seq, points, bank_question_id, bank_questions ( id, question_text, difficulty, num_choices, source, choices, correct_choice, image_path, indicator_id, group_id, indicators ( indicator_code, indicator_text ) ) )
     `)
     .eq('id', id)
     .single();
@@ -140,6 +140,8 @@ export async function getExamSetWithQuestions(supabase, id) {
     printed_quiz_id: data.printed_quiz_id,
     set_code: data.set_code,
     group_by_indicator: data.group_by_indicator,
+    shuffle_questions: data.shuffle_questions,
+    shuffle_choices: data.shuffle_choices,
     subject_name: data.subjects?.subject_name,
     subject_code: data.subjects?.subject_code,
     grade_level: data.subjects?.grade_level,
@@ -182,20 +184,28 @@ export async function examSetHasSubmittedAttempts(supabase, examSetId) {
  * Create or update a ชุดข้อสอบ, replacing its full question list each time
  * — simplest correct way to persist a reordered/edited selection without a
  * client-side transaction.
+ *
+ * shuffleQuestions/shuffleChoices (both default true, matching the
+ * always-random behavior every ชุดข้อสอบ had before these existed) are read
+ * straight by start_exam_attempt at exam-start time — turning either off
+ * makes every student in a รอบสอบ of this set see the exact same
+ * question/choice order the teacher built it in, instead of a random one
+ * per student.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ id?: string, subjectId: string, title: string, questions: Array<{ id: string, points: number }>, groupByIndicator?: boolean }} args
+ * @param {{ id?: string, subjectId: string, title: string, questions: Array<{ id: string, points: number }>, groupByIndicator?: boolean, shuffleQuestions?: boolean, shuffleChoices?: boolean }} args
  * @returns {Promise<string>} the exam set's id
  */
-export async function saveExamSet(supabase, { id, subjectId, title, questions, groupByIndicator = false }) {
+export async function saveExamSet(supabase, { id, subjectId, title, questions, groupByIndicator = false, shuffleQuestions = true, shuffleChoices = true }) {
   const { data: { user } } = await supabase.auth.getUser();
   let examSetId = id;
+  const setFields = { subject_id: subjectId, title, group_by_indicator: groupByIndicator, shuffle_questions: shuffleQuestions, shuffle_choices: shuffleChoices };
   if (examSetId) {
-    const { error } = await supabase.from('online_exam_sets').update({ subject_id: subjectId, title, group_by_indicator: groupByIndicator }).eq('id', examSetId);
+    const { error } = await supabase.from('online_exam_sets').update(setFields).eq('id', examSetId);
     if (error) throw error;
     const { error: delError } = await supabase.from('online_exam_set_questions').delete().eq('exam_set_id', examSetId);
     if (delError) throw delError;
   } else {
-    const { data, error } = await supabase.from('online_exam_sets').insert({ subject_id: subjectId, title, created_by: user.id, group_by_indicator: groupByIndicator }).select('id').single();
+    const { data, error } = await supabase.from('online_exam_sets').insert({ ...setFields, created_by: user.id }).select('id').single();
     if (error) throw error;
     examSetId = data.id;
   }

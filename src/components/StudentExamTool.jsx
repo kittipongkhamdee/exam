@@ -373,6 +373,29 @@ export default function StudentExamTool() {
   // closure ends up calling it.
   const answersRef = useRef({});
   useEffect(() => { answersRef.current = answers; }, [answers]);
+
+  // Best-effort, debounced sync of the current (unsubmitted) answers to the
+  // server via save_exam_progress — the only reason a proctor's live
+  // "คุมสอบ" monitor can show "ตอบแล้ว X/N ข้อ" for a still-in-progress
+  // attempt at all, since before this every answer lived only in this
+  // browser (memory + the localStorage draft) until the one-shot
+  // submit_exam_attempt call. Fires 4s after the last answer change so a
+  // burst of quick clicks sends one request, not one per click; a failed
+  // or late sync never blocks the student or shows an error — it only
+  // means the monitor's progress count lags until the next successful
+  // sync or the final submit (which is always authoritative regardless).
+  useEffect(() => {
+    if (phase !== 'exam' || !attempt || submittedRef.current) return;
+    const id = setTimeout(() => {
+      if (submittedRef.current) return;
+      const payload = attempt.questions.map(q => ({
+        question_id: q.id,
+        selected_index: answersRef.current[q.id] ?? null,
+      }));
+      supabase.rpc('save_exam_progress', { p_attempt_id: attempt.attempt_id, p_answers: payload }).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(id);
+  }, [phase, attempt, answers]);
   const autoSubmitTriggeredRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageUrls, setImageUrls] = useState({});

@@ -175,7 +175,9 @@ function useExpandedGroups() {
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
-    const key = item.subjects?.subject_code || `${item.subjects?.subject_name}__${item.subjects?.grade_level}`;
+    const key = item.subjects?.subject_code
+      ? `${item.subjects.subject_code}__${item.subjects?.grade_level}`
+      : `${item.subjects?.subject_name}__${item.subjects?.grade_level}`;
     if (!groups.has(key)) groups.set(key, { name: `${item.subjects?.subject_name} (ชั้น ม.${item.subjects?.grade_level})`, rows: [] });
     groups.get(key).rows.push(item);
   }
@@ -293,19 +295,23 @@ export default function BankTool() {
 
   const selectedSubject = subjects.find(s => s.id === subjectId) || null;
 
-  // "เลือกวิชา" collapses rooms sharing the same subject_code into one
-  // option (indicators/AI generation don't vary by room) — this is the
-  // deduped list of options, plus each option's member room ids so the
-  // dropdown's own value can pick a representative room while the room
-  // checklist below still offers every sibling room.
+  // "เลือกวิชา" collapses rooms sharing the same subject_code (AND grade
+  // level — a subject_code is only a "same course, different ห้อง" signal
+  // within one ชั้น; a school can end up reusing the same subject_code
+  // across two different ชั้น for two genuinely different courses, and
+  // grouping by subject_code alone would then wrongly merge those into one
+  // dropdown entry, hiding the other ชั้น's option entirely) into one
+  // option — this is the deduped list of options, plus each option's member
+  // room ids so the dropdown's own value can pick a representative room
+  // while the room checklist below still offers every sibling room.
   const subjectDropdownOptions = (() => {
     const seen = new Set();
     const opts = [];
     for (const s of subjects) {
-      const key = s.subject_code || s.id;
+      const key = s.subject_code ? `${s.subject_code}|${s.grade_level}` : s.id;
       if (seen.has(key)) continue;
       seen.add(key);
-      const groupSize = s.subject_code ? subjects.filter(x => x.subject_code === s.subject_code).length : 1;
+      const groupSize = s.subject_code ? subjects.filter(x => x.subject_code === s.subject_code && x.grade_level === s.grade_level).length : 1;
       opts.push({
         id: s.id,
         label: groupSize > 1 ? `${s.subject_name} (ชั้น ม.${s.grade_level})` : `${s.subject_name} (ชั้น ${formatGradeRoom(s.grade_level, s.room)})`,
@@ -314,14 +320,16 @@ export default function BankTool() {
     return opts;
   })();
 
-  // Other rooms sharing subjectId's own subject_code — used only to pool
-  // indicatorQuestionCounts below across every ห้อง teaching this subject
-  // (bank_questions saves always go to subjectId's own room; every sibling
-  // room can already see them via the subject_code pooling in
+  // Other rooms sharing subjectId's own subject_code AND grade_level — used
+  // only to pool indicatorQuestionCounts below across every ห้อง teaching
+  // this subject (bank_questions saves always go to subjectId's own room;
+  // every sibling room can already see them via the subject_code pooling in
   // listMyBankQuestions/ExamSetTool's picker, so there's no separate
-  // "save into other rooms too" step here any more).
+  // "save into other rooms too" step here any more). Matching grade_level
+  // too, not just subject_code, for the same reason subjectDropdownOptions
+  // above does.
   const sameCodeRooms = selectedSubject?.subject_code
-    ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code)
+    ? subjects.filter(s => s.id !== subjectId && s.subject_code === selectedSubject.subject_code && s.grade_level === selectedSubject.grade_level)
     : [];
 
   // How many bank questions already exist per indicator, pooled across the

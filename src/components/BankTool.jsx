@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion, uploadBankQuestionImage, getBankQuestionImageUrl, deleteBankQuestionImage } from '../lib/bank-db';
+import { listMySubjects, listIndicatorsForSubject, listEvalPlanUnitsForSubject, listMyBankQuestions, saveBankQuestions, updateBankQuestion, deleteBankQuestion, uploadBankQuestionImage, getBankQuestionImageUrl, deleteBankQuestionImage, createBankQuestionGroup, removeBankQuestionsFromGroup } from '../lib/bank-db';
 import { getBankQuestionQualityStats } from '../lib/exam-db';
 import { downloadBankQuestionTemplate, parseBankQuestionCsv } from '../lib/bank-import';
 import { formatGradeRoom } from '../lib/format';
@@ -287,6 +287,16 @@ export default function BankTool() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, toggleGroup] = useExpandedGroups();
+  // "กลุ่มคำถามต่อเนื่อง" (passage/stimulus-based question clusters — see
+  // createBankQuestionGroup) — questions ticked here for grouping, and the
+  // label typed for the group about to be created from them. Selection is
+  // global (a Set of question ids), but the "รวมเป็นกลุ่ม" action bar only
+  // ever shows/acts on whichever subject section currently has 2+ ticked,
+  // since a group only makes sense among questions in the same subject.
+  const [selectedForGroup, setSelectedForGroup] = useState(new Set());
+  const [groupLabelDraft, setGroupLabelDraft] = useState('');
+  const [groupActionBusy, setGroupActionBusy] = useState(false);
+  const [groupActionError, setGroupActionError] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
   const [editOriginalImagePath, setEditOriginalImagePath] = useState(null);
@@ -662,6 +672,42 @@ export default function BankTool() {
     }
   }
 
+  function toggleSelectForGroup(id) {
+    setSelectedForGroup(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // Groups the ticked questions (2+, always from one subject section) into
+  // one new "กลุ่มคำถามต่อเนื่อง" — moving any that already belonged to a
+  // different group along with it, so the result is always one clean group.
+  async function handleCreateGroup(subjectIdForGroup, ids) {
+    if (ids.length < 2) return;
+    setGroupActionBusy(true);
+    setGroupActionError(null);
+    try {
+      await createBankQuestionGroup(supabase, { subjectId: subjectIdForGroup, label: groupLabelDraft, questionIds: ids });
+      setSelectedForGroup(new Set());
+      setGroupLabelDraft('');
+      refreshBank();
+    } catch (err) {
+      setGroupActionError(err.message || 'จัดกลุ่มไม่สำเร็จ');
+    } finally {
+      setGroupActionBusy(false);
+    }
+  }
+
+  async function handleRemoveFromGroup(ids) {
+    try {
+      await removeBankQuestionsFromGroup(supabase, ids);
+      refreshBank();
+    } catch {
+      // best-effort
+    }
+  }
+
   function startEdit(q) {
     setEditingId(q.id);
     setEditError(null);
@@ -1006,6 +1052,9 @@ export default function BankTool() {
             </span>
           )}
         </div>
+        <p className="text-xs text-gray-400 mb-3">
+          ติ๊กเลือกข้อสอบตั้งแต่ 2 ข้อขึ้นไปในวิชาเดียวกัน (เช่น ข้อที่อ่านบทความเดียวกันแล้วตอบต่อเนื่องกัน) เพื่อรวมเป็น &ldquo;กลุ่มคำถามต่อเนื่อง&rdquo; — เมื่อนำไปจัดชุดข้อสอบออนไลน์ ข้อในกลุ่มเดียวกันจะเรียงติดกันเสมอแม้เปิดสุ่มลำดับคำถามไว้
+        </p>
         {bankLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!bankLoading && bankQuestions.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีข้อสอบในคลัง</div>}
         {bankQuestions.length > 0 && (
@@ -1057,8 +1106,30 @@ export default function BankTool() {
                   // actually pools more than one ห้อง — a teacher with just
                   // one ห้อง per subject+grade never sees it.
                   const multiRoom = new Set(group.rows.map(r => r.subjects?.room)).size > 1;
+                  const selectedInThisGroup = group.rows.filter(r => selectedForGroup.has(r.id));
                   return (
                   <div className="px-3 pt-1 pb-2">
+                  {selectedInThisGroup.length >= 2 && (
+                    <div className="flex flex-wrap items-center gap-2 mb-2 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                      <span className="text-xs font-semibold text-teal-700">เลือกแล้ว {selectedInThisGroup.length} ข้อ</span>
+                      <input
+                        type="text"
+                        className={inputCls + ' text-xs py-1.5 flex-1 min-w-[160px]'}
+                        placeholder="ชื่อกลุ่ม (ไม่บังคับ) เช่น อ่านบทความ ข้อ 1-5"
+                        value={groupLabelDraft}
+                        onChange={e => setGroupLabelDraft(e.target.value)}
+                      />
+                      <button
+                        type="button" className={btnTiny}
+                        disabled={groupActionBusy}
+                        onClick={() => handleCreateGroup(selectedInThisGroup[0].subject_id, selectedInThisGroup.map(r => r.id))}
+                      >
+                        {groupActionBusy ? 'กำลังบันทึก...' : 'รวมเป็นกลุ่มคำถามต่อเนื่อง'}
+                      </button>
+                      <button type="button" className={btnTiny} disabled={groupActionBusy} onClick={() => setSelectedForGroup(new Set())}>ยกเลิก</button>
+                    </div>
+                  )}
+                  {groupActionError && <div className="text-xs text-red-600 mb-2">{groupActionError}</div>}
                   {group.rows.map(q => (
                     editingId === q.id ? (
                       <div key={q.id} className="border border-indigo-200 rounded-lg p-4 my-2">
@@ -1130,6 +1201,13 @@ export default function BankTool() {
                     ) : (
                       <div key={q.id} className="flex justify-between items-start gap-3 text-sm py-2.5 border-b border-gray-100 last:border-b-0">
                         <div className="min-w-0 flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            className="mt-1 shrink-0"
+                            checked={selectedForGroup.has(q.id)}
+                            onChange={() => toggleSelectForGroup(q.id)}
+                            title="เลือกเพื่อรวมเป็นกลุ่มคำถามต่อเนื่อง"
+                          />
                           {q.source === 'manual' && q.image_path && imageUrls[q.image_path] && (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={imageUrls[q.image_path]} alt="" className="h-12 w-12 object-cover rounded-md border border-gray-200 shrink-0" />
@@ -1144,7 +1222,25 @@ export default function BankTool() {
                               {q.indicators?.indicator_code && <span className={pill + ' bg-gray-100 text-gray-600'}>{q.indicators.indicator_code}</span>}
                               <span>{q.num_choices} ตัวเลือก</span>
                               {multiRoom && <span className={pill + ' bg-gray-100 text-gray-500'}>ห้อง {q.subjects?.room}</span>}
+                              {q.group_id && (
+                                <span className={pill + ' bg-teal-50 text-teal-700'}>
+                                  กลุ่ม: {q.bank_question_groups?.label || 'ไม่มีชื่อ'}
+                                </span>
+                              )}
                             </div>
+                            {q.group_id && (
+                              <div className="mt-1 flex items-center gap-2">
+                                <button type="button" className="text-[11px] text-teal-700 underline hover:no-underline" onClick={() => handleRemoveFromGroup([q.id])}>
+                                  ออกจากกลุ่ม
+                                </button>
+                                <button
+                                  type="button" className="text-[11px] text-gray-400 underline hover:no-underline"
+                                  onClick={() => handleRemoveFromGroup(bankQuestions.filter(x => x.group_id === q.group_id).map(x => x.id))}
+                                >
+                                  ยกเลิกกลุ่มนี้ทั้งหมด
+                                </button>
+                              </div>
+                            )}
                             {qualityStats[q.id] && (qualityStats[q.id].stars !== null || qualityStats[q.id].usageCount > 0) && (
                               <div className="mt-1 flex items-center gap-2 flex-wrap">
                                 {qualityStats[q.id].stars !== null && <StarRating stars={qualityStats[q.id].stars} />}

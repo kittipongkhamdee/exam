@@ -882,9 +882,11 @@ function assessImageQuality(gray, width, height) {
   };
 }
 
-// Untuned starting point, like the thresholds above — how many degrees a
-// corner angle may deviate from a true 90° before it's flagged.
+// Untuned starting points, like the thresholds above — how many degrees a
+// corner angle (skew) or the whole page's in-frame tilt (rotation) may
+// deviate before each is flagged.
 const CORNER_ANGLE_DEVIATION_THRESHOLD_DEG = 12;
+const CORNER_ROTATION_THRESHOLD_DEG = 20;
 
 // Detects (but, deliberately, does not attempt to correct) a badly skewed
 // or non-planar capture from the 4 fiducial corners alone. The single
@@ -898,6 +900,29 @@ const CORNER_ANGLE_DEVIATION_THRESHOLD_DEG = 12;
 // not being able to fix it: the teacher is in a much better position to
 // just retake the photo flatter/more square-on than any correction we
 // could guess at without real calibration photos.
+//
+// Also separately reports rotationDeg/rotated — how far the page's top
+// edge tilts from horizontal in the photo. A pure in-plane rotation keeps
+// every interior angle at a perfect 90°, so it never trips the skew check
+// above, and the 4-point homography itself handles arbitrary rotation
+// correctly on its own *as long as the 4 corners are correctly matched to
+// their physical TL/TR/BL/BR*. That correspondence is where a heavily
+// rotated photo actually breaks things: findFiducials picks each corner
+// from a FIXED quadrant of the CAMERA FRAME (top-left 35%, top-right 35%,
+// ...), which only lines up with the page's own corners when the page is
+// roughly upright in the shot. Rotate the page enough and a marker can
+// end up nearer a different frame-quadrant than its own, or a stray dark
+// blob (shadow, torn edge, staple) can outcompete it there — silently
+// mislabeling which detected point is really the page's TL vs TR vs BL vs
+// BR. A homography built on a mislabeled correspondence doesn't just
+// rotate the bubble grid (which would be harmless) — it warps it into
+// nonsense, sampling bubbles at the wrong positions. This is the likely
+// explanation for a photo that looks perfectly fine (sharp, well-lit,
+// fully framed) still decoding a garbled, inconsistent student ID from
+// one retake to the next. Callers should treat `rotated` as a hard reject
+// (retake) rather than just a warning, unlike `skewed` above — this isn't
+// a "the read might be a little worse" signal, it's a "the read is likely
+// sampling the wrong grid entirely" signal.
 function assessCornerGeometry(corners) {
   const [tl, tr, bl, br] = corners;
   function angleAt(p, a, b) {
@@ -915,9 +940,12 @@ function assessCornerGeometry(corners) {
     angleAt(br, tr, bl),
   ];
   const maxAngleDeviation = Math.max(...angles.map(a => Math.abs(a - 90)));
+  const rotationDeg = Math.atan2(tr.y - tl.y, tr.x - tl.x) * 180 / Math.PI;
   return {
     maxAngleDeviation,
     skewed: maxAngleDeviation > CORNER_ANGLE_DEVIATION_THRESHOLD_DEG,
+    rotationDeg,
+    rotated: Math.abs(rotationDeg) > CORNER_ROTATION_THRESHOLD_DEG,
   };
 }
 

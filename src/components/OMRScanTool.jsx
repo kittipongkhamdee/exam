@@ -170,6 +170,7 @@ export default function OMRScanTool() {
   const alignedStreakRef = useRef(0);
   const overlayCanvasRef = useRef(null); // the visible <canvas> drawn on top of the video
   const [liveAligned, setLiveAligned] = useState(false); // all 4 corners found & aspect-plausible this tick
+  const [liveRotated, setLiveRotated] = useState(false); // corners found but the page is tilted too far in-frame this tick
   const [liveQualityHint, setLiveQualityHint] = useState(null); // 'blur' | 'glare' | null, this tick
   // aligned AND clear enough to actually auto-capture on — see readyToCapture
   // in runLiveDetectTick. Kept separate from liveAligned so the "กำลังถ่าย..."
@@ -349,6 +350,21 @@ export default function OMRScanTool() {
           // drift from 90° — see assessCornerGeometry's own comment for why
           // this only detects and warns rather than trying to correct it.
           const geometry = featureFlags.qualityWarning ? assessCornerGeometry(best.corners) : null;
+
+          // Unlike skew above, a heavily rotated photo is a hard reject, not
+          // just a warning — see assessCornerGeometry's own comment on why:
+          // findFiducials picks each corner from a fixed quadrant of the
+          // CAMERA FRAME, so a big rotation risks mislabeling which detected
+          // point is really the page's TL/TR/BL/BR, which then warps the
+          // bubble grid into nonsense rather than just rotating it. Letting
+          // that through would silently save a wrong score instead of
+          // asking for a straighter retake.
+          if (geometry?.rotated) {
+            setScanResult({ error: 'กระดาษเอียงในภาพมากเกินไป — ลองถือกล้อง/วางกระดาษให้ตรงมากขึ้น (ไม่เฉียง) แล้วถ่ายใหม่อีกครั้ง' });
+            setScanStage('done');
+            return;
+          }
+
           const qualityWarnings = [
             quality?.blurry && 'blur',
             quality?.overexposed && 'glare',
@@ -515,8 +531,15 @@ export default function OMRScanTool() {
       } else {
         setLiveQualityHint(null);
       }
+      // Rotation uses the same assessCornerGeometry the full-res post-capture
+      // check does (see its own comment for why a big in-plane rotation is a
+      // hard reject there, not just a warning) — reusing it here means the
+      // live preview refuses to auto-capture on a frame that would only get
+      // rejected right after capture anyway, instead of firing the shutter
+      // and making the teacher discover that the hard way.
+      const rotated = allFound && assessCornerGeometry(corners).rotated;
       let aligned = false;
-      if (allFound && selectedQuiz) {
+      if (allFound && !rotated && selectedQuiz) {
         const [tl, tr, bl] = corners;
         const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
         const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
@@ -529,6 +552,7 @@ export default function OMRScanTool() {
       if (allFound) drawLiveOverlay(corners, w, h, aligned);
       else clearLiveOverlay();
       setLiveAligned(aligned);
+      setLiveRotated(rotated);
       // Auto-capture requires a clear frame too, not just aligned corners —
       // corner *position* can look stable on this small downscaled preview
       // even while the phone camera is still mid-autofocus/settling, so
@@ -572,6 +596,7 @@ export default function OMRScanTool() {
     liveDetectBusyRef.current = false;
     setLiveAligned(false);
     setLiveReadyToCapture(false);
+    setLiveRotated(false);
     setLiveQualityHint(null);
     clearLiveOverlay();
   }
@@ -965,6 +990,7 @@ export default function OMRScanTool() {
                       ? 'จัดกรอบพอดี — กำลังถ่าย...'
                       : liveQualityHint === 'blur' ? 'ภาพเบลอ — ถือกล้องให้นิ่งขึ้น'
                       : liveQualityHint === 'glare' ? 'แสงจ้าเกินไป — ลองหลบแสงสะท้อน'
+                      : liveRotated ? 'กระดาษเอียงในภาพ — หมุนกล้อง/กระดาษให้ตรงมากขึ้น'
                       : 'จัดกระดาษให้เห็นมุมทั้ง 4 ชัดเจน'}
                   </div>
                 </>

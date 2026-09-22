@@ -171,6 +171,12 @@ export default function OMRScanTool() {
   const overlayCanvasRef = useRef(null); // the visible <canvas> drawn on top of the video
   const [liveAligned, setLiveAligned] = useState(false); // all 4 corners found & aspect-plausible this tick
   const [liveQualityHint, setLiveQualityHint] = useState(null); // 'blur' | 'glare' | null, this tick
+  // aligned AND clear enough to actually auto-capture on — see readyToCapture
+  // in runLiveDetectTick. Kept separate from liveAligned so the "กำลังถ่าย..."
+  // pill only claims a capture is imminent when one actually is; liveAligned
+  // alone (positionally aligned but still blurry/glared) would otherwise show
+  // that message while auto-capture keeps waiting underneath it.
+  const [liveReadyToCapture, setLiveReadyToCapture] = useState(false);
 
   // Admin master switches for the scanning features below (Settings →
   // ตั้งค่าระบบ) — default to all-on until the real config loads, so a slow
@@ -500,10 +506,12 @@ export default function OMRScanTool() {
       // tick rather than throttled further. Shown only while not yet
       // aligned (the aligned pill already covers that state), as a hint
       // toward WHY alignment might be failing before the real, full-res
-      // scan ever runs.
+      // scan ever runs. Also kept (not just shown) below to gate
+      // auto-capture — see readyToCapture.
+      let quality = null;
       if (featureFlags.liveQualityHint) {
-        const q = assessImageQuality(gray, w, h);
-        setLiveQualityHint(q.blurry ? 'blur' : q.overexposed ? 'glare' : null);
+        quality = assessImageQuality(gray, w, h);
+        setLiveQualityHint(quality.blurry ? 'blur' : quality.overexposed ? 'glare' : null);
       } else {
         setLiveQualityHint(null);
       }
@@ -521,7 +529,19 @@ export default function OMRScanTool() {
       if (allFound) drawLiveOverlay(corners, w, h, aligned);
       else clearLiveOverlay();
       setLiveAligned(aligned);
-      if (aligned) {
+      // Auto-capture requires a clear frame too, not just aligned corners —
+      // corner *position* can look stable on this small downscaled preview
+      // even while the phone camera is still mid-autofocus/settling, so
+      // gating on alignment alone can fire the shutter on a soft frame:
+      // blur smears a crisp fiducial square's edges into a shape the
+      // stricter full-resolution check (plausibleShape/fillDensity in
+      // findBlobCandidates) then rejects — exactly the "corners found live,
+      // then 'not found' right after capture" mismatch a teacher would see.
+      // Only gated when the admin has the live quality hint on; with it
+      // off, this falls back to the original alignment-only trigger.
+      const readyToCapture = aligned && (!quality || (!quality.blurry && !quality.overexposed));
+      setLiveReadyToCapture(readyToCapture);
+      if (readyToCapture) {
         alignedStreakRef.current += 1;
         if (alignedStreakRef.current >= LIVE_DETECT_STABLE_TICKS) {
           stopLiveDetect();
@@ -551,6 +571,7 @@ export default function OMRScanTool() {
     alignedStreakRef.current = 0;
     liveDetectBusyRef.current = false;
     setLiveAligned(false);
+    setLiveReadyToCapture(false);
     setLiveQualityHint(null);
     clearLiveOverlay();
   }
@@ -938,9 +959,9 @@ export default function OMRScanTool() {
                   <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
                   <div className={
                     'absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold shadow ' +
-                    (liveAligned ? 'bg-green-600 text-white' : 'bg-black/60 text-white')
+                    (liveReadyToCapture ? 'bg-green-600 text-white' : 'bg-black/60 text-white')
                   }>
-                    {liveAligned
+                    {liveReadyToCapture
                       ? 'จัดกรอบพอดี — กำลังถ่าย...'
                       : liveQualityHint === 'blur' ? 'ภาพเบลอ — ถือกล้องให้นิ่งขึ้น'
                       : liveQualityHint === 'glare' ? 'แสงจ้าเกินไป — ลองหลบแสงสะท้อน'

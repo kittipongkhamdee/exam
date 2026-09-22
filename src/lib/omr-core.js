@@ -1141,6 +1141,51 @@ function refineCentroidSubpixel(gray, width, height, bbox, threshold) {
   return { x: sumX / sumW, y: sumY / sumW };
 }
 
+// How many pixels of light gap the dark mask below bridges before
+// connected-component search runs — untuned starting point, small enough
+// to never merge two genuinely separate shapes (bubbles/text are spaced
+// far more than this apart at any resolution this runs at).
+const BLOB_GAP_CLOSE_RADIUS = 2;
+
+// Precomputes a dark/not-dark mask for the region, "closed" by expanding
+// each dark pixel by BLOB_GAP_CLOSE_RADIUS — bridges a thin light gap
+// splitting what should be one solid marker into two separately-flood-
+// filled pieces. Observed in practice: a printer banding defect or a
+// paper crease can leave a hairline light seam straight through an
+// otherwise-solid fiducial square (visibly still one square to the eye);
+// a plain 4-connected flood fill then finds two thin, oddly-shaped
+// halves instead — each usually failing the aspect/density checks below
+// on its own, so the marker is missed entirely. Only changes which
+// pixels count as CONNECTED for this search — the sub-pixel centroid
+// refinement afterward re-derives position from actual graylevels, not
+// this mask, so a closed-over gap doesn't bias where the corner lands.
+function buildClosedDarkMask(gray, width, x0, y0, x1, y1, threshold, radius) {
+  const rw = x1 - x0, rh = y1 - y0;
+  const base = new Uint8Array(rw * rh);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      base[(y - y0) * rw + (x - x0)] = gray[y * width + x] < threshold ? 1 : 0;
+    }
+  }
+  if (radius <= 0) return base;
+  const closed = new Uint8Array(rw * rh);
+  for (let y = 0; y < rh; y++) {
+    for (let x = 0; x < rw; x++) {
+      if (base[y * rw + x]) { closed[y * rw + x] = 1; continue; }
+      search: for (let dy = -radius; dy <= radius; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= rh) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= rw) continue;
+          if (base[ny * rw + nx]) { closed[y * rw + x] = 1; break search; }
+        }
+      }
+    }
+  }
+  return closed;
+}
+
 // Flood-fill based connected-component search: returns ALL plausibly
 // marker-shaped dark blobs within a region (not just the largest one),
 // so the caller can pick the most geometrically sensible candidate.
@@ -1154,8 +1199,9 @@ function findBlobCandidates(gray, width, height, region, threshold, opts = {}) {
   const rw = x1 - x0, rh = y1 - y0;
   if (rw <= 0 || rh <= 0) return [];
 
+  const closedMask = buildClosedDarkMask(gray, width, x0, y0, x1, y1, threshold, BLOB_GAP_CLOSE_RADIUS);
   const visited = new Uint8Array(rw * rh);
-  const isDark = (x, y) => gray[y*width + x] < threshold;
+  const isDark = (x, y) => closedMask[(y - y0) * rw + (x - x0)] === 1;
 
   const results = [];
   const stackX = new Int32Array(rw * rh);

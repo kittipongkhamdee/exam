@@ -545,25 +545,25 @@ export async function getRoundMonitor(supabase, roundId) {
 
   const attemptByStudent = new Map((attempts || []).map(a => [a.student_id, a]));
 
-  // Live progress for whoever's still mid-exam — see save_exam_progress
-  // (called periodically by the student's own exam page as they answer),
-  // the only place online_exam_answers gets rows before the final submit.
-  // answered_count/live_correct_count are only ever meaningful for
-  // status 'in_progress' rows below; a submitted attempt already has its
-  // authoritative total_correct/score from submit_exam_attempt instead.
+  // Live progress (how many questions answered so far) for whoever's still
+  // mid-exam — see save_exam_progress (called periodically by the
+  // student's own exam page as they answer), the only place
+  // online_exam_answers gets rows before the final submit. Deliberately
+  // never reads is_correct here — this monitor is a "how far along/who's
+  // stuck" view, not a live-grading one, same reasoning as
+  // get_room_monitor_for_proctor always returning score: null. A
+  // submitted attempt already has its authoritative total_correct/score
+  // from submit_exam_attempt instead.
   const inProgressAttemptIds = (attempts || []).filter(a => !a.submitted_at).map(a => a.id);
-  const progressByAttempt = new Map();
+  const answeredCountByAttempt = new Map();
   if (inProgressAttemptIds.length > 0) {
     const { data: progressRows, error: progressError } = await supabase
       .from('online_exam_answers')
-      .select('attempt_id, is_correct')
+      .select('attempt_id')
       .in('attempt_id', inProgressAttemptIds);
     if (!progressError) {
       for (const r of progressRows || []) {
-        const p = progressByAttempt.get(r.attempt_id) || { answered: 0, correct: 0 };
-        p.answered += 1;
-        if (r.is_correct) p.correct += 1;
-        progressByAttempt.set(r.attempt_id, p);
+        answeredCountByAttempt.set(r.attempt_id, (answeredCountByAttempt.get(r.attempt_id) || 0) + 1);
       }
     }
   }
@@ -571,7 +571,6 @@ export async function getRoundMonitor(supabase, roundId) {
   const rows = (roster || []).map(s => {
     const attempt = attemptByStudent.get(s.id);
     const status = attempt?.submitted_at ? 'submitted' : (attempt ? 'in_progress' : 'not_started');
-    const progress = attempt ? progressByAttempt.get(attempt.id) : null;
     return {
       student_id: s.id,
       student_code: s.student_code,
@@ -587,8 +586,7 @@ export async function getRoundMonitor(supabase, roundId) {
       locked: attempt?.locked ?? false,
       location_lat: attempt?.location_lat ?? null,
       location_lng: attempt?.location_lng ?? null,
-      answered_count: status === 'in_progress' ? (progress?.answered ?? 0) : null,
-      live_correct_count: status === 'in_progress' ? (progress?.correct ?? 0) : null,
+      answered_count: status === 'in_progress' ? (answeredCountByAttempt.get(attempt.id) ?? 0) : null,
     };
   });
 

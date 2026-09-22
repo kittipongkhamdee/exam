@@ -232,8 +232,8 @@ function StudentCard({ row, flagged, onUnlock, onLock, unlocking, locking }) {
         <span className="text-xs font-bold">{statusLabel}</span>
         {row.status === 'submitted' && row.score !== null && (
           <span className="text-xs font-bold text-gray-700">
-            {row.total_correct != null && row.total_questions != null
-              ? `${row.total_correct}/${row.total_questions} ข้อ (${row.score}%)`
+            {row.earned_points != null && row.total_points != null
+              ? `${row.earned_points}/${row.total_points} คะแนน (${row.score}%)`
               : `${row.score}%`}
           </span>
         )}

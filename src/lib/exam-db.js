@@ -539,7 +539,7 @@ export async function getRoundMonitor(supabase, roundId) {
 
   const { data: attempts, error: attemptsError } = await supabase
     .from('online_exam_attempts')
-    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, score, violation_count, locked, location_lat, location_lng')
+    .select('id, student_id, started_at, submitted_at, total_correct, total_questions, total_points, earned_points, score, violation_count, locked, location_lat, location_lng')
     .eq('round_id', roundId);
   if (attemptsError) throw attemptsError;
 
@@ -581,6 +581,8 @@ export async function getRoundMonitor(supabase, roundId) {
       submitted_at: attempt?.submitted_at ?? null,
       total_correct: attempt?.total_correct ?? null,
       total_questions: attempt?.total_questions ?? null,
+      total_points: attempt?.total_points ?? null,
+      earned_points: attempt?.earned_points ?? null,
       score: attempt?.score ?? null,
       violation_count: attempt?.violation_count ?? 0,
       locked: attempt?.locked ?? false,

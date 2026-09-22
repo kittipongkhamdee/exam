@@ -231,7 +231,11 @@ function StudentCard({ row, flagged, onUnlock, onLock, unlocking, locking }) {
       <div className="mt-1 flex items-center justify-between gap-2">
         <span className="text-xs font-bold">{statusLabel}</span>
         {row.status === 'submitted' && row.score !== null && (
-          <span className="text-xs font-bold text-gray-700">{row.score}%</span>
+          <span className="text-xs font-bold text-gray-700">
+            {row.total_correct != null && row.total_questions != null
+              ? `${row.total_correct}/${row.total_questions} ข้อ (${row.score}%)`
+              : `${row.score}%`}
+          </span>
         )}
         {row.status === 'in_progress' && row.total_questions > 0 && row.answered_count !== null && (
           <span className="text-xs font-bold text-gray-700">

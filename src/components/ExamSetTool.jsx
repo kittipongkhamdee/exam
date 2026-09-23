@@ -341,7 +341,10 @@ function groupBySubject(items) {
     if (!groups.has(key)) groups.set(key, { name: key, gradeLevel: item.subjects?.grade_level, rows: [] });
     groups.get(key).rows.push(item);
   }
-  return [...groups.values()];
+  // Same insertion-order issue groupByGradeLevel fixes below, one level
+  // in — without this, subject groups within a grade followed whichever
+  // exam set was created most recently rather than any sensible order.
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }));
 }
 
 // Nests groupBySubject's per-subject+room groups one level further, under
@@ -353,10 +356,18 @@ function groupByGradeLevel(subjectGroups) {
   const grades = new Map();
   for (const g of subjectGroups) {
     const key = g.gradeLevel || '';
-    if (!grades.has(key)) grades.set(key, { name: g.gradeLevel ? `ชั้น ม.${g.gradeLevel}` : 'ไม่ระบุชั้น', subjectGroups: [] });
+    if (!grades.has(key)) grades.set(key, { name: g.gradeLevel ? `ชั้น ม.${g.gradeLevel}` : 'ไม่ระบุชั้น', gradeLevel: key, subjectGroups: [] });
     grades.get(key).subjectGroups.push(g);
   }
-  return [...grades.values()];
+  // Ascending ม.1 -> ม.6 (matches listMySubjects' own grade_level ordering)
+  // rather than the Map's insertion order, which otherwise followed
+  // whichever grade's exam set happened to be created most recently —
+  // producing a scrambled ม.2/ม.1/ม.6/ม.5-style header order.
+  return [...grades.values()].sort((a, b) => {
+    if (!a.gradeLevel) return 1;
+    if (!b.gradeLevel) return -1;
+    return Number(a.gradeLevel) - Number(b.gradeLevel);
+  });
 }
 
 export default function ExamSetTool() {

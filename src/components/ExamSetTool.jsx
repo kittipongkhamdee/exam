@@ -383,6 +383,12 @@ export default function ExamSetTool() {
   // picker below — a teacher click on the question text/tags toggles this,
   // independent of the checkbox (selecting the question for the set).
   const [expandedQuestionIds, setExpandedQuestionIds] = useState(new Set());
+  // "คลังข้อสอบ" vs "ข้อที่เลือกแล้ว" as separate tabs instead of stacked
+  // sections — each gets the full width/height to browse in, rather than
+  // splitting a cramped scroll box between them (especially tight on
+  // mobile, where both used to be visible at once but neither had much
+  // room).
+  const [pickerTab, setPickerTab] = useState('bank'); // 'bank' | 'selected'
   // Subject+room groups in "ชุดข้อสอบที่สร้างไว้แล้ว" that the teacher has
   // expanded — every group starts collapsed by default.
   const [expandedExamSetGroups, setExpandedExamSetGroups] = useState(new Set());
@@ -525,6 +531,7 @@ export default function ExamSetTool() {
     setShuffleChoices(true);
     setFormError(null);
     setTargetRoomIds([]);
+    setPickerTab('bank');
   }
 
   async function startEdit(set) {
@@ -540,6 +547,9 @@ export default function ExamSetTool() {
       setSortMode(full.group_by_indicator ? 'indicator' : 'manual');
       setShuffleQuestions(full.shuffle_questions ?? true);
       setShuffleChoices(full.shuffle_choices ?? true);
+      // Editing an existing set — open straight to what's already in it,
+      // not the full bank picker.
+      setPickerTab('selected');
       // Best-effort — never block opening the edit form over this check.
       examSetHasSubmittedAttempts(supabase, full.id).then(hasAttempts => {
         if (hasAttempts) {
@@ -925,7 +935,7 @@ export default function ExamSetTool() {
         <div className={row}>
           <div className={field}>
             <label className={label}>วิชา</label>
-            <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSelectedIds([]); setTargetRoomIds([]); }}>
+            <select className={inputCls} value={subjectId} onChange={e => { setSubjectId(e.target.value); setSelectedIds([]); setTargetRoomIds([]); setPickerTab('bank'); }}>
               <option value="">— เลือกวิชา —</option>
               {subjects.map(s => (
                 <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
@@ -979,7 +989,25 @@ export default function ExamSetTool() {
         </p>
 
         {subjectId && (
-          <div className="mt-4 grid grid-cols-1 gap-7">
+          <div className="mt-4">
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-4">
+              <button
+                type="button"
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition ${pickerTab === 'bank' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                onClick={() => setPickerTab('bank')}
+              >
+                คลังข้อสอบ{availableQuestions.length > 0 ? ` (${availableQuestions.length})` : ''}
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition ${pickerTab === 'selected' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                onClick={() => setPickerTab('selected')}
+              >
+                ข้อที่เลือกแล้ว ({selectedQuestions.length})
+              </button>
+            </div>
+
+            {pickerTab === 'bank' && (
             <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <label className={label}>ข้อสอบในคลัง (ติ๊กเพื่อเพิ่มเข้าชุด)</label>
@@ -1032,7 +1060,7 @@ export default function ExamSetTool() {
                   {filteredQuestions.length === 0 ? (
                     <div className="text-sm text-gray-500 mt-2">ไม่มีข้อสอบที่ตรงกับตัวกรองที่เลือก</div>
                   ) : (
-                    <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    <div className="mt-1.5 max-h-[32rem] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
                       {filteredQuestions.map(q => {
                         const isExpanded = expandedQuestionIds.has(q.id);
                         return (
@@ -1090,7 +1118,9 @@ export default function ExamSetTool() {
                 </>
               )}
             </div>
+            )}
 
+            {pickerTab === 'selected' && (
             <div>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2.5 flex-wrap">
@@ -1140,7 +1170,7 @@ export default function ExamSetTool() {
               {selectedQuestions.length === 0 ? (
                 <div className="text-sm text-gray-500 mt-2">ยังไม่ได้เลือกข้อสอบ</div>
               ) : sortMode === 'indicator' ? (
-                <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                <div className="mt-1.5 max-h-[32rem] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {(() => {
                     let n = 0;
                     return indicatorGroups.map(g => (
@@ -1191,7 +1221,7 @@ export default function ExamSetTool() {
                   })()}
                 </div>
               ) : (
-                <div className="mt-1.5 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                <div className="mt-1.5 max-h-[32rem] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
                   {selectedQuestions.map((q, i) => (
                     <div
                       key={q.id}
@@ -1240,6 +1270,7 @@ export default function ExamSetTool() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 

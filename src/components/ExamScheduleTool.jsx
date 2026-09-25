@@ -204,7 +204,7 @@ function computeStatus(round) {
   const closes = new Date(round.closes_at).getTime();
   if (now < opens) return { label: 'ยังไม่เริ่ม', cls: 'bg-gray-100 text-gray-600' };
   if (now <= closes) return { label: 'กำลังสอบ', cls: 'bg-green-50 text-green-700' };
-  return { label: 'ปิดรับแล้ว', cls: 'bg-red-50 text-red-600' };
+  return { label: 'ปิดรับแล้ว', cls: 'bg-red-50 text-red-600', closed: true };
 }
 
 function groupBySubject(rounds) {
@@ -259,19 +259,22 @@ export default function ExamScheduleTool() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [printMode, setPrintMode] = useState(null);
+  const [signRounds, setSignRounds] = useState([]); // which rounds the student-sign print covers
   const [origin, setOrigin] = useState('');
 
   useEffect(() => { setOrigin(window.location.origin); }, []);
 
-  function triggerPrint(mode) {
+  function triggerPrint(mode, roundsForSigns = []) {
     // flushSync forces the printMode state (and the sheet it swaps in) to
     // actually commit to the DOM before window.print() reads it —
     // window.print() blocks synchronously, so a normal setState here would
     // still be queued/un-rendered by the time the print dialog opens,
     // printing whichever sheet was already showing (or nothing).
-    flushSync(() => setPrintMode(mode));
+    flushSync(() => { setPrintMode(mode); setSignRounds(roundsForSigns); });
     window.print();
   }
+
+  const openRounds = rounds.filter(r => !computeStatus(r).closed);
 
   const refreshRounds = useCallback(async () => {
     setRoundsLoading(true);
@@ -540,8 +543,14 @@ export default function ExamScheduleTool() {
               <button type="button" className={btnTinyIndigo} onClick={() => triggerPrint('proctor')}>
                 <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์รายละเอียดรอบสอบ (ครูคุมสอบ)
               </button>
-              <button type="button" className={btnTinyIndigo} onClick={() => triggerPrint('student')}>
-                <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR เข้าสอบ (แจกนักเรียน)
+              <button
+                type="button"
+                className={btnTinyIndigo + ' disabled:opacity-50 disabled:cursor-not-allowed'}
+                disabled={openRounds.length === 0}
+                title={openRounds.length === 0 ? 'ทุกรอบสอบปิดรับแล้ว' : undefined}
+                onClick={() => triggerPrint('student', openRounds)}
+              >
+                <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR เข้าสอบทุกรอบที่ยังไม่ปิด ({openRounds.length})
               </button>
             </div>
           )}
@@ -588,6 +597,11 @@ export default function ExamScheduleTool() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                          {!status.closed && (
+                            <button className={btnTinyIndigo} onClick={() => triggerPrint('student', [r])}>
+                              <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR
+                            </button>
+                          )}
                           <button className={btnTinyAmber} onClick={() => startEdit(r)}>
                             <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
                           </button>
@@ -617,7 +631,7 @@ export default function ExamScheduleTool() {
       />
     </div>
     <PrintableRoundSheet rounds={rounds} active={printMode === 'proctor'} />
-    <PrintableStudentSigns rounds={rounds} active={printMode === 'student'} origin={origin} />
+    <PrintableStudentSigns rounds={signRounds} active={printMode === 'student'} origin={origin} />
     </>
   );
 }

@@ -218,6 +218,37 @@ function groupBySubject(rounds) {
   return [...groups.entries()].map(([name, rows]) => ({ name, rows }));
 }
 
+// "รอบสอบที่ตั้งไว้" list: ชั้น header → วิชา/ห้อง card → รอบสอบ rows,
+// grades ascending ม.1 → ม.6 (ungraded last), subjects by name within a
+// grade, newest round first within a subject — same ชั้น → วิชา layout as
+// ExamSetTool's "ชุดข้อสอบที่สร้างไว้แล้ว".
+function groupRoundsByGrade(rounds) {
+  const grades = new Map();
+  for (const r of rounds) {
+    const subj = r.online_exam_sets?.subjects;
+    const gradeKey = subj?.grade_level || '';
+    if (!grades.has(gradeKey)) {
+      grades.set(gradeKey, { gradeLevel: gradeKey, name: gradeKey ? `ชั้น ม.${gradeKey}` : 'ไม่ระบุชั้น', subjects: new Map() });
+    }
+    const subjectName = `${subj?.subject_name || ''} (ชั้น ${formatGradeRoom(subj?.grade_level, subj?.room)})`;
+    const subjects = grades.get(gradeKey).subjects;
+    if (!subjects.has(subjectName)) subjects.set(subjectName, { name: subjectName, rows: [] });
+    subjects.get(subjectName).rows.push(r);
+  }
+  return [...grades.values()]
+    .sort((a, b) => {
+      if (!a.gradeLevel) return 1;
+      if (!b.gradeLevel) return -1;
+      return Number(a.gradeLevel) - Number(b.gradeLevel);
+    })
+    .map(g => ({
+      ...g,
+      subjects: [...g.subjects.values()]
+        .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }))
+        .map(sg => ({ ...sg, rows: [...sg.rows].sort((a, b) => new Date(b.opens_at) - new Date(a.opens_at)) })),
+    }));
+}
+
 const DEFAULT_DURATION = 50;
 
 export default function ExamScheduleTool() {
@@ -558,60 +589,69 @@ export default function ExamScheduleTool() {
         {roundsLoading && <div className="text-sm text-gray-500">กำลังโหลด...</div>}
         {!roundsLoading && rounds.length === 0 && <div className="text-sm text-gray-500">ยังไม่มีรอบสอบ</div>}
         {rounds.length > 0 && (
-          <div className="space-y-4">
-            {groupBySubject(rounds).map(group => (
-              <div key={group.name}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="shrink-0 h-6 w-6 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                    <ClipboardIcon className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="text-sm font-bold text-gray-800">{group.name}</div>
-                </div>
-                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {group.rows.map(r => {
-                    const status = computeStatus(r);
-                    return (
-                      <div key={r.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={pill + ' ' + status.cls}>{status.label}</span>
-                            <span className={pill + ' ' + (r.schedule_type === 'scheduled' ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500')}>
-                              {r.schedule_type === 'scheduled' ? 'ในตาราง' : 'นอกตาราง'}
-                            </span>
-                            <span className="font-mono font-bold tracking-widest text-gray-900">PIN: {r.pin}</span>
-                            <span className="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: {r.unlock_pin}</span>
-                            {r.auto_reveal_results && (
-                              <span className={pill + ' bg-emerald-50 text-emerald-700'}>เผยผลอัตโนมัติ</span>
-                            )}
-                            {r.require_location && (
-                              <span className={pill + ' bg-rose-50 text-rose-700'}>บังคับแชร์ตำแหน่ง</span>
-                            )}
-                            {r.manual_start && (
-                              <span className={pill + ' ' + (r.started_by_teacher_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-                                {r.started_by_teacher_at ? 'เริ่มสอบแล้ว' : 'รอครูกดเริ่มสอบ'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)} · ทำได้ {r.duration_minutes} นาที/คน
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {!status.closed && (
-                            <button className={btnTinyIndigo} onClick={() => triggerPrint('student', [r])}>
-                              <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR
-                            </button>
-                          )}
-                          <button className={btnTinyAmber} onClick={() => startEdit(r)}>
-                            <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
-                          </button>
-                          <button className={btnTinyRed} onClick={() => setDeleteTarget(r)}>
-                            <TrashIcon className="h-3.5 w-3.5" /> ลบ
-                          </button>
-                        </div>
+          <div className="space-y-6">
+            {groupRoundsByGrade(rounds).map(gradeGroup => (
+              <div key={gradeGroup.name}>
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{gradeGroup.name}</div>
+                <div className="space-y-4">
+                  {gradeGroup.subjects.map(group => (
+                    <div key={group.name}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="shrink-0 h-6 w-6 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                          <ClipboardIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="text-sm font-bold text-gray-800">{group.name}</div>
+                        <span className={pill + ' bg-gray-100 text-gray-600'}>{group.rows.length}</span>
                       </div>
-                    );
-                  })}
+                      <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                        {group.rows.map(r => {
+                          const status = computeStatus(r);
+                          return (
+                            <div key={r.id} className="flex flex-wrap justify-between items-center gap-3 text-sm px-3 py-2.5">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-900 mb-1">{r.online_exam_sets?.title}</div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={pill + ' ' + status.cls}>{status.label}</span>
+                                  <span className={pill + ' ' + (r.schedule_type === 'scheduled' ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500')}>
+                                    {r.schedule_type === 'scheduled' ? 'ในตาราง' : 'นอกตาราง'}
+                                  </span>
+                                  <span className="font-mono font-bold tracking-widest text-gray-900">PIN: {r.pin}</span>
+                                  <span className="font-mono font-bold tracking-widest text-amber-700">ปลดล็อก: {r.unlock_pin}</span>
+                                  {r.auto_reveal_results && (
+                                    <span className={pill + ' bg-emerald-50 text-emerald-700'}>เผยผลอัตโนมัติ</span>
+                                  )}
+                                  {r.require_location && (
+                                    <span className={pill + ' bg-rose-50 text-rose-700'}>บังคับแชร์ตำแหน่ง</span>
+                                  )}
+                                  {r.manual_start && (
+                                    <span className={pill + ' ' + (r.started_by_teacher_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                                      {r.started_by_teacher_at ? 'เริ่มสอบแล้ว' : 'รอครูกดเริ่มสอบ'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)} · ทำได้ {r.duration_minutes} นาที/คน
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {!status.closed && (
+                                  <button className={btnTinyIndigo} onClick={() => triggerPrint('student', [r])}>
+                                    <PrinterIcon className="h-3.5 w-3.5" /> พิมพ์ป้าย QR
+                                  </button>
+                                )}
+                                <button className={btnTinyAmber} onClick={() => startEdit(r)}>
+                                  <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
+                                </button>
+                                <button className={btnTinyRed} onClick={() => setDeleteTarget(r)}>
+                                  <TrashIcon className="h-3.5 w-3.5" /> ลบ
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

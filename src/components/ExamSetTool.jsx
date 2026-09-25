@@ -334,6 +334,21 @@ function matchesStarFilter(stars, filter) {
   return true;
 }
 
+// "โรงเรียนตาเบาวิทยา อำเภอปราสาท จังหวัดสุรินทร์" for the printed
+// letterhead, from the school profile keys the ปพ.5 system keeps in the same
+// config table. Falls back to exam_app_description (this app's own
+// Settings → ชื่อระบบ subtitle, usually just the school name).
+function formatSchoolLine(cfg) {
+  const name = (cfg.school_name || cfg.exam_app_description || '').trim();
+  if (!name) return '';
+  const district = (cfg.school_district || '').trim();
+  const province = (cfg.school_province || '').trim();
+  const parts = [name];
+  if (district) parts.push(/^(อำเภอ|อ\.|เขต)/.test(district) ? district : `อำเภอ${district}`);
+  if (province) parts.push(/^(จังหวัด|จ\.)/.test(province) ? province : `จังหวัด${province}`);
+  return parts.join(' ');
+}
+
 function groupBySubject(items) {
   const groups = new Map();
   for (const item of items) {
@@ -432,7 +447,7 @@ export default function ExamSetTool() {
   const [deleting, setDeleting] = useState(false);
   const [printingId, setPrintingId] = useState(null);
 
-  // exam_app_name/exam_app_logo (Settings → ชื่อระบบ/โลโก้) — used only as
+  // school_name/district/province (see formatSchoolLine) + exam_app_logo — used only as
   // this dialog's starting values; the teacher can still edit or drop them
   // per print, and nothing here is written back to config.
   const [brandDefaults, setBrandDefaults] = useState({ name: '', logo: '' });
@@ -456,8 +471,8 @@ export default function ExamSetTool() {
   useEffect(() => {
     (async () => {
       try {
-        const cfg = await getConfigValues(supabase, ['exam_app_name', 'exam_app_logo']);
-        setBrandDefaults({ name: cfg.exam_app_name || '', logo: cfg.exam_app_logo || '' });
+        const cfg = await getConfigValues(supabase, ['school_name', 'school_district', 'school_province', 'exam_app_description', 'exam_app_logo']);
+        setBrandDefaults({ name: formatSchoolLine(cfg), logo: cfg.exam_app_logo || '' });
       } catch {
         // best-effort
       }

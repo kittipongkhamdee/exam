@@ -141,41 +141,51 @@ function PrintableStudentSigns({ rounds, active, origin }) {
   const takeUrlDisplay = takeUrl.replace(/^https?:\/\//, '');
   return (
     <div style={active ? undefined : { display: 'none' }}>
+      {/* Fixed A4 margins so each sign can be sized to exactly one page
+          (297mm - 2 x 12mm = 273mm tall) regardless of the browser's own
+          default margins — a sign even slightly taller would spill a blank
+          page after every round. */}
+      {active && <style>{'@page { size: A4 portrait; margin: 12mm; }'}</style>}
       {rounds.map((r, i) => {
         const subj = r.online_exam_sets?.subjects;
         return (
           <div
             key={r.id}
-            className={'hidden print:flex print:font-sans items-center justify-center min-h-screen p-10' + (i < rounds.length - 1 ? ' break-after-page' : '')}
+            className={'hidden print:flex print:font-sans h-[270mm] overflow-hidden [print-color-adjust:exact]' + (i < rounds.length - 1 ? ' break-after-page' : '')}
           >
-            <div className="w-full max-w-md rounded-3xl border-2 border-gray-300 p-10 text-center">
-              <div className="inline-block text-xs font-bold tracking-widest uppercase text-indigo-700 bg-indigo-50 rounded-full px-3 py-1 mb-3">
-                เข้าสอบออนไลน์
-              </div>
-              <h1 className="text-2xl font-extrabold text-gray-900 mb-1">
-                {subj?.subject_name} (ชั้น {formatGradeRoom(subj?.grade_level, subj?.room)})
-              </h1>
-              <p className="text-sm text-gray-500 mb-6">
-                {r.online_exam_sets?.title}<br />
-                {formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)}
-              </p>
-
-              {takeUrl && (
-                <div className="inline-flex p-4 border border-gray-300 rounded-2xl mb-3">
-                  <QrCode value={takeUrl} className="h-56 w-56" />
+            <div className="w-full h-full rounded-3xl border-2 border-gray-300 px-[12mm] py-[10mm] text-center flex flex-col justify-between">
+              <div>
+                <div className="inline-block text-base font-bold tracking-widest uppercase text-indigo-700 bg-indigo-50 rounded-full px-5 py-1.5 mb-4">
+                  เข้าสอบออนไลน์
                 </div>
-              )}
-              <div className="text-xs text-gray-500 mb-6">
-                สแกน QR หรือเข้า <span className="font-mono">{takeUrlDisplay}</span>
+                <h1 className="text-4xl font-extrabold text-gray-900 mb-2 leading-tight">
+                  {subj?.subject_name} (ชั้น {formatGradeRoom(subj?.grade_level, subj?.room)})
+                </h1>
+                <p className="text-lg text-gray-600">
+                  {r.online_exam_sets?.title}<br />
+                  {formatThaiDateTime(r.opens_at)} – {formatThaiDateTime(r.closes_at)}
+                </p>
               </div>
 
-              <div className="pt-6 border-t border-dashed border-gray-300">
-                <div className="text-xs text-gray-500 mb-1">รหัส PIN เข้าสอบ</div>
-                <div className="text-4xl font-extrabold tracking-[0.3em] font-mono text-gray-900">{r.pin}</div>
+              <div>
+                {takeUrl && (
+                  <div className="inline-flex p-[4mm] border-2 border-gray-300 rounded-3xl">
+                    <QrCode value={takeUrl} className="h-[88mm] w-[88mm]" />
+                  </div>
+                )}
+                <div className="mt-[5mm] rounded-2xl bg-indigo-50 border-2 border-indigo-200 px-4 py-[3mm]">
+                  <div className="text-base text-gray-600 mb-1">สแกน QR หรือพิมพ์ลิงก์นี้ในเบราว์เซอร์</div>
+                  <div className="text-4xl font-extrabold font-mono text-indigo-700 break-all">{takeUrlDisplay}</div>
+                </div>
               </div>
 
-              <div className="mt-6 text-left text-xs text-gray-600 space-y-1.5">
-                <div>1. สแกน QR ด้านบน หรือเข้าลิงก์เว็บไซต์</div>
+              <div className="pt-[5mm] border-t-2 border-dashed border-gray-300">
+                <div className="text-lg text-gray-600 mb-1">รหัส PIN เข้าสอบ</div>
+                <div className="text-7xl font-extrabold tracking-[0.25em] font-mono text-gray-900">{r.pin}</div>
+              </div>
+
+              <div className="text-left text-lg text-gray-700 space-y-1.5">
+                <div>1. สแกน QR ด้านบน หรือเข้าลิงก์ <b className="font-mono">{takeUrlDisplay}</b></div>
                 <div>2. กรอกรหัส PIN: <b className="font-mono">{r.pin}</b></div>
                 <div>3. กรอกเลขประจำตัวนักเรียน</div>
                 <div>4. เริ่มทำข้อสอบภายในเวลา {r.duration_minutes} นาที</div>

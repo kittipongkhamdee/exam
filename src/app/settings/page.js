@@ -11,6 +11,7 @@ import { formatStudentName } from '@/lib/student-name';
 import { listExamAuditLog, EXAM_AUDIT_ACTION_LABEL, listTeacherLastLogins } from '@/lib/exam-db';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { formatGradeRoom } from '@/lib/format';
+import { EXAM_RULES_CONFIG_KEY, DEFAULT_EXAM_RULES, renderExamRulesHtml } from '@/lib/exam-rules';
 
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
 
@@ -597,6 +598,104 @@ function ExamSecurityPanel() {
 // before this master switch existed.
 const DEFAULT_PROXIMITY_MIN_DISTANCE_M = 15;
 
+// The "ข้อควรทราบก่อนเริ่มสอบ" notice students must tick through before an
+// online exam starts — see lib/exam-rules.js for the storage and the tiny
+// **bold** / {max} markup. Saving blank (or "ใช้ข้อความเริ่มต้น") clears the
+// row so the built-in default applies, including any future edits to it.
+function ExamRulesNoticePanel() {
+  const [text, setText] = useState(DEFAULT_EXAM_RULES);
+  const [maxViolations, setMaxViolations] = useState(String(DEFAULT_MAX_VIOLATIONS));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [stored, storedMax] = await Promise.all([
+          getConfigValue(supabase, EXAM_RULES_CONFIG_KEY),
+          getConfigValue(supabase, 'max_exam_violations'),
+        ]);
+        setText(stored && stored.trim() ? stored : DEFAULT_EXAM_RULES);
+        if (storedMax) setMaxViolations(storedMax);
+      } catch (err) {
+        setError(err.message || 'โหลดค่าไม่สำเร็จ');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function save(value) {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      const isDefault = !value.trim() || value.trim() === DEFAULT_EXAM_RULES;
+      await setConfigValue(supabase, EXAM_RULES_CONFIG_KEY, isDefault ? '' : value);
+      if (isDefault) setText(DEFAULT_EXAM_RULES);
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shrink-0">
+          <SheetIcon className="h-4 w-4" />
+        </div>
+        <div className="font-semibold text-gray-900">คำแนะนำก่อนเข้าสอบ (สอบออนไลน์)</div>
+      </div>
+      <p className="mt-1 text-sm text-gray-500 mb-4">
+        ข้อความ &quot;ข้อควรทราบก่อนเริ่มสอบ&quot; ที่นักเรียนต้องอ่านและติ๊กรับทราบก่อนเริ่มทำข้อสอบออนไลน์ทุกครั้ง ใช้กับทุกรอบสอบในระบบ
+      </p>
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-500">ข้อความ (บรรทัดละ 1 ข้อ)</label>
+            <textarea
+              className="mt-1 w-full h-72 px-3 py-2 border border-gray-300 rounded-lg text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              value={text}
+              onChange={e => { setText(e.target.value); setSaved(false); }}
+            />
+            <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+              <div>• ใส่ <code className="bg-gray-100 px-1 rounded">**ข้อความ**</code> เพื่อทำตัวหนา</div>
+              <div>• ใส่ <code className="bg-gray-100 px-1 rounded">{'{max}'}</code> แทนจำนวนครั้งที่ทำผิดกฎได้ (ตั้งค่าในหัวข้อ &quot;ป้องกันการทุจริตในการสอบออนไลน์&quot; ตอนนี้ = {maxViolations})</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <button type="button" className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50" onClick={() => save(text)} disabled={saving}>
+                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+              <button type="button" className="bg-gray-100 text-gray-800 px-3 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 disabled:opacity-50" onClick={() => save('')} disabled={saving}>
+                ใช้ข้อความเริ่มต้น
+              </button>
+              {saved && <span className="text-sm text-green-600">บันทึกแล้ว</span>}
+            </div>
+            {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-500">ตัวอย่างที่นักเรียนจะเห็น</div>
+            <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="text-center font-bold text-gray-800 mb-2">ข้อควรทราบก่อนเริ่มสอบ</div>
+              <div className="text-gray-700 [&_p]:mb-1" dangerouslySetInnerHTML={{ __html: renderExamRulesHtml(text, maxViolations) }} />
+              <div className="mt-3 text-sm text-gray-600 flex items-center justify-center gap-2">
+                <span className="inline-block h-4 w-4 border border-gray-400 rounded-sm bg-white" /> ฉันอ่านและเข้าใจกฎการสอบข้างต้นแล้ว
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExamProximityCheckPanel() {
   const [enabled, setEnabled] = useState(true);
   const [minDistance, setMinDistance] = useState(String(DEFAULT_PROXIMITY_MIN_DISTANCE_M));
@@ -1174,6 +1273,7 @@ function SettingsContent() {
       <OMRScanFeaturesPanel />
       <AISettingsPanel />
       <ExamSecurityPanel />
+      <ExamRulesNoticePanel />
       <ExamProximityCheckPanel />
       <LastLoginPanel />
       <ExamAuditLogPanel />

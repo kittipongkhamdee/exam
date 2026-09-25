@@ -725,7 +725,7 @@ function ToggleRow({ label, description, checked, onChange }) {
 // Reads/writes public.config's omr_*_enabled rows — the same master-switch
 // pattern as ExamProximityCheckPanel, one row per feature so each can be
 // turned off independently if it ever misbehaves for a particular phone/
-// lighting setup, without having to touch the others. All four default to
+// lighting setup, without having to touch the others. All of them default to
 // enabled when unset (missing config row = "never explicitly turned off"),
 // matching OMRScanTool's own DEFAULT_FEATURE_FLAGS.
 const OMR_FEATURE_CONFIG_KEYS = {
@@ -733,10 +733,11 @@ const OMR_FEATURE_CONFIG_KEYS = {
   qualityWarning: 'omr_quality_warning_enabled',
   liveQualityHint: 'omr_live_quality_hint_enabled',
   subpixelRefine: 'omr_subpixel_refine_enabled',
+  tiltGuide: 'omr_tilt_guide_enabled',
 };
 
 function OMRScanFeaturesPanel() {
-  const [flags, setFlags] = useState({ liveDetect: true, qualityWarning: true, liveQualityHint: true, subpixelRefine: true });
+  const [flags, setFlags] = useState({ liveDetect: true, qualityWarning: true, liveQualityHint: true, subpixelRefine: true, tiltGuide: true });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -751,6 +752,7 @@ function OMRScanFeaturesPanel() {
           qualityWarning: cfg[OMR_FEATURE_CONFIG_KEYS.qualityWarning] !== 'false',
           liveQualityHint: cfg[OMR_FEATURE_CONFIG_KEYS.liveQualityHint] !== 'false',
           subpixelRefine: cfg[OMR_FEATURE_CONFIG_KEYS.subpixelRefine] !== 'false',
+          tiltGuide: cfg[OMR_FEATURE_CONFIG_KEYS.tiltGuide] !== 'false',
         });
       } catch (err) {
         setError(err.message || 'โหลดค่าไม่สำเร็จ');
@@ -822,6 +824,12 @@ function OMRScanFeaturesPanel() {
               description="ปรับตำแหน่งจุดดำ 4 มุมที่ตรวจจับได้ให้แม่นยำขึ้นระดับต่ำกว่าพิกเซล ช่วยให้อ่านคำตอบแม่นยำขึ้นเล็กน้อย"
               checked={flags.subpixelRefine}
               onChange={() => toggle('subpixelRefine')}
+            />
+            <ToggleRow
+              label="ตัววัดระดับมือถือ (เซ็นเซอร์วัดการเอียง)"
+              description="แสดงวงวัดระดับบนหน้าจอกล้อง บอกว่ามือถือขนานกับกระดาษหรือยัง และรอให้มือถือเอียงไม่เกิน 15° ก่อนถ่ายภาพอัตโนมัติ — iPhone จะถามขออนุญาตใช้เซ็นเซอร์ตอนเปิดกล้อง ถ้าไม่อนุญาตก็ยังสแกนได้ตามปกติ (ทำงานร่วมกับกรอบเขียวด้านบน)"
+              checked={flags.tiltGuide}
+              onChange={() => toggle('tiltGuide')}
             />
           </div>
           <div className="flex items-center gap-2 pt-3">

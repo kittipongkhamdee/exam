@@ -69,8 +69,27 @@ const FEATURE_FLAG_CONFIG_KEYS = {
   qualityWarning: 'omr_quality_warning_enabled',
   liveQualityHint: 'omr_live_quality_hint_enabled',
   subpixelRefine: 'omr_subpixel_refine_enabled',
+  tiltGuide: 'omr_tilt_guide_enabled',
 };
-const DEFAULT_FEATURE_FLAGS = { liveDetect: true, qualityWarning: true, liveQualityHint: true, subpixelRefine: true };
+const DEFAULT_FEATURE_FLAGS = { liveDetect: true, qualityWarning: true, liveQualityHint: true, subpixelRefine: true, tiltGuide: true };
+
+// Phone tilt from the device-orientation sensor (tiltGuide flag). Photos
+// taken with the phone held at an angle to the sheet come out
+// perspective-skewed, which is what the corner/rotation checks otherwise
+// only catch after the fact — the sensor lets the live preview say so
+// before the shutter fires. It only knows the PHONE's tilt, not the
+// paper's, so it assumes the sheet lies flat on a desk; the image-based
+// checks stay the real safety net.
+const TILT_MAX_DEG = 15;
+const TILT_LEVEL_RANGE_DEG = 30; // tilt at which the level bubble reaches the ring's edge
+
+// Angle between the phone's screen normal and vertical: 0 when lying flat
+// (camera pointing straight down), 90 when held upright.
+function tiltFromOrientation({ beta, gamma }) {
+  const r = Math.PI / 180;
+  const c = Math.cos(beta * r) * Math.cos(gamma * r);
+  return Math.acos(Math.max(-1, Math.min(1, Math.abs(c)))) / r;
+}
 
 // Best-effort blur/glare check on a just-captured photo, downscaled first so
 // this stays cheap. Never throws — a captured photo that somehow can't be
@@ -128,6 +147,35 @@ const chip = 'px-3 py-1.5 rounded-full text-xs font-semibold border transition-c
 const chipActive = 'bg-indigo-600 border-indigo-600 text-white';
 const chipInactive = 'bg-white border-gray-300 text-gray-600 hover:border-indigo-300';
 
+// Bubble level drawn on the viewfinder: the dot floats toward the raised
+// side like a real spirit level, so the teacher centres it by lowering that
+// side. The inner ring marks TILT_MAX_DEG — inside it, auto-capture may fire.
+function TiltLevel({ tilt }) {
+  let x = -tilt.gamma / TILT_LEVEL_RANGE_DEG;
+  let y = -tilt.beta / TILT_LEVEL_RANGE_DEG;
+  const len = Math.hypot(x, y);
+  if (len > 1) { x /= len; y /= len; }
+  const ok = tilt.tilt <= TILT_MAX_DEG;
+  const innerPct = (TILT_MAX_DEG / TILT_LEVEL_RANGE_DEG) * 100;
+  return (
+    <div className="absolute bottom-2 right-2 flex flex-col items-center gap-0.5 pointer-events-none">
+      <div className="relative h-14 w-14 rounded-full border-2 border-white/80 bg-black/40">
+        <div
+          className={'absolute rounded-full border ' + (ok ? 'border-green-300' : 'border-white/50')}
+          style={{ width: innerPct + '%', height: innerPct + '%', left: (100 - innerPct) / 2 + '%', top: (100 - innerPct) / 2 + '%' }}
+        />
+        <div
+          className={'absolute h-3 w-3 rounded-full -translate-x-1/2 -translate-y-1/2 ' + (ok ? 'bg-green-400' : 'bg-amber-400')}
+          style={{ left: 50 + x * 42 + '%', top: 50 + y * 42 + '%' }}
+        />
+      </div>
+      <div className={'text-[10px] font-bold px-1.5 rounded ' + (ok ? 'bg-green-600 text-white' : 'bg-black/60 text-white')}>
+        {Math.round(tilt.tilt)}°
+      </div>
+    </div>
+  );
+}
+
 export default function OMRScanTool() {
   const { session, saveScanPhotos, setSaveScanPhotos } = useAuth();
   const [quizzes, setQuizzes] = useState([]);
@@ -178,6 +226,13 @@ export default function OMRScanTool() {
   // alone (positionally aligned but still blurry/glared) would otherwise show
   // that message while auto-capture keeps waiting underneath it.
   const [liveReadyToCapture, setLiveReadyToCapture] = useState(false);
+  // Latest sensor reading lives in a ref (events fire far faster than the
+  // live tick) and is copied into liveTilt once per tick for rendering.
+  const orientationRef = useRef(null); // { beta, gamma } | null
+  const [liveTilt, setLiveTilt] = useState(null); // { tilt, beta, gamma } | null
+  // 'unknown' until the first camera open asks; 'denied' shows the
+  // re-ask banner under the viewfinder.
+  const [tiltPermission, setTiltPermission] = useState('unknown');
 
   // Admin master switches for the scanning features below (Settings →
   // ตั้งค่าระบบ) — default to all-on until the real config loads, so a slow
@@ -192,6 +247,7 @@ export default function OMRScanTool() {
           qualityWarning: cfg[FEATURE_FLAG_CONFIG_KEYS.qualityWarning] !== 'false',
           liveQualityHint: cfg[FEATURE_FLAG_CONFIG_KEYS.liveQualityHint] !== 'false',
           subpixelRefine: cfg[FEATURE_FLAG_CONFIG_KEYS.subpixelRefine] !== 'false',
+          tiltGuide: cfg[FEATURE_FLAG_CONFIG_KEYS.tiltGuide] !== 'false',
         });
       } catch {
         // best-effort — keep the all-on defaults if config can't be read
@@ -563,7 +619,11 @@ export default function OMRScanTool() {
       // then 'not found' right after capture" mismatch a teacher would see.
       // Only gated when the admin has the live quality hint on; with it
       // off, this falls back to the original alignment-only trigger.
-      const readyToCapture = aligned && (!quality || (!quality.blurry && !quality.overexposed));
+      const o = orientationRef.current;
+      const tiltDeg = o ? tiltFromOrientation(o) : null;
+      setLiveTilt(o ? { tilt: tiltDeg, beta: o.beta, gamma: o.gamma } : null);
+      const phoneTilted = tiltDeg !== null && tiltDeg > TILT_MAX_DEG;
+      const readyToCapture = aligned && !phoneTilted && (!quality || (!quality.blurry && !quality.overexposed));
       setLiveReadyToCapture(readyToCapture);
       if (readyToCapture) {
         alignedStreakRef.current += 1;
@@ -598,11 +658,49 @@ export default function OMRScanTool() {
     setLiveReadyToCapture(false);
     setLiveRotated(false);
     setLiveQualityHint(null);
+    setLiveTilt(null);
     clearLiveOverlay();
+  }
+
+  // Stable identity so removeEventListener actually detaches it.
+  const handleOrientation = useCallback((e) => {
+    // Desktop browsers fire one event with null angles when there's no sensor.
+    if (e.beta == null || e.gamma == null) return;
+    orientationRef.current = { beta: e.beta, gamma: e.gamma };
+  }, []);
+
+  function stopTiltSensor() {
+    window.removeEventListener('deviceorientation', handleOrientation);
+    orientationRef.current = null;
+  }
+
+  // Must run inside a tap handler: iOS only shows its motion-permission
+  // prompt from a user gesture. Asked again on every camera open, so a
+  // teacher who tapped "ไม่อนุญาต" gets another chance next time — and if
+  // iOS has cached the denial and stays silent, the banner under the
+  // viewfinder explains how to reset it.
+  async function startTiltSensor() {
+    stopTiltSensor();
+    if (!featureFlags.tiltGuide || typeof window === 'undefined' || typeof window.DeviceOrientationEvent === 'undefined') return;
+    const requestPermission = window.DeviceOrientationEvent.requestPermission;
+    if (typeof requestPermission === 'function') {
+      let result = 'denied';
+      try {
+        result = await requestPermission.call(window.DeviceOrientationEvent);
+      } catch {
+        // thrown outside a user gesture or on a browser quirk — treat as not granted
+      }
+      setTiltPermission(result === 'granted' ? 'granted' : 'denied');
+      if (result !== 'granted') return;
+    } else {
+      setTiltPermission('granted');
+    }
+    window.addEventListener('deviceorientation', handleOrientation);
   }
 
   async function openCamera() {
     setCameraError(null);
+    const tiltReady = startTiltSensor();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError('เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง (ต้องเปิดผ่าน HTTPS) — ลองอัปโหลดรูปแทน');
       return;
@@ -616,6 +714,7 @@ export default function OMRScanTool() {
       // provoke it in the first place. Letting the browser pick its own
       // default resolution keeps it aligned with the device's actual
       // current orientation.
+      await tiltReady;
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
@@ -630,12 +729,14 @@ export default function OMRScanTool() {
       });
       if (featureFlags.liveDetect) startLiveDetect();
     } catch {
+      stopTiltSensor();
       setCameraError('เปิดกล้องไม่สำเร็จ — ตรวจสอบว่าอนุญาตให้เว็บนี้ใช้กล้อง หรือลองอัปโหลดรูปแทน');
     }
   }
 
   function closeCamera() {
     stopLiveDetect();
+    stopTiltSensor();
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach(t => t.stop());
       cameraStreamRef.current = null;
@@ -665,8 +766,9 @@ export default function OMRScanTool() {
     return () => {
       if (liveDetectTimerRef.current) clearInterval(liveDetectTimerRef.current);
       if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+      window.removeEventListener('deviceorientation', handleOrientation);
     };
-  }, []);
+  }, [handleOrientation]);
 
   async function handleSaveScanResult() {
     // In rapid mode studentId is only set once a student is confirmed (via
@@ -1012,14 +1114,28 @@ export default function OMRScanTool() {
                   }>
                     {liveReadyToCapture
                       ? 'จัดกรอบพอดี — กำลังถ่าย...'
+                      : liveTilt && liveTilt.tilt > TILT_MAX_DEG ? `มือถือเอียง ${Math.round(liveTilt.tilt)}° — ถือให้ขนานกับกระดาษ`
                       : liveQualityHint === 'blur' ? 'ภาพเบลอ — ถือกล้องให้นิ่งขึ้น'
                       : liveQualityHint === 'glare' ? 'แสงจ้าเกินไป — ลองหลบแสงสะท้อน'
                       : liveRotated ? 'กระดาษเอียงในภาพ — หมุนกล้อง/กระดาษให้ตรงมากขึ้น'
                       : 'จัดกระดาษให้เห็นมุมทั้ง 4 ชัดเจน'}
                   </div>
+                  {featureFlags.tiltGuide && liveTilt && <TiltLevel tilt={liveTilt} />}
                 </>
               )}
             </div>
+            {featureFlags.tiltGuide && tiltPermission === 'denied' && (
+              <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-800">
+                <div className="font-semibold">ยังไม่ได้อนุญาตให้ใช้เซ็นเซอร์วัดการเอียง</div>
+                <div className="mt-0.5">
+                  สแกนได้ตามปกติ แต่จะไม่มีตัววัดระดับช่วยถือมือถือให้ตรง — กด &ldquo;ขออนุญาตอีกครั้ง&rdquo; แล้วเลือก &ldquo;อนุญาต&rdquo;
+                  ถ้ากดแล้วไม่มีหน้าต่างถามขึ้นมา ให้ปิดแท็บนี้แล้วเปิดเว็บใหม่ (ถ้ายังไม่ถาม ให้ปิดแอป Safari แล้วเปิดใหม่)
+                </div>
+                <button type="button" className="mt-1.5 bg-white border border-amber-300 text-amber-800 px-2.5 py-1 rounded-md font-semibold hover:bg-amber-100" onClick={() => { startTiltSensor(); }}>
+                  ขออนุญาตอีกครั้ง
+                </button>
+              </div>
+            )}
             <div className="flex gap-2 mt-2.5">
               <button className={btn + ' flex-1 inline-flex items-center justify-center gap-2'} onClick={capturePhoto}>
                 <CameraIcon className="h-5 w-5" /> ถ่ายภาพ

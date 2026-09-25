@@ -747,6 +747,25 @@ export default function OMRScanTool() {
     return () => { cancelled = true; };
   }, [existingResult?.id, existingResult?.photo_path]);
 
+  // A cleanly-decoded ID that isn't in this quiz's room usually means the
+  // sheet belongs to another class/quiz (e.g. scanning ม.2/2's sheets
+  // against a ม.1 quiz) — look the code up school-wide so the warning can
+  // say whose sheet it is. Keyed by decodedId so a stale lookup never
+  // shows against a newer scan.
+  const [otherRoomLookup, setOtherRoomLookup] = useState(null);
+  const unmatchedCleanId = (rapidMode && !studentId && scanResult && !scanResult.error && selectedQuiz
+    && !matchedStudent && scanResult.decodedId && !scanResult.decodedId.includes('?'))
+    ? scanResult.decodedId : null;
+  useEffect(() => {
+    if (!unmatchedCleanId) return;
+    let cancelled = false;
+    const codes = [...new Set([unmatchedCleanId, unmatchedCleanId.replace(/^0+/, '')])].filter(Boolean);
+    supabase.from('students').select('student_code, student_name, prefix, grade_level, room').in('student_code', codes).limit(1)
+      .then(({ data }) => { if (!cancelled) setOtherRoomLookup({ decodedId: unmatchedCleanId, student: data?.[0] || null }); });
+    return () => { cancelled = true; };
+  }, [unmatchedCleanId]);
+  const otherRoomStudent = otherRoomLookup && otherRoomLookup.decodedId === unmatchedCleanId ? otherRoomLookup.student : null;
+
   const gradeLevels = [...new Set(quizzes.map(q => q.subjects?.grade_level).filter(Boolean))];
   const filteredQuizzes = quizzes.filter(q => {
     if (gradeFilter && q.subjects?.grade_level !== gradeFilter) return false;
@@ -935,6 +954,11 @@ export default function OMRScanTool() {
               ) : scanResult && !scanResult.error ? (
                 <div className={pillBad + ' px-3 py-2 text-sm block mb-4'}>
                   ไม่พบนักเรียนที่มีรหัสตรงกับ &ldquo;{scanResult.decodedId}&rdquo; ในห้องนี้ — เลือกนักเรียนเอง
+                  {otherRoomStudent && (
+                    <div className="mt-1 font-normal">
+                      รหัสนี้เป็นของ {formatStudentName(otherRoomStudent)} ชั้น {formatGradeRoom(otherRoomStudent.grade_level, otherRoomStudent.room)} — กระดาษแผ่นนี้น่าจะเป็นของชุดข้อสอบอื่น กรุณาตรวจสอบว่าเลือกชุดข้อสอบถูกต้อง (กด &ldquo;เปลี่ยนชุดข้อสอบ&rdquo; ด้านบน)
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-sm text-gray-400 mb-4 flex items-center gap-1.5">

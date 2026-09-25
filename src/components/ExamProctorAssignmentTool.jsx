@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
-import { listProctorAssignmentsForDate, saveProctorAssignment, deleteProctorAssignment, listGradeRoomOptions, listAllTeachers } from '../lib/exam-db';
-import { formatGradeRoom } from '../lib/format';
+import { listProctorAssignmentsForDate, saveProctorAssignment, deleteProctorAssignment, listGradeRoomOptions, listAllTeachers, listProctorOverview } from '../lib/exam-db';
+import { formatGradeRoom, formatThaiTime } from '../lib/format';
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-4';
 const btnTiny = 'bg-gray-100 text-gray-900 px-2.5 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-200';
@@ -62,6 +62,26 @@ function todayBangkok() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 }
 
+function addDays(dateStr, days) {
+  return new Date(new Date(`${dateStr}T12:00:00+07:00`).getTime() + days * 86400000)
+    .toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+}
+
+// Anchored to noon Bangkok so a device in another timezone can't shift it
+// to the adjacent day (same approach as ExamDutyScheduleTool).
+function formatThaiDateLong(dateStr) {
+  return new Date(`${dateStr}T12:00:00+07:00`).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' });
+}
+
+function groupOverviewByDate(entries) {
+  const groups = new Map();
+  for (const e of entries) {
+    if (!groups.has(e.date)) groups.set(e.date, []);
+    groups.get(e.date).push(e);
+  }
+  return [...groups.entries()].map(([date, rows]) => ({ date, rows }));
+}
+
 export default function ExamProctorAssignmentTool() {
   const { isAdmin } = useAuth();
 
@@ -101,6 +121,31 @@ export default function ExamProctorAssignmentTool() {
 
   useEffect(() => { refresh(date); }, [date, refresh]);
 
+  // "วันไหน วิชาอะไร ใครคุมสอบ" overview — independent of the single date
+  // picked above, so the admin can see a whole stretch of exam days at once.
+  const [overviewFrom, setOverviewFrom] = useState(() => todayBangkok());
+  const [overviewTo, setOverviewTo] = useState(() => addDays(todayBangkok(), 30));
+  const [overview, setOverview] = useState([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState(null);
+  // Bumped after an assign/remove so the overview re-fetches the same range.
+  const [overviewVersion, setOverviewVersion] = useState(0);
+
+  useEffect(() => {
+    if (!overviewFrom || !overviewTo || overviewFrom > overviewTo) return;
+    let cancelled = false;
+    listProctorOverview(supabase, overviewFrom, overviewTo)
+      .then(data => { if (!cancelled) { setOverview(data); setOverviewError(null); } })
+      .catch(err => { if (!cancelled) setOverviewError(err.message || 'โหลดภาพรวมไม่สำเร็จ'); })
+      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [overviewFrom, overviewTo, overviewVersion]);
+
+  function reloadOverview() {
+    setOverviewLoading(true);
+    setOverviewVersion(v => v + 1);
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -122,6 +167,7 @@ export default function ExamProctorAssignmentTool() {
       await saveProctorAssignment(supabase, { date, gradeLevel, room, teacherId });
       setTeacherId('');
       await refresh(date);
+      reloadOverview();
     } catch (err) {
       setError(err.message || 'มอบหมายไม่สำเร็จ');
     } finally {
@@ -133,6 +179,7 @@ export default function ExamProctorAssignmentTool() {
     try {
       await deleteProctorAssignment(supabase, id);
       await refresh(date);
+      reloadOverview();
     } catch {
       // best-effort
     }
@@ -246,6 +293,100 @@ export default function ExamProctorAssignmentTool() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className={card}>
+        <div className="font-semibold text-gray-900 mb-1">ภาพรวม: วันไหน วิชาอะไร ใครคุมสอบ</div>
+        <p className="text-sm text-gray-500 mb-3">
+          รอบสอบออนไลน์ทุกวิชาในช่วงวันที่เลือก พร้อมครูที่ได้รับมอบหมายให้คุมสอบห้องนั้นในวันนั้น — ห้องที่มีสอบแต่ยังไม่มีครูคุมสอบจะขึ้นเตือนสีส้ม
+        </p>
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">ตั้งแต่วันที่</label>
+            <input type="date" className={inputCls} value={overviewFrom} onChange={e => { setOverviewLoading(true); setOverviewFrom(e.target.value); }} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">ถึงวันที่</label>
+            <input type="date" className={inputCls} value={overviewTo} onChange={e => { setOverviewLoading(true); setOverviewTo(e.target.value); }} />
+          </div>
+        </div>
+        {overviewFrom > overviewTo ? (
+          <div className="text-sm text-red-600">วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด</div>
+        ) : overviewLoading ? (
+          <div className="text-sm text-gray-500">กำลังโหลด...</div>
+        ) : overviewError ? (
+          <div className="text-sm text-red-600">{overviewError}</div>
+        ) : overview.length === 0 ? (
+          <div className="text-sm text-gray-500">ไม่มีรอบสอบหรือการมอบหมายครูคุมสอบในช่วงวันที่เลือก</div>
+        ) : (
+          <div className="space-y-5">
+            {groupOverviewByDate(overview).map(day => (
+              <div key={day.date}>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="text-sm font-bold text-gray-800">{formatThaiDateLong(day.date)}</span>
+                  {day.rows.some(e => e.rounds.length > 0 && e.proctors.length === 0) && (
+                    <span className={pill + ' bg-amber-50 text-amber-700'}>มีห้องที่ยังไม่มีครูคุมสอบ</span>
+                  )}
+                  <button type="button" className={btnTiny + ' ml-auto'} onClick={() => { setDate(day.date); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                    มอบหมายวันนี้
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border border-gray-200 border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                        <th className="border border-gray-200 px-2.5 py-1.5 w-28">ชั้น/ห้อง</th>
+                        <th className="border border-gray-200 px-2.5 py-1.5">วิชา / เวลาสอบ</th>
+                        <th className="border border-gray-200 px-2.5 py-1.5 w-56">ครูคุมสอบ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {day.rows.map(e => (
+                        <tr key={`${e.gradeLevel}|${e.room}`} className="align-top">
+                          <td className="border border-gray-200 px-2.5 py-2 font-semibold text-gray-900 whitespace-nowrap">ชั้น {formatGradeRoom(e.gradeLevel, e.room)}</td>
+                          <td className="border border-gray-200 px-2.5 py-2">
+                            {e.rounds.length === 0 ? (
+                              <span className="text-gray-400">ไม่มีรอบสอบออนไลน์</span>
+                            ) : (
+                              <div className="space-y-1">
+                                {e.rounds.map(r => (
+                                  <div key={r.id}>
+                                    <span className="font-medium text-gray-900">{r.subject_name}</span>
+                                    <span className="text-gray-500"> — {r.title}</span>
+                                    <span className="text-gray-500 whitespace-nowrap"> · {formatThaiTime(r.opens_at)}–{formatThaiTime(r.closes_at)}</span>
+                                    {r.schedule_type !== 'scheduled' && <span className={pill + ' bg-gray-100 text-gray-500 ml-1'}>นอกตาราง</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="border border-gray-200 px-2.5 py-2">
+                            {e.proctors.length > 0 ? (
+                              <div className="space-y-0.5">
+                                {e.proctors.map(p => <div key={p.id} className="text-gray-900">{p.name || '(ไม่ระบุชื่อ)'}</div>)}
+                              </div>
+                            ) : e.rounds.length > 0 ? (
+                              <div>
+                                <span className={pill + ' bg-amber-50 text-amber-700'}>ยังไม่ได้มอบหมาย</span>
+                                {[...new Set(e.rounds.map(r => r.owner_name).filter(Boolean))].length > 0 && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    ครูผู้สร้างข้อสอบ: {[...new Set(e.rounds.map(r => r.owner_name).filter(Boolean))].join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

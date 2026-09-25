@@ -813,6 +813,76 @@ export async function listProctorAssignmentsForDate(supabase, date) {
 }
 
 /**
+ * "วันไหน วิชาอะไร ใครคุมสอบ" overview for the admin's จัดครูคุมสอบ page:
+ * every รอบสอบ opening in [fromDate, toDate] (Bangkok calendar days) joined
+ * with the proctor assignments for the same date + ชั้น/ห้อง, one entry per
+ * date/room. Admin-only in practice — relies on the is_admin() RLS bypass
+ * to read every teacher's rounds, same as listMonitorableRounds.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} fromDate 'YYYY-MM-DD'
+ * @param {string} toDate 'YYYY-MM-DD' (inclusive)
+ * @returns {Promise<Array<{ date: string, gradeLevel: string, room: string, rounds: object[], proctors: object[] }>>}
+ */
+export async function listProctorOverview(supabase, fromDate, toDate) {
+  const startIso = new Date(`${fromDate}T00:00:00+07:00`).toISOString();
+  const endIso = new Date(new Date(`${toDate}T00:00:00+07:00`).getTime() + 86400000).toISOString();
+
+  const [roundsRes, assignRes] = await Promise.all([
+    supabase
+      .from('online_exam_rounds')
+      .select('id, opens_at, closes_at, schedule_type, online_exam_sets ( title, subjects ( subject_name, grade_level, room, user_id ) )')
+      .gte('opens_at', startIso)
+      .lt('opens_at', endIso)
+      .order('opens_at', { ascending: true }),
+    supabase
+      .from('online_exam_proctor_assignments')
+      .select('id, assign_date, grade_level, room, teacher_id, profiles!online_exam_proctor_assignments_teacher_id_fkey ( full_name )')
+      .gte('assign_date', fromDate)
+      .lte('assign_date', toDate),
+  ]);
+  if (roundsRes.error) throw roundsRes.error;
+  if (assignRes.error) throw assignRes.error;
+
+  // Owner names, shown for rooms nobody's been assigned to — the teacher
+  // who created the exam can still monitor it themselves.
+  const ownerIds = [...new Set((roundsRes.data || []).map(r => r.online_exam_sets?.subjects?.user_id).filter(Boolean))];
+  let ownerNames = {};
+  if (ownerIds.length > 0) {
+    const { data: owners } = await supabase.from('profiles').select('id, full_name').in('id', ownerIds);
+    ownerNames = Object.fromEntries((owners || []).map(p => [p.id, p.full_name]));
+  }
+
+  const entries = new Map();
+  const entryFor = (date, gradeLevel, room) => {
+    const key = `${date}|${gradeLevel}|${room}`;
+    if (!entries.has(key)) entries.set(key, { date, gradeLevel, room, rounds: [], proctors: [] });
+    return entries.get(key);
+  };
+  for (const r of roundsRes.data || []) {
+    const subj = r.online_exam_sets?.subjects;
+    if (!subj) continue;
+    const date = new Date(r.opens_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    entryFor(date, subj.grade_level, subj.room).rounds.push({
+      id: r.id,
+      opens_at: r.opens_at,
+      closes_at: r.closes_at,
+      schedule_type: r.schedule_type,
+      title: r.online_exam_sets?.title,
+      subject_name: subj.subject_name,
+      owner_name: ownerNames[subj.user_id] || null,
+    });
+  }
+  for (const a of assignRes.data || []) {
+    entryFor(a.assign_date, a.grade_level, a.room).proctors.push({ id: a.id, name: a.profiles?.full_name || null });
+  }
+
+  return [...entries.values()].sort((a, b) =>
+    a.date.localeCompare(b.date)
+    || Number(a.gradeLevel) - Number(b.gradeLevel)
+    || String(a.room).localeCompare(String(b.room), 'th', { numeric: true }));
+}
+
+/**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ date: string, gradeLevel: string, room: string, teacherId: string }} args
  */

@@ -26,6 +26,7 @@ import { getAttemptLockStatus, saveAttemptLocation } from '../lib/exam-db';
 import { detectInAppBrowser } from '../lib/in-app-browser';
 import { getConfigValue } from '../lib/config-db';
 import { formatThaiDateTime, escapeHtml } from '../lib/format';
+import { EXAM_RULES_CONFIG_KEY, renderExamRulesHtml } from '../lib/exam-rules';
 import ConfirmDialog from './ConfirmDialog';
 
 const ERROR_MESSAGES = {
@@ -353,6 +354,15 @@ export default function StudentExamTool() {
         // best-effort — falls back to the default clock icon
       }
     })();
+  }, []);
+
+  // Admin-editable rules text (Settings → คำแนะนำก่อนเข้าสอบ). Held as a
+  // promise so the notice waits for it instead of flashing the default to
+  // a student who logs in before it arrives; null/failure falls back to
+  // the built-in default inside renderExamRulesHtml.
+  const examRulesTextRef = useRef(null);
+  useEffect(() => {
+    examRulesTextRef.current = getConfigValue(supabase, EXAM_RULES_CONFIG_KEY).catch(() => null);
   }, []);
 
   const [attempt, setAttempt] = useState(null); // { attempt_id, exam_set_title, student_name, deadline, questions, violation_count, max_violations, locked }
@@ -745,19 +755,10 @@ export default function StudentExamTool() {
   // a dismiss button, per "ให้นักเรียนได้อ่านกดรับทราบก่อน" — a plain
   // OK button doesn't prove they read anything.
   async function showExamRulesNotice(maxViolations) {
+    const rulesText = await examRulesTextRef.current;
     await Swal.fire({
       title: 'ข้อควรทราบก่อนเริ่มสอบ',
-      html: `
-        <div style="text-align:left;font-size:0.875rem;line-height:1.6">
-          <p>• ระบบตรวจจับการออกจากหน้าจอทำข้อสอบ (สลับแท็บ/แอปอื่น ย่อหน้าจอ จอดับ หรือล็อกหน้าจอ) ทุกครั้งจะถูกบันทึกเป็น <b>การทำผิดกฎ 1 ครั้ง</b></p>
-          <p>• อนุญาตให้ทำผิดได้สูงสุด <b>${maxViolations} ครั้ง</b> — เกินกว่านี้ระบบจะ<b>ส่งข้อสอบให้อัตโนมัติทันที</b> แม้ยังไม่หมดเวลา</p>
-          <p>• ทุกครั้งที่ทำผิดกฎ หน้าจอจะถูกล็อก ต้องรอ<b>ครูคุมสอบกรอกรหัสปลดล็อก</b>ให้ก่อนจึงทำต่อได้</p>
-          <p>⚠️ <b>กรุณาปิดการล็อกหน้าจออัตโนมัติ (Auto-Lock)</b> หรือตั้งเวลาจอดับให้นานกว่าเวลาสอบ — จอดับ/ล็อกเองก็ถูกนับเป็นการทำผิดกฎเช่นกัน</p>
-          <p>• ควรเชื่อมต่ออินเทอร์เน็ตให้เสถียรตลอดการสอบ</p>
-          <p>• หน้าจอมีลายน้ำระบุชื่อและเวลาของคุณกำกับอยู่ เพื่อป้องกันการแคปหน้าจอไปเผยแพร่</p>
-          <p>• ปิดแอป/รีเฟรชหน้าได้โดยคำตอบที่ทำไว้จะไม่หาย แต่<b>เวลาสอบยังเดินต่อตามปกติ</b> ไม่หยุดรอ</p>
-        </div>
-      `,
+      html: renderExamRulesHtml(rulesText, maxViolations),
       icon: 'warning',
       input: 'checkbox',
       inputValue: 0,

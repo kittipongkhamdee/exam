@@ -128,6 +128,41 @@ export async function getQuizWithAnswerKey(supabase, quizId) {
 }
 
 /**
+ * Copies a quiz (answer sheet layout + answer key) into a different
+ * subject — e.g. reusing the same sheet for another ห้อง/section without
+ * re-entering every answer by hand. Unlike copyExamSetToSubject (the
+ * online-exam equivalent, in exam-db.js), an OMR quiz's answer key is
+ * self-contained (omr_answer_keys stores each question's correct
+ * choices/points directly, with no bank_questions to copy), so this just
+ * re-reads the quiz via getQuizWithAnswerKey and re-inserts it via
+ * createQuiz under the target subject. The copy is left unlinked from any
+ * ชุดข้อสอบ (set_code null) even when the source was synced from one —
+ * set_code exists to keep a printed sheet in sync with its own
+ * online_exam_set, and the copy has no such set of its own. RLS requires
+ * the target subject to belong to the caller, same as creating a quiz
+ * from scratch; the source quiz is left untouched.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ quizId: string, targetSubjectId: string, title: string }} args
+ * @returns {Promise<string>} the new quiz's id
+ */
+export async function copyOmrQuiz(supabase, { quizId, targetSubjectId, title }) {
+  const source = await getQuizWithAnswerKey(supabase, quizId);
+  const { quizId: newQuizId } = await createQuiz(supabase, {
+    subjectId: targetSubjectId,
+    title,
+    numQuestions: source.numQuestions,
+    numChoices: source.numChoices,
+    idDigits: source.idDigits,
+    choiceScheme: source.choiceScheme,
+    paperLayout: source.paperLayout,
+    cols: source.cols,
+    answerKey: source.answerKey,
+    setCode: null,
+  });
+  return newQuizId;
+}
+
+/**
  * List quizzes for a subject, most recent first.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} subjectId

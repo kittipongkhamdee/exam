@@ -16,7 +16,7 @@ import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, ensureFontsLoaded } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl } from '../lib/omr-db';
+import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl, copyOmrQuiz } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
 import { formatStudentName } from '../lib/student-name';
 import { formatGradeRoom } from '../lib/format';
@@ -123,6 +123,11 @@ export default function OMRPrepareTool() {
   const [deleteListTarget, setDeleteListTarget] = useState(null); // a row from allQuizzes, or null
   const [deletingListQuiz, setDeletingListQuiz] = useState(false);
   const [deleteListError, setDeleteListError] = useState(null);
+  // "คัดลอก กระดาษคำตอบและกำหนดเฉลย" — a row from allQuizzes, or null.
+  const [copyTarget, setCopyTarget] = useState(null);
+  const [copyForm, setCopyForm] = useState(null);
+  const [copySubmitting, setCopySubmitting] = useState(false);
+  const [copyError, setCopyError] = useState(null);
   // Set right before switching subjectId from the all-quizzes list, so the
   // subjectId effect below (which itself resets quizId/roster/title first)
   // can load this specific quiz *after* that reset finishes, instead of
@@ -181,6 +186,43 @@ export default function OMRPrepareTool() {
       setDeleteListError(err.message || 'ลบชุดข้อสอบไม่สำเร็จ');
     } finally {
       setDeletingListQuiz(false);
+    }
+  }
+
+  // "คัดลอก": prefills the target-subject picker (every other subject, so
+  // the teacher can't accidentally "copy" a quiz onto itself) and the new
+  // quiz's title, defaulting to the same title as the source.
+  function openCopyQuizDialog(q) {
+    setCopyTarget(q);
+    setCopyForm({ targetSubjectId: '', title: q.title });
+    setCopyError(null);
+  }
+
+  async function confirmCopyQuiz(form) {
+    if (!copyTarget) return;
+    setCopySubmitting(true);
+    setCopyError(null);
+    try {
+      await copyOmrQuiz(supabase, {
+        quizId: copyTarget.id,
+        targetSubjectId: form.targetSubjectId,
+        title: form.title.trim(),
+      });
+      setCopyTarget(null);
+      setCopyForm(null);
+      if (form.targetSubjectId === subjectId) {
+        setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
+      }
+      await refreshAllQuizzes();
+      const target = subjects.find(s => s.id === form.targetSubjectId);
+      Swal.fire({
+        icon: 'success', title: 'คัดลอกชุดข้อสอบแล้ว',
+        text: target ? `คัดลอกไปที่ ${target.subject_name} (ชั้น ${formatGradeRoom(target.grade_level, target.room)}) แล้ว` : undefined,
+      });
+    } catch (err) {
+      setCopyError(err.message || 'คัดลอกชุดข้อสอบไม่สำเร็จ');
+    } finally {
+      setCopySubmitting(false);
     }
   }
 
@@ -599,6 +641,9 @@ export default function OMRPrepareTool() {
                         <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => openQuizFromList(q)} disabled={loadingQuiz}>
                           <PencilIcon className="h-3.5 w-3.5" /> แก้ไข
                         </button>
+                        <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => openCopyQuizDialog(q)}>
+                          <CopyIcon className="h-3.5 w-3.5" /> คัดลอก
+                        </button>
                         <button className={btnTiny + ' inline-flex items-center gap-1'} onClick={() => setDeleteListTarget(q)}>
                           <TrashIcon className="h-3.5 w-3.5" /> ลบ
                         </button>
@@ -905,6 +950,79 @@ export default function OMRPrepareTool() {
         onCancel={() => { setDeleteListTarget(null); setDeleteListError(null); }}
       />
       {deleteListError && <div className="text-xs text-red-600 mt-2">{deleteListError}</div>}
+
+      <CopyQuizDialog
+        open={!!copyTarget && !!copyForm}
+        initial={copyForm}
+        subjectOptions={subjects.filter(s => s.id !== copyTarget?.subject_id)}
+        submitting={copySubmitting}
+        error={copyError}
+        onConfirm={confirmCopyQuiz}
+        onCancel={() => { setCopyTarget(null); setCopyForm(null); setCopyError(null); }}
+      />
+    </div>
+  );
+}
+
+// "คัดลอก" (copy an existing quiz's answer sheet + answer key into a
+// different subject) — same shape as CopyExamSetDialog in ExamSetTool.jsx,
+// duplicated locally rather than shared since every Tool component in this
+// app keeps its own small presentational pieces local. See copyOmrQuiz.
+function CopyQuizDialog({ open, initial, subjectOptions, onCancel, onConfirm, submitting, error }) {
+  const [form, setForm] = useState(initial);
+  useEffect(() => { if (open) setForm(initial); }, [open, initial]);
+
+  if (!open || !form) return null;
+
+  const inputCls = 'px-2.5 py-2 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+  const labelCls = 'text-xs font-semibold text-gray-500';
+  const fieldCls = 'flex flex-col gap-1';
+
+  function update(key, value) {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+        <div className="font-semibold text-gray-900 mb-1">คัดลอกกระดาษคำตอบและกำหนดเฉลย</div>
+        <p className="text-xs text-gray-500 mb-4">
+          คัดลอกรูปแบบกระดาษคำตอบและเฉลยทั้งหมดของชุดนี้ไปที่วิชา/ห้องที่เลือก โดยไม่ต้องกำหนดเฉลยใหม่ — ชุดต้นทางไม่มีการเปลี่ยนแปลง
+        </p>
+
+        <div className="space-y-3">
+          <div className={fieldCls}>
+            <label className={labelCls}>วิชา/ห้องปลายทาง</label>
+            <select className={inputCls} value={form.targetSubjectId} onChange={e => update('targetSubjectId', e.target.value)}>
+              <option value="">— เลือกวิชา/ห้อง —</option>
+              {subjectOptions.map(s => (
+                <option key={s.id} value={s.id}>{s.subject_name} (ชั้น {formatGradeRoom(s.grade_level, s.room)})</option>
+              ))}
+            </select>
+            {subjectOptions.length === 0 && (
+              <div className="text-xs text-amber-600 mt-0.5">ยังไม่มีวิชาอื่นให้เลือกคัดลอกไป</div>
+            )}
+          </div>
+          <div className={fieldCls}>
+            <label className={labelCls}>ชื่อชุดข้อสอบใหม่</label>
+            <input type="text" className={inputCls} value={form.title} onChange={e => update('title', e.target.value)} />
+          </div>
+        </div>
+
+        {error && <div className="text-xs text-red-600 mt-3">{error}</div>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="bg-gray-100 text-gray-900 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200 disabled:opacity-50" onClick={onCancel} disabled={submitting}>ยกเลิก</button>
+          <button
+            type="button"
+            className="bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50"
+            onClick={() => onConfirm(form)}
+            disabled={submitting || !form.targetSubjectId || !form.title.trim()}
+          >
+            {submitting ? 'กำลังคัดลอก...' : 'คัดลอกชุดข้อสอบ'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -931,6 +1049,15 @@ function PencilIcon(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function CopyIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
     </svg>
   );
 }

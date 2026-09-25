@@ -979,18 +979,56 @@ function findFiducials(gray, width, height, opts = {}) {
   // hand, a shirt sleeve — can be larger than the actual marker; picking by
   // "largest" alone is easily fooled by those. The marker is always the
   // blob nearest the physical corner, by construction of the page layout.
-  const corners = quadrants.map(qd => {
+  const perQuadrant = quadrants.map(qd => {
     const localThreshold = otsuThresholdRegion(gray, width, height, qd);
     const candidates = findBlobCandidates(gray, width, height, qd, localThreshold, opts);
-    if (candidates.length === 0) return null;
     candidates.sort((a, b) => {
       const da = (a.x-qd.cornerX)**2 + (a.y-qd.cornerY)**2;
       const db = (b.x-qd.cornerX)**2 + (b.y-qd.cornerY)**2;
       return da - db;
     });
-    return candidates[0];
+    return candidates;
   });
+  // Nearest-to-corner alone is fooled by a dark object on the desk beyond
+  // the paper's corner (observed: a pencil case in the top-right of the
+  // frame beat the real marker, shearing the whole warp). With a candidate
+  // in every quadrant, pick the four jointly instead — see pickMarkerSet.
+  const corners = perQuadrant.some(c => c.length === 0)
+    ? perQuadrant.map(c => c[0] || null)
+    : pickMarkerSet(perQuadrant, quadrants, Math.hypot(width, height));
   return { corners, threshold: otsuThreshold(gray) };
+}
+
+const MARKER_CANDIDATES_PER_CORNER = 10;
+
+// Chooses one candidate per quadrant (TL, TR, BL, BR) as the set most
+// likely to be the four printed markers: all four are the same printed
+// square, so their apparent sizes should roughly agree (only perspective
+// separates them); each should look like a solid square; and together they
+// must form a correctly-ordered quadrilateral. Distance to the frame corner
+// is kept only as a light tie-break — it's still what separates the marker
+// from same-sized clutter, but no longer lets a much bigger/smaller blob
+// win just by sitting closer to the edge of the frame.
+function pickMarkerSet(perQuadrant, quadrants, diag) {
+  const lists = perQuadrant.map((cands, i) => cands.slice(0, MARKER_CANDIDATES_PER_CORNER).map(c => {
+    const density = c.count / (c.bw * c.bh);
+    return {
+      c,
+      logSize: Math.log(Math.sqrt(c.count)),
+      shape: Math.abs(Math.log(c.bw / c.bh)) * 2 + Math.max(0, 0.8 - density) * 3,
+      dist: Math.hypot(c.x - quadrants[i].cornerX, c.y - quadrants[i].cornerY) / diag,
+    };
+  }));
+  let best = null, bestScore = Infinity;
+  for (const tl of lists[0]) for (const tr of lists[1]) for (const bl of lists[2]) for (const br of lists[3]) {
+    if (!(tl.c.x < tr.c.x && bl.c.x < br.c.x && tl.c.y < bl.c.y && tr.c.y < br.c.y)) continue;
+    const sizes = [tl.logSize, tr.logSize, bl.logSize, br.logSize];
+    const score = (Math.max(...sizes) - Math.min(...sizes)) * 4
+      + tl.shape + tr.shape + bl.shape + br.shape
+      + tl.dist + tr.dist + bl.dist + br.dist;
+    if (score < bestScore) { bestScore = score; best = [tl.c, tr.c, bl.c, br.c]; }
+  }
+  return best || perQuadrant.map(c => c[0]);
 }
 
 // Rotates a canvas by 0/90/180/270 degrees, swapping width/height for a
@@ -1199,7 +1237,26 @@ function findBlobCandidates(gray, width, height, region, threshold, opts = {}) {
   const rw = x1 - x0, rh = y1 - y0;
   if (rw <= 0 || rh <= 0) return [];
 
-  const closedMask = buildClosedDarkMask(gray, width, x0, y0, x1, y1, threshold, BLOB_GAP_CLOSE_RADIUS);
+  // Search both the raw mask and the gap-closed one: closing rescues a
+  // marker split by a printer seam, but at low resolution (the ~480px live
+  // preview) it also bridges the ~2.5mm gap to the title text beside the
+  // top-left marker, merging them into one non-square blob that fails the
+  // shape checks. Near-duplicate hits from the two passes are dropped.
+  const squareness = b => Math.abs(Math.log(b.bw / b.bh)) + (1 - b.count / (b.bw * b.bh));
+  const results = [];
+  for (const radius of [0, BLOB_GAP_CLOSE_RADIUS]) {
+    for (const b of findBlobsInMask(gray, width, height, x0, y0, x1, y1, threshold, radius, opts)) {
+      const i = results.findIndex(r => Math.abs(r.x - b.x) < Math.max(r.bw, b.bw) / 4 && Math.abs(r.y - b.y) < Math.max(r.bh, b.bh) / 4);
+      if (i === -1) results.push(b);
+      else if (squareness(b) < squareness(results[i])) results[i] = b;
+    }
+  }
+  return results;
+}
+
+function findBlobsInMask(gray, width, height, x0, y0, x1, y1, threshold, radius, opts) {
+  const rw = x1 - x0, rh = y1 - y0;
+  const closedMask = buildClosedDarkMask(gray, width, x0, y0, x1, y1, threshold, radius);
   const visited = new Uint8Array(rw * rh);
   const isDark = (x, y) => closedMask[(y - y0) * rw + (x - x0)] === 1;
 

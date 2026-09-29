@@ -18,7 +18,7 @@ import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
   findFiducialsWithOrientation, findFiducials, toGray, assessImageQuality, assessCornerGeometry, readBubbles, drawGradedOverlay, choiceLetters,
-  buildLayout, markerCenters, markerSizeRatio, MIN_SCAN_ALIGNMENT,
+  buildLayout, markerCenters, markerSizeRatio, MIN_SCAN_ALIGNMENT, releaseCanvas,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
@@ -80,6 +80,14 @@ const LIVE_DETECT_ASPECT_TOLERANCE = 0.35; // matches findFiducialsWithOrientati
 // frame since this only runs once per capture, not several times a second.
 const QUALITY_CHECK_MAX_DIM = 640;
 
+// Longest side a photo is scaled down to before scanning (camera captures
+// and uploads alike). Plenty for reading bubbles — the sheet itself is
+// warped onto an ~600x850 page — while keeping each scan's scratch
+// canvases a few MB instead of tens: phones cap total canvas memory, and a
+// full 12MP upload or 1080p frame per scan used to exhaust it after a
+// stretch of scanning (scans then failed until the page was reloaded).
+const SCAN_MAX_DIM = 1600;
+
 // Admin-toggleable scanning features (public.config, set at Settings →
 // ตั้งค่าระบบ). Each defaults to enabled — a missing/unset config row means
 // "never explicitly turned off" — matching how DEFAULT_FEATURE_FLAGS below
@@ -126,6 +134,7 @@ function computeCaptureQuality(srcCanvas) {
     const ctx = c.getContext('2d');
     ctx.drawImage(srcCanvas, 0, 0, w, h);
     const gray = toGray(ctx.getImageData(0, 0, w, h));
+    releaseCanvas(c);
     return assessImageQuality(gray, w, h);
   } catch {
     return null;
@@ -387,10 +396,16 @@ export default function OMRScanTool() {
         // any unexpected throw in here (a malformed image passing onload
         // but failing to decode inside canvas/omr-core, etc.) — catch it
         // and surface an error instead of a silently frozen screen.
+        // Every full-size scratch canvas this scan makes is released in
+        // the finally below, on every path — see SCAN_MAX_DIM/releaseCanvas.
+        let srcCanvas = null;
+        let best = null;
         try {
-          const srcCanvas = document.createElement('canvas');
-          srcCanvas.width = img.width; srcCanvas.height = img.height;
-          srcCanvas.getContext('2d').drawImage(img, 0, 0);
+          const scale = Math.min(1, SCAN_MAX_DIM / Math.max(img.width, img.height));
+          srcCanvas = document.createElement('canvas');
+          srcCanvas.width = Math.round(img.width * scale);
+          srcCanvas.height = Math.round(img.height * scale);
+          srcCanvas.getContext('2d').drawImage(img, 0, 0, srcCanvas.width, srcCanvas.height);
 
           // Cheap blur/glare check on the captured photo — advisory only,
           // never blocks scanning: a miscalibrated heuristic must never
@@ -413,7 +428,7 @@ export default function OMRScanTool() {
             idDigits: selectedQuiz.idDigits, layoutStyle, cols, layoutVersion,
             subpixelRefine: featureFlags.subpixelRefine,
           };
-          const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
+          best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
 
           if (!best) {
             let hint = '';
@@ -504,6 +519,12 @@ export default function OMRScanTool() {
         } catch {
           setScanResult({ error: 'ประมวลผลรูปภาพไม่สำเร็จ ลองถ่าย/เลือกรูปใหม่อีกครั้ง' });
           setScanStage('done');
+        } finally {
+          if (best) {
+            if (best.canvas !== srcCanvas) releaseCanvas(best.canvas);
+            releaseCanvas(best.warped);
+          }
+          releaseCanvas(srcCanvas);
         }
       }, 200);
     };
@@ -789,11 +810,14 @@ export default function OMRScanTool() {
   function capturePhoto() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
+    // Scaled down and JPEG rather than full-size PNG — see SCAN_MAX_DIM.
+    const scale = Math.min(1, SCAN_MAX_DIM / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/png');
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    releaseCanvas(canvas);
     setScanImage(dataUrl);
     setGradedImageUrl(null);
     gradedCanvasRef.current = null;

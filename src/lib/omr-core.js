@@ -1156,6 +1156,16 @@ function pickMarkerSet(perQuadrant, quadrants, diag, expectedRatio) {
   return best || perQuadrant.map(c => c[0]);
 }
 
+// Frees a canvas's pixel buffer right away. Mobile browsers (iOS Safari
+// and Android Chrome alike) cap total canvas memory and reclaim dropped
+// canvases lazily, so a scanning session that just lets them go out of
+// scope eventually can't allocate a new one — scans start failing until
+// the page is reloaded. Every full-size scratch canvas made per scan goes
+// through here once it's no longer needed.
+function releaseCanvas(canvas) {
+  if (canvas) { canvas.width = 0; canvas.height = 0; }
+}
+
 // Rotates a canvas by 0/90/180/270 degrees, swapping width/height for a
 // quarter turn.
 function rotateCanvas(canvas, degrees) {
@@ -1229,41 +1239,54 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
   const candidates = [];
   for (const deg of [0, 90, 180, 270]) {
     const canvas = rotateCanvas(srcCanvas, deg);
-    const ctx = canvas.getContext('2d');
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const gray = toGray(imgData);
-    let { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine: readOpts.subpixelRefine, expectedMarkerRatio: markerSizeRatio(pageW, pageH, layout.margin) });
-    let estimatedCorner = null;
-    const missing = corners.map((c, i) => (c === null ? i : -1)).filter(i => i >= 0);
-    if (missing.length > 1) continue;
-    if (missing.length === 1) {
-      corners = corners.slice();
-      corners[missing[0]] = parallelogramCorner(corners, missing[0]);
-      estimatedCorner = missing[0];
+    let kept = false;
+    try {
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const gray = toGray(imgData);
+      let { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine: readOpts.subpixelRefine, expectedMarkerRatio: markerSizeRatio(pageW, pageH, layout.margin) });
+      let estimatedCorner = null;
+      const missing = corners.map((c, i) => (c === null ? i : -1)).filter(i => i >= 0);
+      if (missing.length > 1) continue;
+      if (missing.length === 1) {
+        corners = corners.slice();
+        corners[missing[0]] = parallelogramCorner(corners, missing[0]);
+        estimatedCorner = missing[0];
+      }
+      const [tl, tr, bl] = corners;
+      const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+      const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+      if (topW === 0 || leftH === 0) continue;
+      const detectedRatio = leftH / topW;
+      const aspectScore = Math.abs(Math.log(detectedRatio / expectedRatio));
+      if (aspectScore > 0.35) continue; // clearly the wrong aspect (90-degree swap)
+      if (estimatedCorner !== null) {
+        // One marker stapled over, torn or crumpled — refine the rough guess
+        // against the printed bubble grid (see refineEstimatedCorner).
+        const refined = refineEstimatedCorner(gray, canvas.width, canvas.height, corners, estimatedCorner, pageCorners, layout);
+        if (!refined) continue;
+        corners[estimatedCorner] = refined;
+      }
+      const warped = warpImage(canvas, corners, pageW, pageH, layout.margin);
+      if (!warped) continue;
+      const orientationScore = decodeConfidenceScore(warped, { ...readOpts, pageW, pageH });
+      candidates.push({ canvas, gray, corners, rotationDeg: deg, warped, orientationScore, estimatedCorner });
+      kept = true;
+    } finally {
+      // A rejected rotation's copy is dead weight — free it now (never the
+      // caller's own srcCanvas, which rotation 0 returns as-is).
+      if (!kept && canvas !== srcCanvas) releaseCanvas(canvas);
     }
-    const [tl, tr, bl] = corners;
-    const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
-    const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
-    if (topW === 0 || leftH === 0) continue;
-    const detectedRatio = leftH / topW;
-    const aspectScore = Math.abs(Math.log(detectedRatio / expectedRatio));
-    if (aspectScore > 0.35) continue; // clearly the wrong aspect (90-degree swap)
-    if (estimatedCorner !== null) {
-      // One marker stapled over, torn or crumpled — refine the rough guess
-      // against the printed bubble grid (see refineEstimatedCorner).
-      const refined = refineEstimatedCorner(gray, canvas.width, canvas.height, corners, estimatedCorner, pageCorners, layout);
-      if (!refined) continue;
-      corners[estimatedCorner] = refined;
-    }
-    const warped = warpImage(canvas, corners, pageW, pageH, layout.margin);
-    if (!warped) continue;
-    const orientationScore = decodeConfidenceScore(warped, { ...readOpts, pageW, pageH });
-    candidates.push({ canvas, gray, corners, rotationDeg: deg, warped, orientationScore, estimatedCorner });
   }
   if (candidates.length === 0) return null;
   // A clean 4-marker read beats an estimated one at the same decode score.
   candidates.sort((a, b) => (b.orientationScore - a.orientationScore) || ((a.estimatedCorner === null ? 0 : 1) - (b.estimatedCorner === null ? 0 : 1)));
   const best = candidates[0];
+  for (const c of candidates.slice(1)) {
+    if (c.canvas !== srcCanvas && c.canvas !== best.canvas) releaseCanvas(c.canvas);
+    releaseCanvas(c.warped);
+    c.gray = null;
+  }
 
   // All 4 found doesn't mean all 4 are right: a crumpled or half-stapled
   // marker is often still detected, just with its centre dragged off the
@@ -1275,6 +1298,7 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
     if (repaired) {
       const warpedFix = warpImage(best.canvas, repaired.corners, pageW, pageH, layout.margin);
       if (warpedFix) {
+        releaseCanvas(best.warped);
         best.corners = repaired.corners;
         best.warped = warpedFix;
         best.cornerShift = repaired.shift;
@@ -1861,6 +1885,7 @@ export {
   MARKER, MARGIN,
   CURRENT_OMR_LAYOUT_VERSION,
   MIN_SCAN_ALIGNMENT,
+  releaseCanvas,
   markerCenters,
   markerSizeRatio,
   bubbleAlignmentScore,

@@ -31,6 +31,7 @@
 // has one (e.g. a `lib/supabaseClient.js`).
 
 import { analyzeItems } from './item-analysis';
+import { CURRENT_OMR_LAYOUT_VERSION } from './omr-core';
 
 /**
  * Create a new quiz and its answer key in one call.
@@ -46,11 +47,12 @@ import { analyzeItems } from './item-analysis';
  *   cols?: number|null, // forced column count the sheet was printed with, if any
  *   answerKey: Record<number, { choices: number[], points: number }>, // { [questionIndex0based]: {...} }
  *   setCode?: number|null, // mirrors online_exam_sets.set_code for a quiz synced from a printed ชุดข้อสอบ; null otherwise
+ *   layoutVersion?: number, // printed-sheet geometry (omr-core OMR_LAYOUT_VERSIONS); defaults to the current one for new sheets
  * }} params
  * @returns {Promise<{ quizId: string }>}
  */
 export async function createQuiz(supabase, params) {
-  const { subjectId, title, numQuestions, numChoices, idDigits, choiceScheme, paperLayout, cols, answerKey, setCode } = params;
+  const { subjectId, title, numQuestions, numChoices, idDigits, choiceScheme, paperLayout, cols, answerKey, setCode, layoutVersion } = params;
 
   const { data: quiz, error: quizErr } = await supabase
     .from('omr_quizzes')
@@ -64,6 +66,7 @@ export async function createQuiz(supabase, params) {
       paper_layout: paperLayout,
       cols: cols || null,
       set_code: setCode ?? null,
+      layout_version: layoutVersion ?? CURRENT_OMR_LAYOUT_VERSION,
     })
     .select('id')
     .single();
@@ -94,7 +97,7 @@ export async function createQuiz(supabase, params) {
 export async function getQuizWithAnswerKey(supabase, quizId) {
   const { data: quiz, error: quizErr } = await supabase
     .from('omr_quizzes')
-    .select('id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, paper_layout, cols, created_at, set_code')
+    .select('id, subject_id, title, num_questions, num_choices, id_digits, choice_scheme, paper_layout, cols, created_at, set_code, layout_version')
     .eq('id', quizId)
     .single();
   if (quizErr) throw quizErr;
@@ -123,6 +126,7 @@ export async function getQuizWithAnswerKey(supabase, quizId) {
     cols: quiz.cols,
     createdAt: quiz.created_at,
     setCode: quiz.set_code,
+    layoutVersion: quiz.layout_version ?? 1,
     answerKey,
   };
 }
@@ -158,6 +162,9 @@ export async function copyOmrQuiz(supabase, { quizId, targetSubjectId, title }) 
     cols: source.cols,
     answerKey: source.answerKey,
     setCode: null,
+    // Same geometry as the source, so the copy's cols (frozen for that
+    // version) still lay out identically.
+    layoutVersion: source.layoutVersion,
   });
   return newQuizId;
 }

@@ -36,6 +36,45 @@ const TOP_BOTTOM_PAGE_W = PAGE_W, TOP_BOTTOM_PAGE_H = Math.round(148.5 * PX_PER_
 const MARKER = 26; // fiducial square size
 const MARGIN = 40;
 
+// Printed-sheet layout versions (omr_quizzes.layout_version). A sheet must
+// always be read back with the exact geometry it was printed with, so an
+// old version is never changed — only new versions are added.
+//   1: markers MARGIN (~10mm) from the paper edge — the original layout.
+//   2: markers 20mm in, clear of where a teacher staples the stack and of
+//      the dog-eared/crumpled corners sheets come back with; everything
+//      else moves in with them, and rows tighten (never below 20px) only
+//      when the question count would otherwise run past the bottom markers.
+// Only the half-page layouts use this; the legacy topBottom/zipFull styles
+// always stay on version 1 geometry.
+const OMR_LAYOUT_VERSIONS = {
+  1: { margin: MARGIN, adaptiveRowH: false },
+  2: { margin: Math.round(20 * PX_PER_MM), adaptiveRowH: true },
+};
+const CURRENT_OMR_LAYOUT_VERSION = 2;
+
+function omrLayoutParams(layoutVersion) {
+  return OMR_LAYOUT_VERSIONS[layoutVersion] || OMR_LAYOUT_VERSIONS[1];
+}
+
+// A printed marker's side ÷ the distance between the top two marker
+// centres, for findFiducials' opts.expectedMarkerRatio.
+function markerSizeRatio(pageW, pageH, margin = MARGIN) {
+  const [tl, tr] = markerCenters(pageW, pageH, margin);
+  return MARKER / (tr.x - tl.x);
+}
+
+// Page-space centres of the 4 printed markers, TL/TR/BL/BR — the points a
+// photo's detected marker centroids are mapped onto.
+function markerCenters(pageW, pageH, margin = MARGIN) {
+  const half = MARKER / 2;
+  return [
+    { x: margin + half, y: margin + half },
+    { x: pageW - margin - half, y: margin + half },
+    { x: margin + half, y: pageH - margin - half },
+    { x: pageW - margin - half, y: pageH - margin - half },
+  ];
+}
+
 // Shared with exam-print.js and OMRPrepareTool.jsx: the `text` argument
 // document.fonts.load() needs to actually load Sarabun's Thai glyphs before
 // drawing to a <canvas>. Without a text argument, load() only guarantees
@@ -84,7 +123,7 @@ async function ensureFontsLoaded(fontSpecs, sampleText = THAI_GLYPH_SAMPLE) {
   }
 }
 
-function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH = PAGE_H, layoutStyle = 'auto', forcedCols) {
+function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH = PAGE_H, layoutStyle = 'auto', forcedCols, layoutVersion = 1) {
   // Returns bubble center coordinates for each question/choice, and ID grid.
   // layoutStyle picks which template to use — 'auto' infers from pageW for
   // backward compatibility (narrow width = half-page template), but callers
@@ -165,7 +204,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
     }
 
     return {
-      questions, idGrid, cols: numCols, perCol, layoutStyle: 'topBottom',
+      questions, idGrid, cols: numCols, perCol, layoutStyle: 'topBottom', margin: MARGIN,
       titleBottom, headerBoxY, idBoxH, nameBoxH, idBoxW, idBoxX, idStartX, idStartY, idColGap, idBottom,
       nameBoxX, nameBoxW, headerBoxBottom, instructionY, qStartY, colW, colGap,
     };
@@ -214,7 +253,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
       questions.push({ index: q, labelX: MARGIN + col * (colW + colGap), labelY: y, choices, col });
     }
 
-    return { questions, idGrid, cols: 3, perCol, layoutStyle: 'zipFull', headerBottom, idStartX, idStartY, idColW, idBottom, qStartY, colW, colGap };
+    return { questions, idGrid, cols: 3, perCol, layoutStyle: 'zipFull', margin: MARGIN, headerBottom, idStartX, idStartY, idColW, idBottom, qStartY, colW, colGap };
   }
 
   // pageW controls how many columns the questions wrap into: a narrower page
@@ -222,13 +261,14 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // so this recomputes the wrap point based on the actual page width rather
   // than assuming the full-page width always (see the column-count picking
   // below, after startY is known).
-  const usableW = pageW - MARGIN * 2;
+  const { margin: M, adaptiveRowH } = omrLayoutParams(layoutVersion);
+  const usableW = pageW - M * 2;
   // 26 left the last row of a 20-row column (e.g. 60 questions x 3 columns,
   // or 40 x 2) sitting just ~2px above the bottom fiducial marker — visibly
   // crowded. 24 still leaves an 8px gap between adjacent bubbles (16px
   // diameter), but frees up ~40px of clearance at the bottom for the
   // worst-case 20-row column.
-  const rowH = 24;
+  let rowH = 24;
 
   // Student ID grid sits below the title/name lines on the half sheet, as a
   // bordered box (too narrow to place it beside the title like the full
@@ -241,9 +281,9 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const idRowH = 20, idColGap = 22;
   const idBoxW = 9 * idColGap + 30;
   const idBoxH = idLabelH + idDigits * idRowH + 14;
-  const idBoxY = MARGIN + MARKER + 44; // clears the name line + the ชั้น/เลขที่ line below it
+  const idBoxY = M + MARKER + 44; // clears the name line + the ชั้น/เลขที่ line below it
   // Keep clear of the top-right fiducial marker, not just the page margin.
-  const idBoxX = pageW - MARGIN - MARKER - 10 - idBoxW;
+  const idBoxX = pageW - M - MARKER - 10 - idBoxW;
   const idStartX = idBoxX + 16;
   const idStartY = idBoxY + idLabelH + 16;
 
@@ -260,7 +300,12 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // This used to require the teacher to manually tick a "3 columns" box for
   // large question counts — easy to forget, and forgetting it silently
   // produced a sheet with rows running off the bottom edge.
-  const maxRowsPerCol = Math.max(1, Math.floor((pageH - MARGIN - MARKER - startY) / rowH));
+  // Version 2 gives up ~40px of height to its wider margin, so it plans
+  // columns as if rows were 21px (e.g. 40 questions stays 2 columns rather
+  // than jumping to 3 dense ones), then sizes rows back up to 24px when
+  // they fit — see the adaptiveRowH block below.
+  const availH = pageH - M - MARKER - startY;
+  const maxRowsPerCol = Math.max(1, Math.floor(availH / (adaptiveRowH ? 21 : rowH)));
   const baseCols = numQuestions > 30 ? 2 : (pageW < PAGE_W * 0.75 && numQuestions > 12 ? 2 : 1);
   const autoCols = Math.max(baseCols, Math.ceil(numQuestions / maxRowsPerCol));
   // A caller can still force a specific column count (e.g. to reproduce the
@@ -280,18 +325,21 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const cols = forcedCols || Math.min(autoCols, maxCols);
   const perCol = Math.ceil(numQuestions / cols);
   const colW = usableW / cols;
+  if (adaptiveRowH) {
+    rowH = Math.min(24, Math.max(20, Math.floor(availH / perCol)));
+  }
 
   const questions = [];
   for (let q = 0; q < numQuestions; q++) {
     const col = Math.floor(q / perCol);
     const rowInCol = q % perCol;
-    const x0 = MARGIN + col * colW + qLabelW;
+    const x0 = M + col * colW + qLabelW;
     const y = startY + rowInCol * rowH;
     const choices = [];
     for (let c = 0; c < numChoices; c++) {
       choices.push({ x: x0 + c * choiceGap, y, r: bubbleR });
     }
-    questions.push({ index: q, labelX: MARGIN + col * colW, labelY: y, choices });
+    questions.push({ index: q, labelX: M + col * colW, labelY: y, choices });
   }
 
   const idGrid = [];
@@ -304,18 +352,18 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   }
 
   return {
-    questions, idGrid, cols, perCol, layoutStyle: 'halfPortrait',
+    questions, idGrid, cols, perCol, layoutStyle: 'halfPortrait', margin: M, rowH,
     idBoxX, idBoxY, idBoxW, idBoxH, idLabelH, idStartX, idStartY, idColGap,
   };
 }
 
-function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
+function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H, margin = MARGIN) {
   ctx.fillStyle = '#000';
   const positions = [
-    [MARGIN, MARGIN],
-    [pageW - MARGIN - MARKER, MARGIN],
-    [MARGIN, pageH - MARGIN - MARKER],
-    [pageW - MARGIN - MARKER, pageH - MARGIN - MARKER],
+    [margin, margin],
+    [pageW - margin - MARKER, margin],
+    [margin, pageH - margin - MARKER],
+    [pageW - margin - MARKER, pageH - margin - MARKER],
   ];
   positions.forEach(([x, y]) => ctx.fillRect(x, y, MARKER, MARKER));
   return positions;
@@ -327,13 +375,13 @@ function drawFiducials(ctx, pageW = PAGE_W, pageH = PAGE_H) {
 // scanned answer sheet back to its ชุดข้อสอบ. Only drawn when the quiz
 // carries a set_code — most do not (quizzes made directly in เตรียมข้อสอบ,
 // never synced from a printed ชุดข้อสอบ, have none).
-function drawSetCodeStamp(ctx, pageW, y, setCode) {
+function drawSetCodeStamp(ctx, pageW, y, setCode, margin = MARGIN) {
   if (!Number.isFinite(setCode)) return;
   ctx.save();
   ctx.font = '11px "Sarabun", sans-serif';
   ctx.fillStyle = '#000';
   ctx.textAlign = 'right';
-  ctx.fillText(`รหัส ${String(setCode).padStart(3, '0')}`, pageW - MARGIN - MARKER - 10, y);
+  ctx.fillText(`รหัส ${String(setCode).padStart(3, '0')}`, pageW - margin - MARKER - 10, y);
   ctx.restore();
 }
 
@@ -483,7 +531,7 @@ function drawSheet(canvas, opts, answers) {
   ctx.scale(PRINT_SCALE, PRINT_SCALE);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pageW, pageH);
 
-  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols);
+  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols, opts.layoutVersion);
   const letters = choiceLetters(opts.scheme, opts.numChoices);
   const resolvedStyle = layout.layoutStyle;
 
@@ -569,7 +617,7 @@ function drawSheet(canvas, opts, answers) {
     return layout;
   }
 
-  drawFiducials(ctx, pageW, pageH);
+  drawFiducials(ctx, pageW, pageH, layout.margin);
 
   if (resolvedStyle === 'zipFull') {
     // ---------- ZipGrade-style full-page layout ----------
@@ -654,14 +702,15 @@ function drawSheet(canvas, opts, answers) {
     return layout;
   }
 
-  // ---------- Half-page layout (unchanged) ----------
+  // ---------- Half-page layout ----------
+  const M = layout.margin;
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'alphabetic';
   ctx.font = 'bold 18px "Sarabun", sans-serif';
-  ctx.fillText(opts.title || 'กระดาษคำตอบ', MARGIN + MARKER + 10, MARGIN + 16);
-  drawSetCodeStamp(ctx, pageW, MARGIN + 16, opts.setCode);
+  ctx.fillText(opts.title || 'กระดาษคำตอบ', M + MARKER + 10, M + 16);
+  drawSetCodeStamp(ctx, pageW, M + 16, opts.setCode, M);
   ctx.font = '10px "Sarabun", sans-serif';
-  ctx.fillText(opts.subject || '', MARGIN + MARKER + 10, MARGIN + 30);
+  ctx.fillText(opts.subject || '', M + MARKER + 10, M + 30);
 
   // Half-page header is a vertical stack: title, subject, then the name
   // line, then a ชั้น/เลขที่ line below it (not sharing a baseline with the
@@ -694,9 +743,9 @@ function drawSheet(canvas, opts, answers) {
   const writeBoxSize = Math.min(20, Math.floor((layout.idBoxW - (numIdDigits - 1) * writeBoxGap) / numIdDigits));
   const writeBoxesW = numIdDigits * writeBoxSize + (numIdDigits - 1) * writeBoxGap;
   const writeBoxStartX = layout.idBoxX + layout.idBoxW - writeBoxesW;
-  const writeBoxY = MARGIN + MARKER + 16;
+  const writeBoxY = M + MARKER + 16;
   ctx.font = 'bold 10px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
-  ctx.fillText('เลขประจำตัวนักเรียน', writeBoxStartX, MARGIN + MARKER + 10);
+  ctx.fillText('เลขประจำตัวนักเรียน', writeBoxStartX, M + MARKER + 10);
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   for (let i = 0; i < numIdDigits; i++) {
     const bx = writeBoxStartX + i * (writeBoxSize + writeBoxGap);
@@ -711,23 +760,23 @@ function drawSheet(canvas, opts, answers) {
 
   ctx.font = '14px "Sarabun", sans-serif'; ctx.fillStyle = '#000';
   const idBoxRightEdge = layout.idBoxX - 10;
-  const nameLineY = MARGIN + MARKER + 26;
+  const nameLineY = M + MARKER + 26;
   const classLineY = nameLineY + 20;
   // A batch-generated sheet prints the real student name from the roster,
   // which (unlike the blank fill-in line) has no natural length limit — cap
   // it at the write-in ID boxes' own left edge so a long name can never
   // run into them, regardless of how long a name actually is.
-  const nameMaxW = writeBoxStartX - MARGIN - 12;
+  const nameMaxW = writeBoxStartX - M - 12;
   if (opts.studentName) {
-    fillTextClipped(ctx, `ชื่อ: ${opts.studentName}`, MARGIN, nameLineY, nameMaxW);
+    fillTextClipped(ctx, `ชื่อ: ${opts.studentName}`, M, nameLineY, nameMaxW);
   } else {
-    drawFillLine(ctx, 'ชื่อ:', MARGIN, nameLineY, idBoxRightEdge);
+    drawFillLine(ctx, 'ชื่อ:', M, nameLineY, idBoxRightEdge);
   }
-  const classLineMidX = MARGIN + (idBoxRightEdge - MARGIN) * 0.5;
+  const classLineMidX = M + (idBoxRightEdge - M) * 0.5;
   if (opts.studentClass) {
-    fillTextClipped(ctx, `ชั้น: ${opts.studentClass}`, MARGIN, classLineY, classLineMidX - MARGIN - 12);
+    fillTextClipped(ctx, `ชั้น: ${opts.studentClass}`, M, classLineY, classLineMidX - M - 12);
   } else {
-    drawFillLine(ctx, 'ชั้น:', MARGIN, classLineY, classLineMidX);
+    drawFillLine(ctx, 'ชั้น:', M, classLineY, classLineMidX);
   }
   if (opts.studentNumber != null) {
     ctx.fillText(`เลขที่: ${opts.studentNumber}`, classLineMidX + 16, classLineY);
@@ -741,10 +790,10 @@ function drawSheet(canvas, opts, answers) {
   // or down into the question grid, regardless of how much text is typed.
   if (opts.note) {
     ctx.font = '12px "Sarabun", sans-serif'; ctx.fillStyle = '#333';
-    const noteMaxW = layout.idBoxX - MARGIN - 10;
+    const noteMaxW = layout.idBoxX - M - 10;
     const noteLineH = 16;
     wrapText(ctx, opts.note, noteMaxW).slice(0, 8).forEach((ln, i) => {
-      ctx.fillText(ln, MARGIN, layout.idBoxY + 8 + i * noteLineH);
+      ctx.fillText(ln, M, layout.idBoxY + 8 + i * noteLineH);
     });
   }
 
@@ -782,8 +831,8 @@ function drawSheet(canvas, opts, answers) {
   const dividerY = layout.questions[0].labelY - 22;
   ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(MARGIN, dividerY);
-  ctx.lineTo(pageW - MARGIN, dividerY);
+  ctx.moveTo(M, dividerY);
+  ctx.lineTo(pageW - M, dividerY);
   ctx.stroke();
 
   // Header row for choice letters (once per column)
@@ -954,6 +1003,9 @@ function assessCornerGeometry(corners) {
 // by background clutter like desk surface, shadows, or hands), find the largest
 // compact dark connected blob in each quadrant using flood fill, and use its
 // bounding-box center. This is robust to a dark background around the page.
+// opts.expectedMarkerRatio (marker side ÷ marker-centre spacing along the
+// top edge, from the sheet's layout — see markerSizeRatio) sharpens which
+// blobs count as markers; see pickMarkerSet.
 // opts.subpixelRefine (default true) controls whether each found corner's
 // coarse blob centroid gets refined to sub-pixel precision — see
 // refineCentroidSubpixel below. Exposed as an option (rather than always
@@ -995,38 +1047,111 @@ function findFiducials(gray, width, height, opts = {}) {
   // in every quadrant, pick the four jointly instead — see pickMarkerSet.
   const corners = perQuadrant.some(c => c.length === 0)
     ? perQuadrant.map(c => c[0] || null)
-    : pickMarkerSet(perQuadrant, quadrants, Math.hypot(width, height));
+    : (opts.expectedMarkerRatio
+      ? pickMarkerSet(perQuadrant, quadrants, Math.hypot(width, height), opts.expectedMarkerRatio)
+      : dropSizeOutlier(pickMarkerSet(perQuadrant, quadrants, Math.hypot(width, height))));
   return { corners, threshold: otsuThreshold(gray) };
 }
 
+// The four printed markers are the same size, so once three agree, a
+// fourth pick far smaller/larger than them isn't a marker at all — usually
+// a title letter or staple left behind where the real marker was torn,
+// stapled over or crumpled away. Reporting it missing (null) instead lets
+// findFiducialsWithOrientation reconstruct that corner properly rather
+// than warping to the wrong point. Perspective alone keeps sizes well
+// within these bounds.
+function dropSizeOutlier(corners) {
+  if (corners.some(c => !c)) return corners;
+  const size = corners.map(c => c.size ?? Math.sqrt(c.count));
+  for (let i = 0; i < 4; i++) {
+    const others = size.filter((_, j) => j !== i);
+    const lo = Math.min(...others), hi = Math.max(...others);
+    if (hi / lo > 1.5) continue;
+    const ref = others.reduce((a, b) => a + b, 0) / 3;
+    const ratio = size[i] / ref;
+    if (ratio < 0.6 || ratio > 1.7) {
+      const out = corners.slice();
+      out[i] = null;
+      return out;
+    }
+  }
+  return corners;
+}
+
 const MARKER_CANDIDATES_PER_CORNER = 10;
+// Cost of leaving one corner unmatched (reported null) instead of forcing a
+// blob into it — see pickMarkerSet.
+const MISSING_CORNER_PENALTY = 1.5;
+
+// Apparent page scale at each corner of a TL/TR/BL/BR quad: the geometric
+// mean of its two adjacent edges. Under perspective the near corners get
+// bigger and the far ones smaller, and a printed marker shrinks/grows with
+// them — dividing a blob's size by this removes perspective from the
+// comparison.
+function cornerScales([tl, tr, bl, br]) {
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  return [
+    Math.sqrt(d(tl, tr) * d(tl, bl)),
+    Math.sqrt(d(tr, tl) * d(tr, br)),
+    Math.sqrt(d(bl, tl) * d(bl, br)),
+    Math.sqrt(d(br, tr) * d(br, bl)),
+  ];
+}
 
 // Chooses one candidate per quadrant (TL, TR, BL, BR) as the set most
-// likely to be the four printed markers: all four are the same printed
-// square, so their apparent sizes should roughly agree (only perspective
-// separates them); each should look like a solid square; and together they
-// must form a correctly-ordered quadrilateral. Distance to the frame corner
-// is kept only as a light tie-break — it's still what separates the marker
-// from same-sized clutter, but no longer lets a much bigger/smaller blob
-// win just by sitting closer to the edge of the frame.
-function pickMarkerSet(perQuadrant, quadrants, diag) {
+// likely to be the four printed markers. Each pick's size is compared to
+// the local page scale at its corner (cornerScales), which makes it
+// perspective-proof: with opts.expectedMarkerRatio (marker side ÷ distance
+// between marker centres, known per layout version) every real marker
+// lands near that ratio wherever it sits in the frame, while a filled
+// answer bubble comes out ~60% of it and desk clutter far off; without it,
+// the four normalised sizes just have to agree. Each pick should also look
+// like a solid square, the set must form a correctly-ordered quad, and
+// distance to the frame corner is a light tie-break.
+//
+// One quadrant may be left empty (null) at MISSING_CORNER_PENALTY: when a
+// marker is stapled over or torn off, three real markers plus a gap must
+// beat forcing a bubble or a title letter into that corner. The gap's
+// position is taken as the parallelogram of the other three for scaling.
+function pickMarkerSet(perQuadrant, quadrants, diag, expectedRatio) {
   const lists = perQuadrant.map((cands, i) => cands.slice(0, MARKER_CANDIDATES_PER_CORNER).map(c => {
     const density = c.count / (c.bw * c.bh);
     return {
       c,
-      logSize: Math.log(Math.sqrt(c.count)),
+      size: c.size ?? Math.sqrt(c.count),
       shape: Math.abs(Math.log(c.bw / c.bh)) * 2 + Math.max(0, 0.8 - density) * 3,
       dist: Math.hypot(c.x - quadrants[i].cornerX, c.y - quadrants[i].cornerY) / diag,
     };
-  }));
+  }).concat([null]));
   let best = null, bestScore = Infinity;
   for (const tl of lists[0]) for (const tr of lists[1]) for (const bl of lists[2]) for (const br of lists[3]) {
-    if (!(tl.c.x < tr.c.x && bl.c.x < br.c.x && tl.c.y < bl.c.y && tr.c.y < br.c.y)) continue;
-    const sizes = [tl.logSize, tr.logSize, bl.logSize, br.logSize];
-    const score = (Math.max(...sizes) - Math.min(...sizes)) * 4
-      + tl.shape + tr.shape + bl.shape + br.shape
-      + tl.dist + tr.dist + bl.dist + br.dist;
-    if (score < bestScore) { bestScore = score; best = [tl.c, tr.c, bl.c, br.c]; }
+    const picks = [tl, tr, bl, br];
+    const missing = picks.findIndex(p => !p);
+    if (missing >= 0 && picks.some((p, i) => !p && i !== missing)) continue;
+    if (tl && tr && !(tl.c.x < tr.c.x)) continue;
+    if (bl && br && !(bl.c.x < br.c.x)) continue;
+    if (tl && bl && !(tl.c.y < bl.c.y)) continue;
+    if (tr && br && !(tr.c.y < br.c.y)) continue;
+    const pts = picks.map(p => (p ? p.c : null));
+    if (missing >= 0) pts[missing] = parallelogramCorner(pts, missing);
+    const scales = cornerScales(pts);
+    if (scales.some(v => !(v > 0))) continue;
+    const logNorm = [];
+    picks.forEach((p, i) => { if (p) logNorm.push(Math.log(p.size / scales[i])); });
+    let sizeCost;
+    if (expectedRatio) {
+      // ±20% is free: at live-preview resolution a marker is ~10px and its
+      // measured size is that noisy. A filled bubble (~60%) still pays well
+      // over MISSING_CORNER_PENALTY.
+      const target = Math.log(expectedRatio);
+      sizeCost = logNorm.reduce((sum, v) => sum + Math.max(0, Math.abs(v - target) - 0.2), 0) * 8;
+    } else {
+      sizeCost = (Math.max(...logNorm) - Math.min(...logNorm)) * 4;
+    }
+    const score = sizeCost
+      + picks.reduce((sum, p) => sum + (p ? p.shape + p.dist : 0), 0)
+      + (missing >= 0 ? MISSING_CORNER_PENALTY : 0);
+    if (score < bestScore) { bestScore = score; best = pts.map((pt, i) => (picks[i] ? pt : null)); }
   }
   return best || perQuadrant.map(c => c[0]);
 }
@@ -1096,15 +1221,26 @@ function decodeConfidenceScore(warpedCanvas, readOpts) {
 // of grading a garbled read (see findFiducials's caller in
 // OMRScanTool.jsx for context on when this happens).
 function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
-  const expectedRatio = pageH / pageW;
+  const layout = buildLayout(readOpts.numQuestions, readOpts.numChoices, readOpts.idDigits, pageW, pageH, readOpts.layoutStyle || 'auto', readOpts.cols, readOpts.layoutVersion);
+  const pageCorners = markerCenters(pageW, pageH, layout.margin);
+  // Aspect of the marker-centre quad itself, not the whole page — they
+  // differ once markers sit further in (layout version 2).
+  const expectedRatio = (pageCorners[2].y - pageCorners[0].y) / (pageCorners[1].x - pageCorners[0].x);
   const candidates = [];
   for (const deg of [0, 90, 180, 270]) {
     const canvas = rotateCanvas(srcCanvas, deg);
     const ctx = canvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const gray = toGray(imgData);
-    const { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine: readOpts.subpixelRefine });
-    if (corners.some(c => c === null)) continue;
+    let { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine: readOpts.subpixelRefine, expectedMarkerRatio: markerSizeRatio(pageW, pageH, layout.margin) });
+    let estimatedCorner = null;
+    const missing = corners.map((c, i) => (c === null ? i : -1)).filter(i => i >= 0);
+    if (missing.length > 1) continue;
+    if (missing.length === 1) {
+      corners = corners.slice();
+      corners[missing[0]] = parallelogramCorner(corners, missing[0]);
+      estimatedCorner = missing[0];
+    }
     const [tl, tr, bl] = corners;
     const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
     const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
@@ -1112,14 +1248,190 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
     const detectedRatio = leftH / topW;
     const aspectScore = Math.abs(Math.log(detectedRatio / expectedRatio));
     if (aspectScore > 0.35) continue; // clearly the wrong aspect (90-degree swap)
-    const warped = warpImage(canvas, corners, pageW, pageH);
+    if (estimatedCorner !== null) {
+      // One marker stapled over, torn or crumpled — refine the rough guess
+      // against the printed bubble grid (see refineEstimatedCorner).
+      const refined = refineEstimatedCorner(gray, canvas.width, canvas.height, corners, estimatedCorner, pageCorners, layout);
+      if (!refined) continue;
+      corners[estimatedCorner] = refined;
+    }
+    const warped = warpImage(canvas, corners, pageW, pageH, layout.margin);
     if (!warped) continue;
     const orientationScore = decodeConfidenceScore(warped, { ...readOpts, pageW, pageH });
-    candidates.push({ canvas, corners, rotationDeg: deg, warped, orientationScore });
+    candidates.push({ canvas, gray, corners, rotationDeg: deg, warped, orientationScore, estimatedCorner });
   }
   if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b.orientationScore - a.orientationScore);
-  return candidates[0]; // { canvas, corners, rotationDeg, warped }
+  // A clean 4-marker read beats an estimated one at the same decode score.
+  candidates.sort((a, b) => (b.orientationScore - a.orientationScore) || ((a.estimatedCorner === null ? 0 : 1) - (b.estimatedCorner === null ? 0 : 1)));
+  const best = candidates[0];
+
+  // All 4 found doesn't mean all 4 are right: a crumpled or half-stapled
+  // marker is often still detected, just with its centre dragged off the
+  // real one, which shifts every bubble near that corner. Try re-fitting
+  // each corner alone against the printed grid; keep a fix only when it
+  // clearly beats the detected position.
+  if (best.estimatedCorner === null) {
+    const repaired = repairOneCorner(best.gray, best.canvas.width, best.canvas.height, best.corners, pageCorners, layout);
+    if (repaired) {
+      const warpedFix = warpImage(best.canvas, repaired.corners, pageW, pageH, layout.margin);
+      if (warpedFix) {
+        best.corners = repaired.corners;
+        best.warped = warpedFix;
+        best.cornerShift = repaired.shift;
+        // A small nudge is just a blurry/perspective-biased centroid being
+        // tidied up — silently. Only a big move means the marker itself
+        // was damaged, which the teacher should be told about.
+        if (repaired.shift > CORNER_REPAIR_REPORT_SHIFT) best.estimatedCorner = repaired.index;
+      }
+    }
+  }
+  // How well the printed bubble rings line up under the final corners —
+  // lets the caller refuse to grade a warp that's visibly wrong instead of
+  // saving a garbage score (see MIN_SCAN_ALIGNMENT's caller).
+  const Hfinal = computeHomography(best.corners, pageCorners);
+  best.alignment = Hfinal ? bubbleAlignmentScore(best.gray, best.canvas.width, best.canvas.height, Hfinal, layout) : -Infinity;
+  delete best.gray;
+  return best; // { canvas, corners, rotationDeg, warped, estimatedCorner, alignment }
+}
+
+// How much better (in bubbleAlignmentScore units) a re-fitted corner must
+// line the grid up before it replaces the detected marker — keeps an
+// undamaged sheet's genuine markers from being second-guessed by noise.
+const CORNER_REPAIR_MIN_GAIN = 4;
+// Fraction of the page's size a repaired corner must move before it counts
+// as "that marker was damaged" (and is reported), rather than a tidy-up.
+const CORNER_REPAIR_REPORT_SHIFT = 0.015;
+
+function repairOneCorner(gray, width, height, corners, pageCorners, layout) {
+  const H0 = computeHomography(corners, pageCorners);
+  if (!H0) return null;
+  const base = bubbleAlignmentScore(gray, width, height, H0, layout);
+  let bestFix = null;
+  for (let i = 0; i < 4; i++) {
+    const fit = searchCorner(gray, width, height, corners, i, corners[i], pageCorners, layout, [[0.04, 0.01, 2], [0.012, 0.002, 1]]);
+    const gain = fit.score - base;
+    if (gain >= CORNER_REPAIR_MIN_GAIN && (!bestFix || gain > bestFix.gain)) {
+      bestFix = { index: i, point: fit.point, gain };
+    }
+  }
+  if (!bestFix) return null;
+  const fixed = corners.slice();
+  fixed[bestFix.index] = bestFix.point;
+  const others = corners.filter((_, i) => i !== bestFix.index);
+  const side = Math.hypot(others[0].x - others[1].x, others[0].y - others[1].y);
+  const moved = Math.hypot(bestFix.point.x - corners[bestFix.index].x, bestFix.point.y - corners[bestFix.index].y);
+  return { corners: fixed, index: bestFix.index, shift: side ? moved / side : 0 };
+}
+
+// How well the printed bubble circles line up under a candidate page→photo
+// homography: for every question and student-ID bubble, the darkest point
+// along its printed ring (sampled at radius r±1) minus the paper just
+// outside it. Correctly aligned, every ring lands on ink with light paper
+// around it; misaligned, the samples land on blank paper or mid-gap. Works
+// whether or not a bubble is filled, since a filled bubble's ring is dark too.
+const ALIGN_RING_ANGLES = 12;
+function bubbleAlignmentScore(gray, width, height, H, layout, stride = 1) {
+  const project = (x, y) => {
+    const d = H[6] * x + H[7] * y + H[8];
+    const px = Math.round((H[0] * x + H[1] * y + H[2]) / d);
+    const py = Math.round((H[3] * x + H[4] * y + H[5]) / d);
+    if (px < 0 || py < 0 || px >= width || py >= height) return null;
+    return 255 - gray[py * width + px];
+  };
+  const bubbles = [];
+  for (const q of layout.questions) for (const c of q.choices) bubbles.push(c);
+  for (const row of layout.idGrid) for (const c of row) bubbles.push(c);
+  let total = 0, n = 0;
+  for (let bi = 0; bi < bubbles.length; bi += stride) {
+    const b = bubbles[bi];
+    let ring = 0, outer = 0, k = 0;
+    for (let a = 0; a < ALIGN_RING_ANGLES; a++) {
+      const t = (a / ALIGN_RING_ANGLES) * Math.PI * 2;
+      const cos = Math.cos(t), sin = Math.sin(t);
+      let best = -1;
+      for (const r of [b.r - 1, b.r, b.r + 1]) {
+        const v = project(b.x + cos * r, b.y + sin * r);
+        if (v !== null && v > best) best = v;
+      }
+      const o = project(b.x + cos * (b.r + 3.5), b.y + sin * (b.r + 3.5));
+      if (best < 0 || o === null) continue;
+      ring += best; outer += o; k++;
+    }
+    if (k === 0) continue;
+    total += (ring - outer) / k;
+    n++;
+  }
+  return n ? total / n : -Infinity;
+}
+
+// A finished scan whose bubbleAlignmentScore is below this is refused
+// rather than graded. Measured: correct reads scored 84-98 on simulated
+// photos and 58-75 on real (even low-res, blurry) phone captures; every
+// wrong warp — a mistaken corner, a steep tilt plus a damaged marker —
+// scored 38 or less.
+const MIN_SCAN_ALIGNMENT = 45;
+
+// Below this, no candidate position made the printed rings line up — the
+// three found markers are probably wrong or the page is too distorted, so
+// refuse rather than grade a garbage warp.
+const MIN_BUBBLE_ALIGNMENT = 12;
+
+// Rough position of the one marker findFiducials couldn't find, assuming
+// the page is a parallelogram (exact without perspective): the other
+// three corners' vector sum. Corners are TL, TR, BL, BR.
+function parallelogramCorner(corners, missingIndex) {
+  const [tl, tr, bl, br] = corners;
+  switch (missingIndex) {
+    case 0: return { x: tr.x + bl.x - br.x, y: tr.y + bl.y - br.y };
+    case 1: return { x: tl.x + br.x - bl.x, y: tl.y + br.y - bl.y };
+    case 2: return { x: tl.x + br.x - tr.x, y: tl.y + br.y - tr.y };
+    default: return { x: tr.x + bl.x - tl.x, y: tr.y + bl.y - tl.y };
+  }
+}
+
+// Real photos have perspective, so parallelogramCorner can be off by a few
+// percent of the page — enough to misread bubbles. Refines it with a
+// coarse-to-fine search of nearby positions, keeping whichever makes the
+// printed bubble grid line up best (bubbleAlignmentScore). Returns {x, y},
+// or null if nothing lines up convincingly.
+// The parallelogram guess ignores perspective, which on a tilted photo can
+// put it ~10% of the page away — hence the wide first pass (on every other
+// bubble, to keep it quick) before narrowing in.
+function refineEstimatedCorner(gray, width, height, corners, missingIndex, pageCorners, layout) {
+  const fit = searchCorner(gray, width, height, corners, missingIndex, corners[missingIndex], pageCorners, layout,
+    [[0.15, 0.01, 2], [0.02, 0.004, 1], [0.005, 0.001, 1]]);
+  return fit.score >= MIN_BUBBLE_ALIGNMENT ? fit.point : null;
+}
+
+// Coarse-to-fine grid search for one corner's position (the other three
+// held fixed) maximising bubbleAlignmentScore. passes: [[range, step,
+// bubbleStride], ...], range/step as fractions of the page's size in the
+// photo. The returned score is always re-measured on every bubble.
+function searchCorner(gray, width, height, corners, index, start, pageCorners, layout, passes) {
+  const others = corners.filter((_, i) => i !== index);
+  const side = (Math.hypot(others[0].x - others[1].x, others[0].y - others[1].y)
+    + Math.hypot(others[1].x - others[2].x, others[1].y - others[2].y)
+    + Math.hypot(others[0].x - others[2].x, others[0].y - others[2].y)) / 3;
+  const scoreAt = (p, stride) => {
+    const trial = corners.slice();
+    trial[index] = p;
+    const H = computeHomography(trial, pageCorners);
+    return H ? bubbleAlignmentScore(gray, width, height, H, layout, stride) : -Infinity;
+  };
+  let point = start;
+  for (const [range, step, stride] of passes) {
+    const center = point;
+    let passBest = scoreAt(center, stride);
+    const r = range * side, st = step * side;
+    for (let dy = -r; dy <= r + 1e-9; dy += st) {
+      for (let dx = -r; dx <= r + 1e-9; dx += st) {
+        const p = { x: center.x + dx, y: center.y + dy };
+        const sc = scoreAt(p, stride);
+        if (sc > passBest) { passBest = sc; point = p; }
+      }
+    }
+  }
+  return { point, score: scoreAt(point, 1) };
 }
 
 // Otsu threshold computed over a single rectangular region only, rather
@@ -1246,6 +1558,9 @@ function findBlobCandidates(gray, width, height, region, threshold, opts = {}) {
   const results = [];
   for (const radius of [0, BLOB_GAP_CLOSE_RADIUS]) {
     for (const b of findBlobsInMask(gray, width, height, x0, y0, x1, y1, threshold, radius, opts)) {
+      // Closing grows a blob by `radius` on every side; undo that so sizes
+      // from the two passes are comparable (pickMarkerSet compares them).
+      b.size = Math.max(1, Math.sqrt(b.count) - 2 * radius);
       const i = results.findIndex(r => Math.abs(r.x - b.x) < Math.max(r.bw, b.bw) / 4 && Math.abs(r.y - b.y) < Math.max(r.bh, b.bh) / 4);
       if (i === -1) results.push(b);
       else if (squareness(b) < squareness(results[i])) results[i] = b;
@@ -1371,7 +1686,7 @@ function solveLinear(A, b) {
   return M.map((row, i) => row[n] / row[i]);
 }
 
-function warpImage(srcCanvas, corners, pageW = PAGE_W, pageH = PAGE_H) {
+function warpImage(srcCanvas, corners, pageW = PAGE_W, pageH = PAGE_H, margin = MARGIN) {
   // corners detected in order TL,TR,BL,BR (from quadrant scan order).
   // IMPORTANT: these are the CENTROIDS of the marker squares in the photo,
   // so the destination points must be the centroids of the same squares in
@@ -1379,13 +1694,7 @@ function warpImage(srcCanvas, corners, pageW = PAGE_W, pageH = PAGE_H) {
   // bare page corners (0,0)/(pageW,pageH). Using the page corners here was
   // a bug: it shifted/scaled every warp by a constant offset equal to the
   // marker's half-size, throwing off all bubble positions consistently.
-  const half = MARKER / 2;
-  const dst = [
-    { x: MARGIN + half, y: MARGIN + half },
-    { x: pageW - MARGIN - half, y: MARGIN + half },
-    { x: MARGIN + half, y: pageH - MARGIN - half },
-    { x: pageW - MARGIN - half, y: pageH - MARGIN - half },
-  ];
+  const dst = markerCenters(pageW, pageH, margin);
   const H = computeHomography(corners, dst); // maps dst(page coords)->src(photo coords)
   if (!H) return null;
 
@@ -1422,7 +1731,7 @@ function readBubbles(warpedCanvas, opts) {
   const pageW = opts.pageW || PAGE_W;
   const pageH = opts.pageH || PAGE_H;
   const layoutStyle = opts.layoutStyle || 'auto';
-  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols);
+  const layout = buildLayout(opts.numQuestions, opts.numChoices, opts.idDigits, pageW, pageH, layoutStyle, opts.cols, opts.layoutVersion);
   const ctx = warpedCanvas.getContext('2d');
   const imgData = ctx.getImageData(0, 0, pageW, pageH);
   const gray = toGray(imgData);
@@ -1550,6 +1859,11 @@ export {
   HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H,
   MARKER, MARGIN,
+  CURRENT_OMR_LAYOUT_VERSION,
+  MIN_SCAN_ALIGNMENT,
+  markerCenters,
+  markerSizeRatio,
+  bubbleAlignmentScore,
   THAI_GLYPH_SAMPLE,
   ensureFontsLoaded,
   buildLayout,

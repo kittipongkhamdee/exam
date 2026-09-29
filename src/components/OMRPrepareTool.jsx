@@ -14,7 +14,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
-import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, ensureFontsLoaded } from '../lib/omr-core';
+import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, ensureFontsLoaded, CURRENT_OMR_LAYOUT_VERSION } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl, copyOmrQuiz } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
@@ -53,6 +53,12 @@ export default function OMRPrepareTool() {
   // both saved onto the quiz row so the scan flow can warp/read against the
   // exact format the sheet was printed with, including for older quizzes
   // created before this format existed (those keep their saved 'topBottom').
+  const [quizId, setQuizId] = useState(null);
+  // Sheet geometry version (omr_quizzes.layout_version): a loaded quiz keeps
+  // whatever it was printed with, so reprints still scan against the same
+  // stored quiz; anything new uses the current layout (markers 20mm in).
+  const [loadedLayoutVersion, setLoadedLayoutVersion] = useState(null);
+  const layoutVersion = quizId ? (loadedLayoutVersion ?? CURRENT_OMR_LAYOUT_VERSION) : CURRENT_OMR_LAYOUT_VERSION;
   const pageW = HALF_LANDSCAPE_PAGE_W;
   const pageH = HALF_LANDSCAPE_PAGE_H;
   const layoutStyle = 'halfLandscape';
@@ -63,7 +69,7 @@ export default function OMRPrepareTool() {
   // this preview gets frozen into the saved quiz row (createQuiz below),
   // rather than saving "auto" and letting a future change to the
   // auto-picking logic silently reflow an already-printed sheet.
-  const cols = buildLayout(numQuestions, numChoices, idDigits, pageW, pageH, layoutStyle).cols;
+  const cols = buildLayout(numQuestions, numChoices, idDigits, pageW, pageH, layoutStyle, undefined, layoutVersion).cols;
 
   const [answerKey, setAnswerKey] = useState({});
   const [bulkPoints, setBulkPoints] = useState(1);
@@ -95,7 +101,6 @@ export default function OMRPrepareTool() {
   // --- Supabase-backed quiz/subject state ---
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
-  const [quizId, setQuizId] = useState(null);
   // set_code mirrored from the linked ชุดข้อสอบ (null for a quiz made
   // directly here, never synced from one) — printed on the answer sheet
   // itself once loaded, same badge the question paper already carries.
@@ -342,6 +347,7 @@ export default function OMRPrepareTool() {
       setScheme(quiz.choiceScheme);
       setAnswerKey(quiz.answerKey);
       setQuizId(quiz.id);
+      setLoadedLayoutVersion(quiz.layoutVersion);
       setSetCode(quiz.setCode ?? null);
       refreshRoster(quiz.id);
     } catch (err) {
@@ -358,8 +364,9 @@ export default function OMRPrepareTool() {
     try {
       const { quizId: newQuizId } = await createQuiz(supabase, {
         subjectId, title, numQuestions, numChoices, idDigits, choiceScheme: scheme,
-        paperLayout: layoutStyle, cols, answerKey,
+        paperLayout: layoutStyle, cols, answerKey, layoutVersion,
       });
+      setLoadedLayoutVersion(layoutVersion);
       setQuizId(newQuizId);
       setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       refreshRoster(newQuizId);
@@ -434,9 +441,9 @@ export default function OMRPrepareTool() {
     // regardless (fontReady only reordered a later redraw), so the very
     // first paint could already be the wrong, fallback-font one.
     if (!sheetCanvasRef.current || !fontReady) return;
-    drawSheet(sheetCanvasRef.current, { title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode }, null);
+    drawSheet(sheetCanvasRef.current, { title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode, layoutVersion }, null);
     setSheetReady(true);
-  }, [title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode, fontReady]);
+  }, [title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode, layoutVersion, fontReady]);
 
   useEffect(() => { regenerate(); }, [regenerate]);
 
@@ -545,7 +552,7 @@ export default function OMRPrepareTool() {
 
       function drawStudent(student, seatNumber) {
         drawSheet(canvas, {
-          title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode,
+          title, subject, note, numQuestions, numChoices, idDigits, scheme, pageW, pageH, layoutStyle, cols, setCode, layoutVersion,
           studentName: formatStudentName(student),
           studentClass: classLabel,
           studentNumber: seatNumber,

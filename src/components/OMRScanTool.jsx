@@ -18,6 +18,7 @@ import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
   findFiducialsWithOrientation, findFiducials, toGray, assessImageQuality, assessCornerGeometry, readBubbles, drawGradedOverlay, choiceLetters,
+  buildLayout, markerCenters, markerSizeRatio, MIN_SCAN_ALIGNMENT,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
@@ -32,11 +33,31 @@ import { formatGradeRoom, formatThaiDateTime } from '../lib/format';
 // assuming one global format. 'topBottom' quizzes predate the 'halfLandscape'
 // format (the only one OMRPrepareTool offers now) and still need to keep scanning
 // correctly, hence branching on the saved value instead of hardcoding it here.
+// layoutVersion (omr_quizzes.layout_version) likewise pins where the
+// markers and bubbles were printed — see omr-core's OMR_LAYOUT_VERSIONS.
 function pageOptsForQuiz(quiz) {
+  const layoutVersion = quiz.layoutVersion || 1;
   if (quiz.paperLayout === 'halfLandscape') {
-    return { pageW: HALF_LANDSCAPE_PAGE_W, pageH: HALF_LANDSCAPE_PAGE_H, layoutStyle: 'halfLandscape', cols: quiz.cols || undefined };
+    return { pageW: HALF_LANDSCAPE_PAGE_W, pageH: HALF_LANDSCAPE_PAGE_H, layoutStyle: 'halfLandscape', cols: quiz.cols || undefined, layoutVersion };
   }
-  return { pageW: TOP_BOTTOM_PAGE_W, pageH: TOP_BOTTOM_PAGE_H, layoutStyle: 'topBottom', cols: undefined };
+  return { pageW: TOP_BOTTOM_PAGE_W, pageH: TOP_BOTTOM_PAGE_H, layoutStyle: 'topBottom', cols: undefined, layoutVersion };
+}
+
+// Aspect (height/width) of the quad formed by the 4 marker centres, which
+// is what the live preview actually measures — not the page's own aspect,
+// since markers sit inset from the edge (more so from layout version 2).
+function markerQuadAspect(quiz) {
+  const { pageW, pageH, layoutStyle, cols, layoutVersion } = pageOptsForQuiz(quiz);
+  const { margin } = buildLayout(quiz.numQuestions, quiz.numChoices, quiz.idDigits, pageW, pageH, layoutStyle, cols, layoutVersion);
+  const [tl, tr, bl] = markerCenters(pageW, pageH, margin);
+  return (bl.y - tl.y) / (tr.x - tl.x);
+}
+
+// Expected marker size relative to the marker spacing, for findFiducials.
+function quizMarkerSizeRatio(quiz) {
+  const { pageW, pageH, layoutStyle, cols, layoutVersion } = pageOptsForQuiz(quiz);
+  const { margin } = buildLayout(quiz.numQuestions, quiz.numChoices, quiz.idDigits, pageW, pageH, layoutStyle, cols, layoutVersion);
+  return markerSizeRatio(pageW, pageH, margin);
 }
 
 // Live corner-detection overlay (camera preview, before capture) — a cheap
@@ -138,6 +159,7 @@ const QUALITY_WARNING_LABELS = {
   blur: 'ภาพอาจเบลอเล็กน้อย — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ให้ถือกล้องนิ่งขึ้น',
   glare: 'ภาพอาจสว่างเกินไป (แสงแฟลช/สะท้อน) — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ในที่แสงสม่ำเสมอขึ้น',
   skew: 'กระดาษอาจเอียงหรือไม่แบนราบมากไป — ถ้าคะแนนดูผิดปกติ ลองถ่ายใหม่ให้กระดาษแบนราบและกล้องตั้งฉากกับกระดาษมากขึ้น',
+  corner: 'จุดมุมกระดาษ 1 มุมเสียหาย/ถูกเย็บ/ยับ ระบบคำนวณตำแหน่งมุมนั้นแทนให้ — กรุณาตรวจคะแนนและรหัสนักเรียนอีกครั้ง',
 };
 const imgwrap = 'border border-gray-200 rounded-lg overflow-hidden max-w-full [&_img]:block [&_img]:w-full';
 const stat = 'text-center p-3 rounded-lg bg-gray-50';
@@ -219,6 +241,7 @@ export default function OMRScanTool() {
   const overlayCanvasRef = useRef(null); // the visible <canvas> drawn on top of the video
   const [liveAligned, setLiveAligned] = useState(false); // all 4 corners found & aspect-plausible this tick
   const [liveRotated, setLiveRotated] = useState(false); // corners found but the page is tilted too far in-frame this tick
+  const [liveThreeCorners, setLiveThreeCorners] = useState(false); // exactly 3 of 4 markers visible this tick
   const [liveQualityHint, setLiveQualityHint] = useState(null); // 'blur' | 'glare' | null, this tick
   // aligned AND clear enough to actually auto-capture on — see readyToCapture
   // in runLiveDetectTick. Kept separate from liveAligned so the "กำลังถ่าย..."
@@ -349,7 +372,7 @@ export default function OMRScanTool() {
 
   function runScan(imgSrc) {
     setScanStage('processing');
-    const { pageW, pageH, layoutStyle, cols } = pageOptsForQuiz(selectedQuiz);
+    const { pageW, pageH, layoutStyle, cols, layoutVersion } = pageOptsForQuiz(selectedQuiz);
     const img = new Image();
     // Without this, a corrupt/truncated capture (a flaky camera write, a
     // bad upload) left scanStage stuck on "processing" forever — img.onload
@@ -387,7 +410,7 @@ export default function OMRScanTool() {
           // wrongly-graded read.
           const readOpts = {
             numQuestions: selectedQuiz.numQuestions, numChoices: selectedQuiz.numChoices,
-            idDigits: selectedQuiz.idDigits, layoutStyle, cols,
+            idDigits: selectedQuiz.idDigits, layoutStyle, cols, layoutVersion,
             subpixelRefine: featureFlags.subpixelRefine,
           };
           const best = findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts);
@@ -396,7 +419,7 @@ export default function OMRScanTool() {
             let hint = '';
             if (quality?.blurry) hint = ' ภาพอาจเบลอ ลองถือกล้องให้นิ่งขึ้นหรือรอโฟกัสก่อนถ่าย';
             else if (quality?.overexposed) hint = ' ภาพอาจสว่างเกินไป (แสงแฟลช/สะท้อน) ลองถ่ายในที่แสงสม่ำเสมอขึ้น';
-            setScanResult({ error: 'หาจุดมุมกระดาษ (fiducial markers) ไม่ครบ 4 มุม ลองถ่ายให้เห็นทั้ง 4 มุมชัดเจนขึ้น' + hint });
+            setScanResult({ error: 'หาจุดมุมกระดาษ (สี่เหลี่ยมดำ) ไม่พอ — ต้องเห็นชัดอย่างน้อย 3 มุม ลองถ่ายให้เห็นมุมกระดาษชัดเจนขึ้น (ถ้ามุมยับ ให้รีดกระดาษให้เรียบก่อน)' + hint });
             setScanStage('done');
             return;
           }
@@ -421,7 +444,19 @@ export default function OMRScanTool() {
             return;
           }
 
+          // Last line of defence: if the printed bubble rings don't line up
+          // on the straightened image, the corners were wrong (a damaged
+          // marker plus a steep angle, clutter mistaken for a marker...) and
+          // any score would be garbage — ask for a retake instead of
+          // letting a wrong score get saved.
+          if (!(best.alignment >= MIN_SCAN_ALIGNMENT)) {
+            setScanResult({ error: 'ระบบจัดตำแหน่งวงคำตอบบนกระดาษไม่ตรง — อาจเพราะจุดมุมกระดาษเสียหายหรือถ่ายเอียงมากเกินไป ลองรีดกระดาษให้เรียบ ถือกล้องให้ขนานกับกระดาษ แล้วถ่ายใหม่อีกครั้ง' });
+            setScanStage('done');
+            return;
+          }
+
           const qualityWarnings = [
+            best.estimatedCorner !== null && best.estimatedCorner !== undefined && 'corner',
             quality?.blurry && 'blur',
             quality?.overexposed && 'glare',
             geometry?.skewed && 'skew',
@@ -570,7 +605,10 @@ export default function OMRScanTool() {
       ctx.drawImage(video, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
       const gray = toGray(imgData);
-      const { corners } = findFiducials(gray, w, h, { subpixelRefine: featureFlags.subpixelRefine });
+      const { corners } = findFiducials(gray, w, h, {
+        subpixelRefine: featureFlags.subpixelRefine,
+        expectedMarkerRatio: selectedQuiz ? quizMarkerSizeRatio(selectedQuiz) : undefined,
+      });
       const allFound = corners.every(c => c !== null);
 
       // Reuses the same downscaled gray buffer already built above for
@@ -600,15 +638,18 @@ export default function OMRScanTool() {
         const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
         const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
         if (topW > 0 && leftH > 0) {
-          const { pageW, pageH } = pageOptsForQuiz(selectedQuiz);
           const detectedRatio = leftH / topW;
-          aligned = Math.abs(Math.log(detectedRatio / (pageH / pageW))) <= LIVE_DETECT_ASPECT_TOLERANCE;
+          aligned = Math.abs(Math.log(detectedRatio / markerQuadAspect(selectedQuiz))) <= LIVE_DETECT_ASPECT_TOLERANCE;
         }
       }
       if (allFound) drawLiveOverlay(corners, w, h, aligned);
       else clearLiveOverlay();
       setLiveAligned(aligned);
       setLiveRotated(rotated);
+      // Exactly one marker missing: the real scan can still reconstruct it
+      // (findFiducialsWithOrientation), but auto-capture stays off since
+      // the live pass can't verify the frame — the teacher taps ถ่ายภาพ.
+      setLiveThreeCorners(corners.filter(Boolean).length === 3);
       // Auto-capture requires a clear frame too, not just aligned corners —
       // corner *position* can look stable on this small downscaled preview
       // even while the phone camera is still mid-autofocus/settling, so
@@ -657,6 +698,7 @@ export default function OMRScanTool() {
     setLiveAligned(false);
     setLiveReadyToCapture(false);
     setLiveRotated(false);
+    setLiveThreeCorners(false);
     setLiveQualityHint(null);
     setLiveTilt(null);
     clearLiveOverlay();
@@ -1118,6 +1160,7 @@ export default function OMRScanTool() {
                       : liveQualityHint === 'blur' ? 'ภาพเบลอ — ถือกล้องให้นิ่งขึ้น'
                       : liveQualityHint === 'glare' ? 'แสงจ้าเกินไป — ลองหลบแสงสะท้อน'
                       : liveRotated ? 'กระดาษเอียงในภาพ — หมุนกล้อง/กระดาษให้ตรงมากขึ้น'
+                      : liveThreeCorners ? 'เห็นจุดมุม 3 จาก 4 — ถ้ามุมกระดาษยับ/ถูกเย็บ กด "ถ่ายภาพ" ได้เลย'
                       : 'จัดกระดาษให้เห็นมุมทั้ง 4 ชัดเจน'}
                   </div>
                   {featureFlags.tiltGuide && liveTilt && <TiltLevel tilt={liveTilt} />}

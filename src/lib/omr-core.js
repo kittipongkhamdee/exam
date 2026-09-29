@@ -1277,7 +1277,11 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
       if (warpedFix) {
         best.corners = repaired.corners;
         best.warped = warpedFix;
-        best.estimatedCorner = repaired.index;
+        best.cornerShift = repaired.shift;
+        // A small nudge is just a blurry/perspective-biased centroid being
+        // tidied up — silently. Only a big move means the marker itself
+        // was damaged, which the teacher should be told about.
+        if (repaired.shift > CORNER_REPAIR_REPORT_SHIFT) best.estimatedCorner = repaired.index;
       }
     }
   }
@@ -1294,6 +1298,9 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
 // line the grid up before it replaces the detected marker — keeps an
 // undamaged sheet's genuine markers from being second-guessed by noise.
 const CORNER_REPAIR_MIN_GAIN = 4;
+// Fraction of the page's size a repaired corner must move before it counts
+// as "that marker was damaged" (and is reported), rather than a tidy-up.
+const CORNER_REPAIR_REPORT_SHIFT = 0.015;
 
 function repairOneCorner(gray, width, height, corners, pageCorners, layout) {
   const H0 = computeHomography(corners, pageCorners);
@@ -1310,7 +1317,10 @@ function repairOneCorner(gray, width, height, corners, pageCorners, layout) {
   if (!bestFix) return null;
   const fixed = corners.slice();
   fixed[bestFix.index] = bestFix.point;
-  return { corners: fixed, index: bestFix.index };
+  const others = corners.filter((_, i) => i !== bestFix.index);
+  const side = Math.hypot(others[0].x - others[1].x, others[0].y - others[1].y);
+  const moved = Math.hypot(bestFix.point.x - corners[bestFix.index].x, bestFix.point.y - corners[bestFix.index].y);
+  return { corners: fixed, index: bestFix.index, shift: side ? moved / side : 0 };
 }
 
 // How well the printed bubble circles line up under a candidate page→photo
@@ -1353,6 +1363,13 @@ function bubbleAlignmentScore(gray, width, height, H, layout, stride = 1) {
   }
   return n ? total / n : -Infinity;
 }
+
+// A finished scan whose bubbleAlignmentScore is below this is refused
+// rather than graded. Measured: correct reads scored 84-98 on simulated
+// photos and 58-75 on real (even low-res, blurry) phone captures; every
+// wrong warp — a mistaken corner, a steep tilt plus a damaged marker —
+// scored 38 or less.
+const MIN_SCAN_ALIGNMENT = 45;
 
 // Below this, no candidate position made the printed rings line up — the
 // three found markers are probably wrong or the page is too distorted, so
@@ -1843,6 +1860,7 @@ export {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H,
   MARKER, MARGIN,
   CURRENT_OMR_LAYOUT_VERSION,
+  MIN_SCAN_ALIGNMENT,
   markerCenters,
   markerSizeRatio,
   bubbleAlignmentScore,

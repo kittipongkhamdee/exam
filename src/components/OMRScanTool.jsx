@@ -18,7 +18,7 @@ import Swal from 'sweetalert2';
 import {
   TOP_BOTTOM_PAGE_W, TOP_BOTTOM_PAGE_H, HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H,
   findFiducialsWithOrientation, findFiducials, toGray, assessImageQuality, assessCornerGeometry, readBubbles, drawGradedOverlay, choiceLetters,
-  buildLayout, markerCenters, markerSizeRatio,
+  buildLayout, markerCenters, markerSizeRatio, MIN_SCAN_ALIGNMENT,
 } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
 import { getQuizWithAnswerKey, listMyQuizzes, saveScanResult, listScanResultsForQuiz, deleteScanResult, uploadScanPhoto, getScanPhotoUrl } from '../lib/omr-db';
@@ -440,6 +440,17 @@ export default function OMRScanTool() {
           // asking for a straighter retake.
           if (geometry?.rotated) {
             setScanResult({ error: 'กระดาษเอียงในภาพมากเกินไป — ลองถือกล้อง/วางกระดาษให้ตรงมากขึ้น (ไม่เฉียง) แล้วถ่ายใหม่อีกครั้ง' });
+            setScanStage('done');
+            return;
+          }
+
+          // Last line of defence: if the printed bubble rings don't line up
+          // on the straightened image, the corners were wrong (a damaged
+          // marker plus a steep angle, clutter mistaken for a marker...) and
+          // any score would be garbage — ask for a retake instead of
+          // letting a wrong score get saved.
+          if (!(best.alignment >= MIN_SCAN_ALIGNMENT)) {
+            setScanResult({ error: 'ระบบจัดตำแหน่งวงคำตอบบนกระดาษไม่ตรง — อาจเพราะจุดมุมกระดาษเสียหายหรือถ่ายเอียงมากเกินไป ลองรีดกระดาษให้เรียบ ถือกล้องให้ขนานกับกระดาษ แล้วถ่ายใหม่อีกครั้ง' });
             setScanStage('done');
             return;
           }

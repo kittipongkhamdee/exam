@@ -170,6 +170,73 @@ export async function copyOmrQuiz(supabase, { quizId, targetSubjectId, title }) 
 }
 
 /**
+ * Grades a saved scan's responses against an answer key — the same rule
+ * OMRScanTool applies at scan time (a blank or ambiguous mark never
+ * counts; any one accepted choice earns the question's points), so a
+ * regrade after a key fix lands on exactly what a fresh scan would give.
+ * @param {Array<{question:number, choice:number|null, ambiguous:boolean, blank:boolean}>} responses
+ * @param {Record<number, { choices: number[], points: number }>} answerKey 0-based
+ * @returns {{ totalCorrect: number, score: number }} score is a percentage, 1 decimal
+ */
+export function gradeResponses(responses, answerKey) {
+  const byQuestion = new Map((responses || []).map(r => [r.question, r]));
+  let correct = 0, earned = 0, total = 0;
+  for (const [qi, entry] of Object.entries(answerKey)) {
+    const points = Number(entry.points ?? 1);
+    total += points;
+    const r = byQuestion.get(Number(qi));
+    if (r && !r.blank && !r.ambiguous && (entry.choices || []).includes(r.choice)) {
+      correct++;
+      earned += points;
+    }
+  }
+  return { totalCorrect: correct, score: total ? Math.round((earned / total) * 1000) / 10 : 0 };
+}
+
+/**
+ * Replaces a quiz's answer key in place (correct choices and per-question
+ * points only — the sheet's layout, question count and choice count stay
+ * as printed) and re-grades every scan already saved against it from the
+ * responses it stored, so a key mistake found after scanning never means
+ * re-scanning the whole class.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} quizId
+ * @param {Record<number, { choices: number[], points: number }>} answerKey 0-based
+ * @returns {Promise<{ regraded: number, changed: number }>}
+ */
+export async function updateAnswerKeyAndRegrade(supabase, quizId, answerKey) {
+  const keyRows = Object.entries(answerKey).map(([qIndex, entry]) => ({
+    quiz_id: quizId,
+    question_number: Number(qIndex) + 1,
+    correct_choices: entry.choices,
+    points: entry.points,
+  }));
+  const { error: keyErr } = await supabase
+    .from('omr_answer_keys')
+    .upsert(keyRows, { onConflict: 'quiz_id,question_number' });
+  if (keyErr) throw keyErr;
+
+  const { data: results, error: resErr } = await supabase
+    .from('omr_scan_results')
+    .select('id, responses, total_correct, score')
+    .eq('quiz_id', quizId);
+  if (resErr) throw resErr;
+
+  let changed = 0;
+  for (const r of results || []) {
+    const { totalCorrect, score } = gradeResponses(r.responses, answerKey);
+    if (totalCorrect === r.total_correct && Number(score) === Number(r.score)) continue;
+    const { error } = await supabase
+      .from('omr_scan_results')
+      .update({ total_correct: totalCorrect, score })
+      .eq('id', r.id);
+    if (error) throw error;
+    changed++;
+  }
+  return { regraded: (results || []).length, changed };
+}
+
+/**
  * List quizzes for a subject, most recent first.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} subjectId

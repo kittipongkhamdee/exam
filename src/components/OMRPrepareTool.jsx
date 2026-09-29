@@ -16,10 +16,19 @@ import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { HALF_LANDSCAPE_PAGE_W, HALF_LANDSCAPE_PAGE_H, drawSheet, choiceLetters, buildLayout, ensureFontsLoaded, CURRENT_OMR_LAYOUT_VERSION } from '../lib/omr-core';
 import { supabase } from '../lib/supabaseClient';
-import { createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl, copyOmrQuiz } from '../lib/omr-db';
+import { updateAnswerKeyAndRegrade, createQuiz, getQuizWithAnswerKey, listQuizzesForSubject, listMyQuizzes, listScanResultsForQuiz, deleteScanResult, deleteQuiz, getScanPhotoUrl, copyOmrQuiz } from '../lib/omr-db';
 import ConfirmDialog from './ConfirmDialog';
 import { formatStudentName } from '../lib/student-name';
 import { formatGradeRoom } from '../lib/format';
+
+// Order-independent fingerprint of the answer key over the sheet's actual
+// questions — used to tell whether a loaded quiz's key has been edited.
+function keySignature(answerKey, numQuestions) {
+  return JSON.stringify(Array.from({ length: numQuestions }, (_, qi) => {
+    const e = answerKey[qi];
+    return [[...(e?.choices || [])].sort((a, b) => a - b), Number(e?.points ?? 1)];
+  }));
+}
 
 function groupQuizzesBySubject(quizzes) {
   const groups = new Map();
@@ -72,6 +81,13 @@ export default function OMRPrepareTool() {
   const cols = buildLayout(numQuestions, numChoices, idDigits, pageW, pageH, layoutStyle, undefined, layoutVersion).cols;
 
   const [answerKey, setAnswerKey] = useState({});
+  // Signature of the key as last loaded/saved for the current quiz (null
+  // when no saved quiz is loaded) — see keyDirty below.
+  const [savedKeySig, setSavedKeySig] = useState(null);
+  const [savingKeyEdit, setSavingKeyEdit] = useState(false);
+  const [keyEditError, setKeyEditError] = useState(null);
+  const [confirmKeyEditOpen, setConfirmKeyEditOpen] = useState(false);
+  const [keyEditNotice, setKeyEditNotice] = useState(null);
   const [bulkPoints, setBulkPoints] = useState(1);
   const sheetCanvasRef = useRef(null);
   const [sheetReady, setSheetReady] = useState(false);
@@ -347,6 +363,9 @@ export default function OMRPrepareTool() {
       setScheme(quiz.choiceScheme);
       setAnswerKey(quiz.answerKey);
       setQuizId(quiz.id);
+      setSavedKeySig(keySignature(quiz.answerKey, quiz.numQuestions));
+      setKeyEditError(null);
+      setKeyEditNotice(null);
       setLoadedLayoutVersion(quiz.layoutVersion);
       setSetCode(quiz.setCode ?? null);
       refreshRoster(quiz.id);
@@ -367,6 +386,7 @@ export default function OMRPrepareTool() {
         paperLayout: layoutStyle, cols, answerKey, layoutVersion,
       });
       setLoadedLayoutVersion(layoutVersion);
+      setSavedKeySig(keySignature(answerKey, numQuestions));
       setQuizId(newQuizId);
       setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       refreshRoster(newQuizId);
@@ -451,6 +471,34 @@ export default function OMRPrepareTool() {
   // student matching any one of them earns the question's full points, not
   // one entry per match. Each question also carries its own point value
   // (default 1) instead of every question being worth the same.
+  // Saves an edited key onto the SAME quiz (sheets already printed keep
+  // working) and re-grades every scan saved against it — see
+  // updateAnswerKeyAndRegrade.
+  async function handleUpdateAnswerKey() {
+    if (!quizId || !keyComplete) return;
+    setSavingKeyEdit(true);
+    setKeyEditError(null);
+    try {
+      const key = {};
+      for (let qi = 0; qi < numQuestions; qi++) key[qi] = { choices: answerKey[qi].choices, points: answerKey[qi].points ?? 1 };
+      const { regraded, changed } = await updateAnswerKeyAndRegrade(supabase, quizId, key);
+      setSavedKeySig(keySignature(key, numQuestions));
+      setConfirmKeyEditOpen(false);
+      refreshRoster(quizId);
+      // Shown inline rather than as a popup: this can run from inside
+      // ConfirmDialog's own (still open) SweetAlert.
+      setKeyEditNotice(regraded === 0
+        ? 'บันทึกการแก้ไขเฉลยแล้ว — ผลที่สแกนต่อจากนี้จะใช้เฉลยใหม่'
+        : `บันทึกการแก้ไขเฉลยแล้ว — คิดคะแนนใหม่ ${regraded} คน (คะแนนเปลี่ยน ${changed} คน)`
+          + (changed > 0 ? ' · ถ้าเคยนำคะแนนชุดนี้ไปใส่ ปพ.5 แล้ว กรุณานำเข้าใหม่อีกครั้ง' : ''));
+    } catch (err) {
+      setKeyEditError(err.message || 'บันทึกการแก้ไขเฉลยไม่สำเร็จ');
+      setConfirmKeyEditOpen(false);
+    } finally {
+      setSavingKeyEdit(false);
+    }
+  }
+
   function toggleChoice(qIndex, choiceIndex) {
     setAnswerKey(prev => {
       const entry = prev[qIndex] || { choices: [], points: 1 };
@@ -585,6 +633,7 @@ export default function OMRPrepareTool() {
 
   const answeredCount = Array.from({ length: numQuestions }).filter((_, qi) => (answerKey[qi]?.choices?.length ?? 0) > 0).length;
   const keyComplete = answeredCount === numQuestions;
+  const keyDirty = !!quizId && savedKeySig !== null && keySignature(answerKey, numQuestions) !== savedKeySig;
   const totalPoints = Array.from({ length: numQuestions }).reduce((sum, _, qi) => sum + (answerKey[qi]?.points ?? 1), 0);
 
   const steps = [
@@ -746,25 +795,30 @@ export default function OMRPrepareTool() {
           </div>
           <div className={field}>
             <label className={label}>จำนวนข้อ</label>
-            <select className={inputCls} value={numQuestions} onChange={e=>setNumQuestions(+e.target.value)}>
+            <select className={inputCls} value={numQuestions} onChange={e=>setNumQuestions(+e.target.value)} disabled={!!quizId}>
               {[20,30,40,60].map(n => <option key={n} value={n}>{n} ข้อ</option>)}
             </select>
           </div>
           <div className={field}>
             <label className={label}>จำนวนตัวเลือก</label>
-            <select className={inputCls} value={numChoices} onChange={e=>setNumChoices(+e.target.value)}>
+            <select className={inputCls} value={numChoices} onChange={e=>setNumChoices(+e.target.value)} disabled={!!quizId}>
               {[3,4,5].map(n => <option key={n} value={n}>{n} ตัวเลือก</option>)}
             </select>
           </div>
           <div className={field}>
             <label className={label}>รูปแบบตัวเลือก</label>
-            <select className={inputCls} value={scheme} onChange={e=>setScheme(e.target.value)}>
+            <select className={inputCls} value={scheme} onChange={e=>setScheme(e.target.value)} disabled={!!quizId}>
               <option value="thai">ก ข ค ง</option>
               <option value="en">A B C D</option>
               <option value="num">1 2 3 4</option>
             </select>
           </div>
         </div>
+        {quizId && (
+          <div className="text-[11px] text-gray-500 mt-1.5">
+            จำนวนข้อ จำนวนตัวเลือก และรูปแบบตัวเลือกถูกล็อกไว้ เพราะเป็นชุดที่บันทึกแล้ว (กระดาษอาจพิมพ์แจกไปแล้ว) — ถ้าต้องเปลี่ยน ให้เลือก &ldquo;สร้างชุดใหม่&rdquo; ที่ขั้นตอน 0
+          </div>
+        )}
         <div className={field + ' mt-3'} style={{maxWidth: 480}}>
           <label className={label}>คำอธิบายเพิ่มเติม (ถ้ามี)</label>
           <textarea
@@ -882,8 +936,22 @@ export default function OMRPrepareTool() {
           ))}
         </div>
         <div className="mt-4 flex items-center gap-2.5 flex-wrap">
-          {quizId ? (
-            <span className={pillOk}>บันทึกเฉลยแล้ว — หากต้องการแก้ไข ให้เลือก &ldquo;สร้างชุดใหม่&rdquo; แล้วบันทึกเป็นชุดข้อสอบใหม่แทน</span>
+          {quizId && keyDirty ? (
+            <>
+              <button
+                className={btn + ' inline-flex items-center gap-2'}
+                onClick={() => (roster.length > 0 ? setConfirmKeyEditOpen(true) : handleUpdateAnswerKey())}
+                disabled={!keyComplete || savingKeyEdit}
+                title={!keyComplete ? 'กำหนดเฉลยให้ครบก่อน' : ''}
+              >
+                {savingKeyEdit ? 'กำลังบันทึก...' : (<><SaveIcon className="h-4 w-4" /> บันทึกการแก้ไขเฉลย{roster.length > 0 ? ` (คิดคะแนนใหม่ ${roster.length} คน)` : ''}</>)}
+              </button>
+              <button className={btnSecondary} onClick={() => handleLoadQuiz(quizId)} disabled={savingKeyEdit || loadingQuiz}>
+                ยกเลิกการแก้ไข
+              </button>
+            </>
+          ) : quizId ? (
+            <span className={pillOk}>บันทึกเฉลยแล้ว — แตะที่เฉลย/คะแนนด้านบนเพื่อแก้ไขได้ ระบบจะคิดคะแนนนักเรียนที่สแกนแล้วให้ใหม่</span>
           ) : (
             <button
               className={btn + ' inline-flex items-center gap-2'}
@@ -895,6 +963,8 @@ export default function OMRPrepareTool() {
             </button>
           )}
           {saveQuizError && <span className="text-xs text-red-600">{saveQuizError}</span>}
+          {keyEditError && <span className="text-xs text-red-600">{keyEditError}</span>}
+          {keyEditNotice && !keyDirty && <span className="text-xs font-semibold text-green-700">{keyEditNotice}</span>}
         </div>
         {quizId && (
           <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-4 flex items-center justify-between flex-wrap gap-3">
@@ -934,6 +1004,16 @@ export default function OMRPrepareTool() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmKeyEditOpen}
+        title="ยืนยันแก้ไขเฉลย"
+        message={`บันทึกเฉลยใหม่ของชุด "${title}"?\n\nระบบจะคิดคะแนนใหม่ให้นักเรียนที่สแกนแล้ว ${roster.length} คน จากคำตอบที่อ่านไว้ (ไม่ต้องสแกนใหม่)\n\nถ้าเคยนำคะแนนชุดนี้ไปใส่ ปพ.5 แล้ว ต้องนำเข้าใหม่อีกครั้ง`}
+        confirmLabel="บันทึกและคิดคะแนนใหม่"
+        loading={savingKeyEdit}
+        onConfirm={handleUpdateAnswerKey}
+        onCancel={() => setConfirmKeyEditOpen(false)}
+      />
 
       <ConfirmDialog
         open={confirmDeleteQuizOpen}

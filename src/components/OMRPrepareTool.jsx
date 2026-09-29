@@ -39,7 +39,7 @@ export default function OMRPrepareTool() {
   // count via handleLoadQuiz still displays/prints correctly.
   const [idDigits, setIdDigits] = useState(5);
   const [scheme, setScheme] = useState('thai');
-  const [title, setTitle] = useState('แบบทดสอบ');
+  const [title, setTitle] = useState('กระดาษคำตอบ');
   const [subject, setSubject] = useState('');
   // Free-form note the teacher can type, printed in the block of blank
   // space to the left of the student-ID box (word-wrapped in drawSheet).
@@ -267,7 +267,7 @@ export default function OMRPrepareTool() {
   }, []);
 
   // When a subject is picked: load its existing quizzes, and default the
-  // quiz title to "แบบทดสอบ<ชื่อวิชา>" — the teacher can still edit it
+  // quiz title to "กระดาษคำตอบ <ชื่อวิชา>" — the teacher can still edit it
   // freely afterward. handleLoadQuiz overwrites this with the saved title
   // if an existing quiz is then picked from the dropdown below.
   useEffect(() => {
@@ -279,7 +279,7 @@ export default function OMRPrepareTool() {
       setBatchError(null);
       if (!subjectId) { setExistingQuizzes([]); return; }
       const subj = subjects.find(s => s.id === subjectId);
-      if (subj) setTitle(`แบบทดสอบ${subj.subject_name}`);
+      if (subj) setTitle(`กระดาษคำตอบ ${subj.subject_name}`);
       try {
         setExistingQuizzes(await listQuizzesForSubject(supabase, subjectId));
       } catch {

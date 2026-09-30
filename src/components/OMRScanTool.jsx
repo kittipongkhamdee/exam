@@ -478,7 +478,9 @@ export default function OMRScanTool() {
           ].filter(Boolean);
 
           const warped = best.warped;
-          const { responses, studentId: decodedId, layout } = readBubbles(warped, { ...readOpts, pageW, pageH });
+          // best.layoutVersion: the geometry the sheet was actually printed
+          // with, which for an older printing can differ from the quiz's.
+          const { responses, studentId: decodedId, layout } = readBubbles(warped, { ...readOpts, layoutVersion: best.layoutVersion, pageW, pageH });
 
           let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;
           const graded = responses.map(r => {

@@ -47,10 +47,22 @@ const MARGIN = 40;
 // Only the half-page layouts use this; the legacy topBottom/zipFull styles
 // always stay on version 1 geometry.
 const OMR_LAYOUT_VERSIONS = {
-  1: { margin: MARGIN, adaptiveRowH: false },
-  2: { margin: Math.round(20 * PX_PER_MM), adaptiveRowH: true },
+  1: { margin: MARGIN, adaptiveRowH: false, idBoxOffset: 44 },
+  2: { margin: Math.round(20 * PX_PER_MM), adaptiveRowH: true, idBoxOffset: 44 },
+  // Version-1 sheets printed before 17 Sep 2026: #236/#237 moved the
+  // half-page ID box (and so the whole question grid below it) up 14px
+  // without bumping the version, and those sheets share layout_version 1
+  // with everything printed since. Never stored — the scanner tries it
+  // only when 1 doesn't line up (see findFiducialsWithOrientation).
+  '1-early': { margin: MARGIN, adaptiveRowH: false, idBoxOffset: 58 },
 };
 const CURRENT_OMR_LAYOUT_VERSION = 2;
+
+// The geometries a sheet stored as layoutVersion may actually have been
+// printed with — see OMR_LAYOUT_VERSIONS['1-early'].
+function scanLayoutVariants(layoutVersion) {
+  return omrLayoutParams(layoutVersion) === OMR_LAYOUT_VERSIONS[1] ? [1, '1-early'] : [layoutVersion];
+}
 
 function omrLayoutParams(layoutVersion) {
   return OMR_LAYOUT_VERSIONS[layoutVersion] || OMR_LAYOUT_VERSIONS[1];
@@ -261,7 +273,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   // so this recomputes the wrap point based on the actual page width rather
   // than assuming the full-page width always (see the column-count picking
   // below, after startY is known).
-  const { margin: M, adaptiveRowH } = omrLayoutParams(layoutVersion);
+  const { margin: M, adaptiveRowH, idBoxOffset } = omrLayoutParams(layoutVersion);
   const usableW = pageW - M * 2;
   // 26 left the last row of a 20-row column (e.g. 60 questions x 3 columns,
   // or 40 x 2) sitting just ~2px above the bottom fiducial marker — visibly
@@ -281,7 +293,7 @@ function buildLayout(numQuestions, numChoices, idDigits, pageW = PAGE_W, pageH =
   const idRowH = 20, idColGap = 22;
   const idBoxW = 9 * idColGap + 30;
   const idBoxH = idLabelH + idDigits * idRowH + 14;
-  const idBoxY = M + MARKER + 44; // clears the name line + the ชั้น/เลขที่ line below it
+  const idBoxY = M + MARKER + idBoxOffset; // clears the name line + the ชั้น/เลขที่ line below it
   // Keep clear of the top-right fiducial marker, not just the page margin.
   const idBoxX = pageW - M - MARKER - 10 - idBoxW;
   const idStartX = idBoxX + 16;
@@ -1031,16 +1043,36 @@ function findFiducials(gray, width, height, opts = {}) {
   // hand, a shirt sleeve — can be larger than the actual marker; picking by
   // "largest" alone is easily fooled by those. The marker is always the
   // blob nearest the physical corner, by construction of the page layout.
-  const perQuadrant = quadrants.map(qd => {
-    const localThreshold = otsuThresholdRegion(gray, width, height, qd);
-    const candidates = findBlobCandidates(gray, width, height, qd, localThreshold, opts);
-    candidates.sort((a, b) => {
-      const da = (a.x-qd.cornerX)**2 + (a.y-qd.cornerY)**2;
-      const db = (b.x-qd.cornerX)**2 + (b.y-qd.cornerY)**2;
-      return da - db;
-    });
-    return candidates;
+  const thresholds = quadrants.map(qd => otsuThresholdRegion(gray, width, height, qd));
+  const sortByCorner = (list, qd) => list.sort((a, b) => {
+    const da = (a.x-qd.cornerX)**2 + (a.y-qd.cornerY)**2;
+    const db = (b.x-qd.cornerX)**2 + (b.y-qd.cornerY)**2;
+    return da - db;
   });
+  const perQuadrant = quadrants.map((qd, i) => sortByCorner(findBlobCandidates(gray, width, height, qd, thresholds[i], opts), qd));
+  // A shadow across a corner (or dark desk filling part of its quadrant)
+  // can make Otsu split bright paper from shadowed paper, so the shadowed
+  // paper counts as "dark" and swallows the marker in one huge blob —
+  // observed: every candidate in the quadrant rejected while the marker was
+  // plainly visible. For a quadrant that came up empty, split its dark side
+  // again to separate the near-black marker from grey paper, and accept only
+  // blobs about the size of the markers found in the other quadrants (else
+  // bubbles and text, which appear at the darker threshold, would pose as
+  // the missing marker).
+  const found = perQuadrant.filter(c => c.length).map(c => c[0].size ?? Math.sqrt(c[0].count));
+  if (found.length >= 2 && found.length < 4) {
+    const ref = found.slice().sort((x, y) => x - y)[Math.floor(found.length / 2)];
+    quadrants.forEach((qd, i) => {
+      if (perQuadrant[i].length) return;
+      const darkThreshold = otsuThresholdRegion(gray, width, height, qd, thresholds[i]);
+      if (!(darkThreshold < thresholds[i] - DARK_SPLIT_MIN_GAP)) return;
+      const blobs = findBlobCandidates(gray, width, height, qd, darkThreshold, opts)
+        .filter(b => { const r = b.size / ref; return r > 0.85 && r < 1.2 && b.bw / b.bh > 0.8 && b.bw / b.bh < 1.25 && b.count / (b.bw * b.bh) > 0.8; });
+      // Many marker-sized blobs means a patterned area (bubble grid, dark
+      // desk texture), not one marker among shadow.
+      if (blobs.length <= 3) perQuadrant[i] = sortByCorner(blobs, qd);
+    });
+  }
   // Nearest-to-corner alone is fooled by a dark object on the desk beyond
   // the paper's corner (observed: a pencil case in the top-right of the
   // frame beat the real marker, shearing the whole warp). With a candidate
@@ -1079,6 +1111,9 @@ function dropSizeOutlier(corners) {
 }
 
 const MARKER_CANDIDATES_PER_CORNER = 10;
+// Grey levels the second, darker per-quadrant threshold must sit below the
+// first before it's worth searching — see findFiducials.
+const DARK_SPLIT_MIN_GAP = 20;
 // Cost of leaving one corner unmatched (reported null) instead of forcing a
 // blob into it — see pickMarkerSet.
 const MISSING_CORNER_PENALTY = 1.5;
@@ -1230,7 +1265,77 @@ function decodeConfidenceScore(warpedCanvas, readOpts) {
 // params). This corrects a rotated camera capture transparently instead
 // of grading a garbled read (see findFiducials's caller in
 // OMRScanTool.jsx for context on when this happens).
+//
+// Sheets stored as one layout version may have been printed with an
+// earlier geometry of it (scanLayoutVariants). The stored one is tried
+// first; the next is tried only when that read isn't clean (rings not lined
+// up well enough to grade, or a corner had to be reconstructed from the
+// grid), and the better one wins. The result's layoutVersion is the geometry to read the
+// bubbles with.
 function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
+  // Marker detection doesn't depend on the bubble grid, so every variant
+  // shares one pass per rotation (see detectRotation).
+  const detections = new Map();
+  let best = null;
+  try {
+    for (const layoutVersion of scanLayoutVariants(readOpts.layoutVersion)) {
+      // The stored version is right for nearly every sheet; a variant is
+      // only worth trying (and trusting) when it doesn't already read well
+      // — a corner reconstructed from the grid proves little about the grid.
+      if (best && best.alignment >= MIN_SCAN_ALIGNMENT && best.estimatedCorner === null) break;
+      const found = findFiducialsForLayout(srcCanvas, pageW, pageH, { ...readOpts, layoutVersion }, detections);
+      if (!found) continue;
+      found.layoutVersion = layoutVersion;
+      if (!best || found.alignment > best.alignment) {
+        if (best) releaseCanvas(best.warped);
+        best = found;
+      } else {
+        releaseCanvas(found.warped);
+      }
+    }
+  } finally {
+    for (const det of detections.values()) {
+      if (det.canvas && det.canvas !== srcCanvas && det.canvas !== best?.canvas) releaseCanvas(det.canvas);
+    }
+  }
+  return best;
+}
+
+// Rotates the photo by deg and finds its markers, once per rotation and
+// marker margin however many layout variants ask. A rotation whose corners
+// can't be a page of this shape is dropped (and its canvas freed) here, for
+// every variant at once.
+function detectRotation(srcCanvas, deg, pageW, pageH, margin, expectedRatio, subpixelRefine, detections) {
+  const key = `${deg}:${margin}`;
+  if (detections.has(key)) return detections.get(key);
+  const det = { rejected: true };
+  detections.set(key, det);
+  const canvas = rotateCanvas(srcCanvas, deg);
+  const imgData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  const gray = toGray(imgData);
+  const { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine, expectedMarkerRatio: markerSizeRatio(pageW, pageH, margin) });
+  const missing = corners.map((c, i) => (c === null ? i : -1)).filter(i => i >= 0);
+  let ok = missing.length <= 1;
+  if (ok) {
+    const full = corners.slice();
+    if (missing.length === 1) full[missing[0]] = parallelogramCorner(full, missing[0]);
+    const [tl, tr, bl] = full;
+    const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+    const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+    // A clearly wrong aspect is a 90-degree swap.
+    ok = topW > 0 && leftH > 0 && Math.abs(Math.log((leftH / topW) / expectedRatio)) <= 0.35;
+  }
+  if (!ok) {
+    // Dead weight — free it now (never the caller's own srcCanvas, which
+    // rotation 0 returns as-is).
+    if (canvas !== srcCanvas) releaseCanvas(canvas);
+    return det;
+  }
+  Object.assign(det, { rejected: false, canvas, gray, corners });
+  return det;
+}
+
+function findFiducialsForLayout(srcCanvas, pageW, pageH, readOpts, detections) {
   const layout = buildLayout(readOpts.numQuestions, readOpts.numChoices, readOpts.idDigits, pageW, pageH, readOpts.layoutStyle || 'auto', readOpts.cols, readOpts.layoutVersion);
   const pageCorners = markerCenters(pageW, pageH, layout.margin);
   // Aspect of the marker-centre quad itself, not the whole page — they
@@ -1238,55 +1343,33 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
   const expectedRatio = (pageCorners[2].y - pageCorners[0].y) / (pageCorners[1].x - pageCorners[0].x);
   const candidates = [];
   for (const deg of [0, 90, 180, 270]) {
-    const canvas = rotateCanvas(srcCanvas, deg);
-    let kept = false;
-    try {
-      const ctx = canvas.getContext('2d');
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const gray = toGray(imgData);
-      let { corners } = findFiducials(gray, canvas.width, canvas.height, { subpixelRefine: readOpts.subpixelRefine, expectedMarkerRatio: markerSizeRatio(pageW, pageH, layout.margin) });
-      let estimatedCorner = null;
-      const missing = corners.map((c, i) => (c === null ? i : -1)).filter(i => i >= 0);
-      if (missing.length > 1) continue;
-      if (missing.length === 1) {
-        corners = corners.slice();
-        corners[missing[0]] = parallelogramCorner(corners, missing[0]);
-        estimatedCorner = missing[0];
-      }
-      const [tl, tr, bl] = corners;
-      const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
-      const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
-      if (topW === 0 || leftH === 0) continue;
-      const detectedRatio = leftH / topW;
-      const aspectScore = Math.abs(Math.log(detectedRatio / expectedRatio));
-      if (aspectScore > 0.35) continue; // clearly the wrong aspect (90-degree swap)
-      if (estimatedCorner !== null) {
-        // One marker stapled over, torn or crumpled — refine the rough guess
-        // against the printed bubble grid (see refineEstimatedCorner).
-        const refined = refineEstimatedCorner(gray, canvas.width, canvas.height, corners, estimatedCorner, pageCorners, layout);
-        if (!refined) continue;
-        corners[estimatedCorner] = refined;
-      }
-      const warped = warpImage(canvas, corners, pageW, pageH, layout.margin);
-      if (!warped) continue;
-      const orientationScore = decodeConfidenceScore(warped, { ...readOpts, pageW, pageH });
-      candidates.push({ canvas, gray, corners, rotationDeg: deg, warped, orientationScore, estimatedCorner });
-      kept = true;
-    } finally {
-      // A rejected rotation's copy is dead weight — free it now (never the
-      // caller's own srcCanvas, which rotation 0 returns as-is).
-      if (!kept && canvas !== srcCanvas) releaseCanvas(canvas);
+    const det = detectRotation(srcCanvas, deg, pageW, pageH, layout.margin, expectedRatio, readOpts.subpixelRefine, detections);
+    if (det.rejected) continue;
+    const { canvas, gray } = det;
+    const corners = det.corners.slice();
+    let estimatedCorner = corners.findIndex(c => c === null);
+    if (estimatedCorner < 0) {
+      estimatedCorner = null;
+    } else {
+      // One marker stapled over, torn or crumpled — refine the rough guess
+      // against the printed bubble grid (see refineEstimatedCorner).
+      corners[estimatedCorner] = parallelogramCorner(corners, estimatedCorner);
+      const refined = refineEstimatedCorner(gray, canvas.width, canvas.height, corners, estimatedCorner, pageCorners, layout);
+      if (!refined) continue;
+      corners[estimatedCorner] = refined;
     }
+    const warped = warpImage(canvas, corners, pageW, pageH, layout.margin);
+    if (!warped) continue;
+    const orientationScore = decodeConfidenceScore(warped, { ...readOpts, pageW, pageH });
+    candidates.push({ canvas, gray, corners, rotationDeg: deg, warped, orientationScore, estimatedCorner });
   }
   if (candidates.length === 0) return null;
   // A clean 4-marker read beats an estimated one at the same decode score.
   candidates.sort((a, b) => (b.orientationScore - a.orientationScore) || ((a.estimatedCorner === null ? 0 : 1) - (b.estimatedCorner === null ? 0 : 1)));
   const best = candidates[0];
-  for (const c of candidates.slice(1)) {
-    if (c.canvas !== srcCanvas && c.canvas !== best.canvas) releaseCanvas(c.canvas);
-    releaseCanvas(c.warped);
-    c.gray = null;
-  }
+  // Rotated canvases belong to the shared detections (freed by
+  // findFiducialsWithOrientation); only the warps are this call's own.
+  for (const c of candidates.slice(1)) releaseCanvas(c.warped);
 
   // All 4 found doesn't mean all 4 are right: a crumpled or half-stapled
   // marker is often still detected, just with its centre dragged off the
@@ -1315,7 +1398,7 @@ function findFiducialsWithOrientation(srcCanvas, pageW, pageH, readOpts) {
   const Hfinal = computeHomography(best.corners, pageCorners);
   best.alignment = Hfinal ? bubbleAlignmentScore(best.gray, best.canvas.width, best.canvas.height, Hfinal, layout) : -Infinity;
   delete best.gray;
-  return best; // { canvas, corners, rotationDeg, warped, estimatedCorner, alignment }
+  return best; // { canvas, corners, rotationDeg, warped, estimatedCorner, alignment } (+ layoutVersion, from the caller)
 }
 
 // How much better (in bubbleAlignmentScore units) a re-fitted corner must
@@ -1459,8 +1542,10 @@ function searchCorner(gray, width, height, corners, index, start, pageCorners, l
 }
 
 // Otsu threshold computed over a single rectangular region only, rather
-// than the whole image — adapts to that region's local lighting.
-function otsuThresholdRegion(gray, width, height, region) {
+// than the whole image — adapts to that region's local lighting. With
+// below set, only pixels darker than it are considered — i.e. the dark
+// class of a previous split, split again.
+function otsuThresholdRegion(gray, width, height, region, below = 256) {
   const x0 = Math.max(0, Math.floor(region.x0));
   const y0 = Math.max(0, Math.floor(region.y0));
   const x1 = Math.min(width, Math.ceil(region.x1));
@@ -1469,7 +1554,9 @@ function otsuThresholdRegion(gray, width, height, region) {
   let total = 0;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
-      hist[Math.min(255, Math.max(0, Math.round(gray[y*width+x])))]++;
+      const v = Math.min(255, Math.max(0, Math.round(gray[y*width+x])));
+      if (v >= below) continue;
+      hist[v]++;
       total++;
     }
   }

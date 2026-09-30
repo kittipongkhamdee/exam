@@ -734,6 +734,35 @@ export default function OMRScanTool() {
     orientationRef.current = { beta: e.beta, gamma: e.gamma };
   }, []);
 
+  // Attach the camera stream once the <video> exists, and keep nudging
+  // play(): on iOS a stream set before the element is rendered, or a play()
+  // rejected while a permission prompt is up, leaves a black viewfinder with
+  // the camera light on. If no frame ever arrives, say so instead of leaving
+  // the teacher staring at black.
+  useEffect(() => {
+    if (!cameraOpen) return undefined;
+    const video = videoRef.current;
+    const stream = cameraStreamRef.current;
+    if (!video || !stream) return undefined;
+    video.srcObject = stream;
+    const tryPlay = () => { video.play().catch(() => {}); };
+    tryPlay();
+    video.addEventListener('loadedmetadata', tryPlay);
+    video.addEventListener('canplay', tryPlay);
+    const retry = setInterval(() => { if (video.paused) tryPlay(); }, 700);
+    const check = setTimeout(() => {
+      if (!video.videoWidth) {
+        setCameraError('กล้องเปิดแล้วแต่ภาพไม่ขึ้น — กด "ยกเลิก" แล้วเปิดกล้องใหม่ หรือใช้ปุ่มอัปโหลดรูปถ่ายแทน');
+      }
+    }, 4000);
+    return () => {
+      clearInterval(retry);
+      clearTimeout(check);
+      video.removeEventListener('loadedmetadata', tryPlay);
+      video.removeEventListener('canplay', tryPlay);
+    };
+  }, [cameraOpen]);
+
   function stopTiltSensor() {
     window.removeEventListener('deviceorientation', handleOrientation);
     orientationRef.current = null;
@@ -779,19 +808,19 @@ export default function OMRScanTool() {
       // provoke it in the first place. Letting the browser pick its own
       // default resolution keeps it aligned with the device's actual
       // current orientation.
-      await tiltReady;
+      // Not awaited: on iPhone the motion-permission prompt would otherwise
+      // hold the camera back until it is answered, and the camera could
+      // then start with no video frames (green camera light on, black
+      // viewfinder). The tilt sensor is only a bonus.
+      tiltReady.catch(() => {});
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
       cameraStreamRef.current = stream;
       setCameraOpen(true);
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      });
+      // The stream is attached to the <video> by the effect on cameraOpen
+      // below, once React has actually rendered it.
       if (featureFlags.liveDetect) startLiveDetect();
     } catch {
       stopTiltSensor();
@@ -1172,7 +1201,7 @@ export default function OMRScanTool() {
             {cameraOpen && (
           <div className="mt-2">
             <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-black">
-              <video ref={videoRef} playsInline muted className="w-full block" />
+              <video ref={videoRef} autoPlay playsInline muted className="w-full block" />
               {featureFlags.liveDetect && (
                 <>
                   <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />

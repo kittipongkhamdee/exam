@@ -233,6 +233,10 @@ export default function OMRScanTool() {
   const [scanImage, setScanImage] = useState(null);
   const [gradedImageUrl, setGradedImageUrl] = useState(null);
   const gradedCanvasRef = useRef(null);
+  // Clean copy of the straightened sheet + its layout, kept (small — page
+  // size, not photo size) so the graded overlay can be redrawn when the
+  // teacher corrects an answer by hand.
+  const gradedSourceRef = useRef(null);
   const [scanResult, setScanResult] = useState(null);
   const [scanStage, setScanStage] = useState('idle');
   const fileInputRef = useRef(null);
@@ -350,10 +354,16 @@ export default function OMRScanTool() {
     resetScan();
   }
 
+  function releaseGradedSource() {
+    if (gradedSourceRef.current) releaseCanvas(gradedSourceRef.current.warped);
+    gradedSourceRef.current = null;
+  }
+
   function resetScan() {
     setScanImage(null);
     setGradedImageUrl(null);
     gradedCanvasRef.current = null;
+    releaseGradedSource();
     setScanResult(null);
     setScanStage('idle');
     setSavedResultId(null);
@@ -509,6 +519,11 @@ export default function OMRScanTool() {
           // teacher has opted in, upload on save — see resetScan/handleSaveScanResult.
           const gradedCanvas = drawGradedOverlay(warped, { layout, graded });
           gradedCanvasRef.current = gradedCanvas;
+          releaseGradedSource();
+          const warpedCopy = document.createElement('canvas');
+          warpedCopy.width = warped.width; warpedCopy.height = warped.height;
+          warpedCopy.getContext('2d').drawImage(warped, 0, 0);
+          gradedSourceRef.current = { warped: warpedCopy, layout };
           setGradedImageUrl(gradedCanvas.toDataURL('image/png'));
 
           setScanResult({
@@ -866,6 +881,36 @@ export default function OMRScanTool() {
       window.removeEventListener('deviceorientation', handleOrientation);
     };
   }, [handleOrientation]);
+
+  // Teacher overrides one question's reading (choice = index, or null for
+  // "no answer"). Everything derived from the readings — counts, score, the
+  // graded overlay that may be saved with the result — is recomputed here,
+  // the same rule runScan uses.
+  function handleSetAnswer(question, choice) {
+    if (!scanResult || scanResult.error) return;
+    const graded = scanResult.graded.map(g => {
+      if (g.question !== question) return g;
+      const isCorrect = choice !== null && g.keyChoices.includes(choice);
+      return { ...g, choice, blank: choice === null, ambiguous: false, correct: isCorrect, edited: true };
+    });
+    let correct = 0, blank = 0, ambiguous = 0, earnedPoints = 0, totalPoints = 0;
+    graded.forEach(g => {
+      totalPoints += g.points;
+      if (g.correct) { correct++; earnedPoints += g.points; }
+      if (g.blank) blank++;
+      if (g.ambiguous) ambiguous++;
+    });
+    setScanResult({
+      ...scanResult, graded, correct, blank, ambiguous, earnedPoints, totalPoints,
+      score: totalPoints ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : 0,
+    });
+    const src = gradedSourceRef.current;
+    if (src) {
+      const canvas = drawGradedOverlay(src.warped, { layout: src.layout, graded });
+      gradedCanvasRef.current = canvas;
+      setGradedImageUrl(canvas.toDataURL('image/png'));
+    }
+  }
 
   async function handleSaveScanResult() {
     // In rapid mode studentId is only set once a student is confirmed (via
@@ -1280,6 +1325,13 @@ export default function OMRScanTool() {
                   รหัสที่อ่านได้จากกระดาษ: <strong className="text-gray-700">{scanResult.decodedId}</strong>
                   {rapidMode && !studentId ? ' — ระบบจับคู่ชื่อให้อัตโนมัติจากรหัสนี้' : ' — ตรวจสอบว่าตรงกับนักเรียนที่เลือกไว้'}
                 </div>
+                {!savedResultId && (
+                  <AnswerEditor
+                    graded={scanResult.graded}
+                    letters={choiceLetters(selectedQuiz.choiceScheme, selectedQuiz.numChoices)}
+                    onPick={handleSetAnswer}
+                  />
+                )}
                 {scanResult.qualityWarnings?.map(w => (
                   <div key={w} className={pillWarn + ' px-3 py-2 text-sm block mb-3'}>
                     ⚠ {QUALITY_WARNING_LABELS[w]}
@@ -1336,6 +1388,58 @@ export default function OMRScanTool() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Lets the teacher fix what the reader got wrong before saving — typically a
+// bubble filled in pencil that glare washed out (read as blank/unclear), or
+// a stray mark. Flagged questions (blank, unclear, already edited) are
+// listed up front; "ดู/แก้ทุกข้อ" opens the whole sheet. A tap on the
+// letter already chosen clears it.
+function AnswerEditor({ graded, letters, onPick }) {
+  const [showAll, setShowAll] = useState(false);
+  const flagged = graded.filter(g => g.blank || g.ambiguous || g.edited);
+  const rows = showAll ? graded : flagged;
+  return (
+    <div className="mb-3 rounded-lg border border-gray-200 p-3">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="text-xs font-bold text-gray-700">
+          {flagged.length ? `ตรวจข้อที่ระบบอ่านไม่ได้ (${flagged.length} ข้อ)` : 'ระบบอ่านได้ครบทุกข้อ'}
+        </div>
+        <button type="button" className={btnTiny} onClick={() => setShowAll(v => !v)}>
+          {showAll ? 'ซ่อน' : 'ดู/แก้ทุกข้อ'}
+        </button>
+      </div>
+      {flagged.length > 0 && !showAll && (
+        <div className="text-[11px] text-gray-500 mb-2">เทียบกับภาพกระดาษด้านบน แล้วแตะตัวเลือกที่นักเรียนฝนจริง</div>
+      )}
+      <div className="max-h-72 overflow-y-auto">
+        {rows.map(g => (
+          <div key={g.question} className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-b-0">
+            <span className="w-10 text-xs font-semibold text-gray-600">ข้อ {g.question + 1}</span>
+            <span className="flex gap-1 flex-wrap">
+              {letters.map((label, ci) => {
+                const on = g.choice === ci;
+                return (
+                  <button
+                    key={ci}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => onPick(g.question, on ? null : ci)}
+                    className={'min-w-9 px-2 py-1 rounded-md text-xs font-bold border ' + (on
+                      ? (g.correct ? 'bg-green-600 text-white border-green-600' : 'bg-red-600 text-white border-red-600')
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50')}
+                  >{label}</button>
+                );
+              })}
+            </span>
+            <span className="text-[11px] text-gray-500">
+              {g.ambiguous ? 'ไม่ชัด' : g.blank ? 'ไม่ตอบ' : g.edited ? 'แก้เอง' : ''}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

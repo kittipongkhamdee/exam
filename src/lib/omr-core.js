@@ -1050,29 +1050,30 @@ function findFiducials(gray, width, height, opts = {}) {
     return da - db;
   });
   const perQuadrant = quadrants.map((qd, i) => sortByCorner(findBlobCandidates(gray, width, height, qd, thresholds[i], opts), qd));
-  // A shadow across a corner (or dark desk filling part of its quadrant)
-  // can make Otsu split bright paper from shadowed paper, so the shadowed
-  // paper counts as "dark" and swallows the marker in one huge blob —
-  // observed: every candidate in the quadrant rejected while the marker was
-  // plainly visible. For a quadrant that came up empty, split its dark side
-  // again to separate the near-black marker from grey paper, and accept only
-  // blobs about the size of the markers found in the other quadrants (else
-  // bubbles and text, which appear at the darker threshold, would pose as
-  // the missing marker).
-  const found = perQuadrant.filter(c => c.length).map(c => c[0].size ?? Math.sqrt(c[0].count));
-  if (found.length >= 2 && found.length < 4) {
-    const ref = found.slice().sort((x, y) => x - y)[Math.floor(found.length / 2)];
-    quadrants.forEach((qd, i) => {
-      if (perQuadrant[i].length) return;
-      const darkThreshold = otsuThresholdRegion(gray, width, height, qd, thresholds[i]);
-      if (!(darkThreshold < thresholds[i] - DARK_SPLIT_MIN_GAP)) return;
-      const blobs = findBlobCandidates(gray, width, height, qd, darkThreshold, opts)
-        .filter(b => { const r = b.size / ref; return r > 0.85 && r < 1.2 && b.bw / b.bh > 0.8 && b.bw / b.bh < 1.25 && b.count / (b.bw * b.bh) > 0.8; });
-      // Many marker-sized blobs means a patterned area (bubble grid, dark
-      // desk texture), not one marker among shadow.
-      if (blobs.length <= 3) perQuadrant[i] = sortByCorner(blobs, qd);
-    });
-  }
+  // A shadow across a corner (or dark desk, or the stack of papers' edge
+  // filling part of its quadrant) can make Otsu split bright paper from
+  // shadowed paper, so the shadowed paper counts as "dark" and swallows the
+  // marker in one huge blob — observed: the marker plainly visible, yet the
+  // quadrant offers nothing marker-sized. For such a quadrant, split its dark
+  // side again to separate the near-black marker from grey paper, and accept
+  // only blobs about the size of the markers the other quadrants agree on
+  // (else bubbles and text, which appear at the darker threshold, would pose
+  // as the missing marker).
+  const nearest = perQuadrant.map(c => (c.length ? c[0].size ?? Math.sqrt(c[0].count) : 0));
+  const inWindow = (b, ref) => { const r = (b.size ?? Math.sqrt(b.count)) / ref; return r > 0.7 && r < 1.4; };
+  quadrants.forEach((qd, i) => {
+    const others = nearest.filter((v, j) => j !== i && v > 8).sort((x, y) => x - y);
+    if (others.length < 2 || others[others.length - 1] / others[0] > 1.35) return;
+    const ref = others[Math.floor(others.length / 2)];
+    if (perQuadrant[i].some(b => inWindow(b, ref))) return;
+    const darkThreshold = otsuThresholdRegion(gray, width, height, qd, thresholds[i]);
+    if (!(darkThreshold < thresholds[i] - DARK_SPLIT_MIN_GAP)) return;
+    const blobs = findBlobCandidates(gray, width, height, qd, darkThreshold, opts)
+      .filter(b => { const r = b.size / ref; return r > 0.85 && r < 1.2 && b.bw / b.bh > 0.8 && b.bw / b.bh < 1.25 && b.count / (b.bw * b.bh) > 0.8; });
+    // Many marker-sized blobs means a patterned area (bubble grid, dark
+    // desk texture), not one marker among shadow.
+    if (blobs.length > 0 && blobs.length <= 3) perQuadrant[i] = sortByCorner(perQuadrant[i].concat(blobs), qd);
+  });
   // Nearest-to-corner alone is fooled by a dark object on the desk beyond
   // the paper's corner (observed: a pencil case in the top-right of the
   // frame beat the real marker, shearing the whole warp). With a candidate
